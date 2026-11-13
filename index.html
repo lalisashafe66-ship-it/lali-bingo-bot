@@ -92,6 +92,13 @@
       <span class="badge bg-warning text-dark p-2">Balance: <strong id="balance-lobby">Loading...</strong></span>
     </div>
 
+    <!-- Withdraw Button -->
+    <div class="mb-3">
+      <button class="btn btn-outline-success w-100 fw-bold" onclick="requestWithdrawal()">
+        💸 Withdraw Funds (Telebirr / CBE)
+      </button>
+    </div>
+
     <!-- Scrollable Stake Filters (10 to 100 ETB) -->
     <div class="stake-scroll mb-3" role="group">
       <button type="button" class="btn btn-warning btn-sm active flex-shrink-0" onclick="filterStake('ALL', this)">All</button>
@@ -128,6 +135,10 @@
       <button class="btn btn-outline-light btn-sm" onclick="exitToLobby()">← Rooms</button>
       <button id="sound-toggle" class="btn btn-outline-warning btn-sm" onclick="toggleSound()">🔊 Sound ON</button>
       <span class="badge bg-warning text-dark p-2">Balance: <strong id="balance">0.00 ETB</strong></span>
+    </div>
+
+    <div class="mb-2">
+      <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ Time Left: 03:00</span>
     </div>
 
     <div class="mb-3">
@@ -170,6 +181,9 @@
     let calledNumbers = new Set();
     let currentRoom = null;
     let currentStakeFilter = 'ALL';
+    let gameTimerInterval = null;
+    let timeLeft = 180;
+    let drawInterval = null;
 
     // --- SOUND ENGINE (Web Audio API + Voice Caller) ---
     let soundEnabled = true;
@@ -314,7 +328,7 @@
     }
 
     function joinRoom(room) {
-      initAudio(); // Unlocks audio context on user interaction
+      initAudio();
       if (balance < room.entry_fee) {
         sounds.errorBuzz();
         alert(`Insufficient balance! You need ${room.entry_fee} ETB to join. Please deposit via the bot first.`);
@@ -346,11 +360,52 @@
 
     function exitToLobby() {
       clearInterval(drawInterval);
+      clearInterval(gameTimerInterval);
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       document.getElementById('game-screen').classList.add('d-none');
       document.getElementById('lobby-screen').classList.remove('d-none');
       syncBalance();
       applyFilters();
+    }
+
+    function requestWithdrawal() {
+      const amount = prompt(`Enter amount to withdraw (Available: ${balance.toFixed(2)} ETB):`, "50");
+      if (!amount) return;
+      const amtNum = parseFloat(amount);
+      
+      if (isNaN(amtNum) || amtNum <= 0) {
+        alert("Please enter a valid amount.");
+        return;
+      }
+      if (amtNum > balance) {
+        alert("Insufficient balance for this withdrawal.");
+        return;
+      }
+
+      const method = prompt("Choose payout method:\n1. Telebirr\n2. CBE (Commercial Bank of Ethiopia)", "Telebirr");
+      if (!method) return;
+      
+      const accountInfo = prompt(`Enter your ${method} Phone Number or Account Number:`, "");
+      if (!accountInfo) return;
+
+      const formData = new FormData();
+      formData.append('action', 'request_withdrawal');
+      formData.append('telegram_id', telegramId);
+      formData.append('amount', amtNum);
+      formData.append('method', method);
+      formData.append('account', accountInfo);
+
+      fetch('api.php', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            updateBalanceUI(data.new_balance);
+            alert(`✅ Withdrawal request of ${amtNum} ETB submitted successfully! Admin will process it to your ${method} account (${accountInfo}).`);
+          } else {
+            alert(data.error || 'Withdrawal failed.');
+          }
+        })
+        .catch(() => alert('Network error while processing withdrawal.'));
     }
 
     function createRoomModal() {
@@ -396,12 +451,31 @@
       });
     }
 
-    let drawInterval = null;
     function startNewGame() {
       calledNumbers.clear();
       generateCard();
       renderBoard();
       
+      timeLeft = 180; // 3 minutes
+      document.getElementById('game-timer').textContent = `⏱️ Time Left: 03:00`;
+      clearInterval(gameTimerInterval);
+      
+      gameTimerInterval = setInterval(() => {
+        timeLeft--;
+        let mins = Math.floor(timeLeft / 60);
+        let secs = timeLeft % 60;
+        document.getElementById('game-timer').textContent = `⏱️ Time Left: ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        
+        if (timeLeft <= 0) {
+          clearInterval(gameTimerInterval);
+          clearInterval(drawInterval);
+          if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+          sounds.errorBuzz();
+          alert('⏰ Time is up! Round ended with no winner.');
+          exitToLobby();
+        }
+      }, 1000);
+
       let pool = Array.from({length: 75}, (_, i) => i + 1).sort(() => Math.random() - 0.5);
       clearInterval(drawInterval);
       
@@ -413,11 +487,9 @@
         const letter = n <= 15 ? 'B' : n <= 30 ? 'I' : n <= 45 ? 'N' : n <= 60 ? 'G' : 'O';
         document.getElementById('current-ball').textContent = `${letter}-${n}`;
         
-        // Play ball pop sound & voice announcement
         sounds.ballPop();
         announceBall(letter, n);
         
-        // AUTO-DAUB
         card.forEach((num, idx) => {
           if (num === n) {
             marked[idx] = true;
@@ -447,6 +519,7 @@
     function claimBingo() {
       if (checkWin()) {
         clearInterval(drawInterval);
+        clearInterval(gameTimerInterval);
         if ('speechSynthesis' in window) window.speechSynthesis.cancel();
         sounds.winFanfare();
         tg.HapticFeedback?.notificationOccurred('success');
