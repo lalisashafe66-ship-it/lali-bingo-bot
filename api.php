@@ -62,7 +62,6 @@ elseif ($action === 'join_room') {
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$player || $player['balance'] < $fee) {
-        // Auto-create test entry if missing
         $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
         $stmtIns->execute([$telegramId]);
         echo json_encode(['success' => false, 'error' => 'Insufficient balance! Please top up via Deposit in the Wallet tab.']);
@@ -123,7 +122,7 @@ elseif ($action === 'request_withdrawal') {
         exit;
     }
 
-    // Call Chapa Transfer / Payout API for real automated delivery
+    // Call Chapa Transfer / Payout API for automated delivery
     $chapaBankCode = (strtolower($method) === 'cbe') ? 'CBE' : 'Telebirr';
     
     $payload = json_encode([
@@ -149,7 +148,6 @@ elseif ($action === 'request_withdrawal') {
 
     $chapaRes = json_decode($response, true);
 
-    // If Chapa successfully processes or queues the transfer
     if ($httpCode === 200 || ($chapaRes['status'] ?? '') === 'success') {
         $newBalance = $player['balance'] - $amount;
         $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
@@ -164,7 +162,6 @@ elseif ($action === 'request_withdrawal') {
             'message' => 'Withdrawal sent successfully to your account!'
         ]);
     } else {
-        // Fallback: log pending if gateway requires manual review or test mode
         $newBalance = $player['balance'] - $amount;
         $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
         $update->execute([$newBalance, $telegramId]);
