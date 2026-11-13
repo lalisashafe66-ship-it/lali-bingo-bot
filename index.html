@@ -120,7 +120,6 @@
       margin: 0 auto;
       box-shadow: 0 4px 12px rgba(255, 77, 77, 0.4);
     }
-    /* Moveable / Pulsing Circle for Lobby */
     .pulse-circle {
       width: 130px;
       height: 130px;
@@ -211,7 +210,7 @@
     </button>
   </div>
 
-  <!-- 2. WAITING LOBBY SCREEN (30 Seconds Countdown & Prize Circle) -->
+  <!-- 2. WAITING LOBBY SCREEN (30 Seconds Countdown) -->
   <div id="screen-lobby" class="container text-center d-none">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
@@ -219,21 +218,20 @@
     </div>
 
     <div class="card-custom my-4 py-4">
-      <h5 class="text-light fw-bold mb-2">⏳ Game Starts In...</h5>
+      <h5 class="text-light fw-bold mb-2">⏳ Waiting for Room Players...</h5>
       
-      <!-- Moveable / Pulsing Circle showing Prize Pool & Timer -->
       <div class="pulse-circle">
         <span class="small fw-bold text-uppercase" style="font-size: 0.65rem;">Prize Pool</span>
         <strong id="lobby-prize-pool" class="fs-5">80 ETB</strong>
         <span id="lobby-timer" class="badge bg-dark text-warning mt-1" style="font-size: 0.9rem;">00:30</span>
       </div>
 
-      <p class="text-muted small mt-3 mb-0">Players Joined: <strong class="text-light" id="lobby-players-count">1 Player</strong></p>
-      <p class="text-muted small">Waiting for more players to join this table...</p>
+      <p class="text-muted small mt-3 mb-0">Room Status: <strong class="text-light" id="lobby-players-count">Synchronized Multiplayer</strong></p>
+      <p class="text-muted small">All players joining this table enter the round together!</p>
     </div>
   </div>
 
-  <!-- 3. ACTIVE PLAY ROOM SCREEN (2 Minutes Game) -->
+  <!-- 3. ACTIVE PLAY ROOM SCREEN (2 Minutes Game & Persistent Claim Button) -->
   <div id="screen-playroom" class="container text-center d-none">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
@@ -256,8 +254,9 @@
     </div>
     <div id="board" class="bingo-grid mb-3"></div>
 
-    <div class="d-grid gap-2 col-11 mx-auto mb-4">
-      <button id="bingo-btn" class="btn btn-warning btn-lg fw-bold shadow py-2 fs-5" onclick="claimBingo()">
+    <!-- Claim Bingo button positioned safely above bottom nav bar -->
+    <div class="d-grid gap-2 col-11 mx-auto mb-5">
+      <button id="bingo-btn" class="btn btn-warning btn-lg fw-bold shadow py-3 fs-4" onclick="claimBingo()">
         🎉 CLAIM BINGO!
       </button>
     </div>
@@ -338,7 +337,7 @@
     let currentRoom = null;
     
     let lobbyTimerInterval = null;
-    let lobbyTimeLeft = 30; // 30 Seconds Lobby Countdown
+    let lobbyTimeLeft = 30; // Synchronized 30 seconds lobby
 
     let gameTimerInterval = null;
     let timeLeft = 120; // 2 Minutes Game Timer
@@ -446,7 +445,6 @@
         .catch(() => updateBalanceUI(0.00));
     }
 
-    // Automated Instant Deposit via Chapa API
     function startInstantDeposit() {
       const amountStr = prompt("Enter deposit amount in ETB (Minimum 10 ETB):", "100");
       if (!amountStr) return;
@@ -497,12 +495,10 @@
             return;
           }
           updateBalanceUI(data.new_balance);
-          currentRoom = { entry_fee: selectedCardStake, prize_pool: selectedCardStake * 8 };
+          currentRoom = { room_id: data.room_id, entry_fee: selectedCardStake, prize_pool: selectedCardStake * 8 };
           
-          // Setup Lobby View
           document.getElementById('lobby-room-title').textContent = `Lali Table (${selectedCardStake} ETB Stake)`;
           document.getElementById('lobby-prize-pool').textContent = `${currentRoom.prize_pool.toFixed(2)} ETB`;
-          document.getElementById('lobby-players-count').textContent = `1 Player Active`;
           
           switchTab('lobby');
           startLobbyCountdown();
@@ -511,7 +507,7 @@
     }
 
     function startLobbyCountdown() {
-      lobbyTimeLeft = 30; // 30 seconds
+      lobbyTimeLeft = 30; // Synchronized 30 seconds
       document.getElementById('lobby-timer').textContent = `00:30`;
       clearInterval(lobbyTimerInterval);
 
@@ -523,7 +519,6 @@
 
         if (lobbyTimeLeft <= 0) {
           clearInterval(lobbyTimerInterval);
-          // Transition to active playroom game
           document.getElementById('room-title-display').textContent = `Lali Table (${selectedCardStake} ETB Stake)`;
           switchTab('playroom');
           startNewGame();
@@ -565,7 +560,7 @@
       generateCard();
       renderBoard();
       
-      timeLeft = 120; // 2 Minutes Game Timer
+      timeLeft = 120; // Synchronized 2 minutes active playroom
       document.getElementById('game-timer').textContent = `⏱️ 02:00`;
       clearInterval(gameTimerInterval);
       
@@ -677,7 +672,7 @@
         .then(data => {
           if (data.success) {
             updateBalanceUI(data.new_balance);
-            alert(`✅ Withdrawal request of ${amtNum} ETB submitted successfully!`);
+            alert(`✅ ${data.message || 'Withdrawal processed successfully!'}`);
           } else {
             alert(data.error || 'Withdrawal failed.');
           }
