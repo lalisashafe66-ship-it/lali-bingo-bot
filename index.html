@@ -254,7 +254,6 @@
     </div>
     <div id="board" class="bingo-grid mb-3"></div>
 
-    <!-- Claim Bingo button positioned safely above bottom nav bar -->
     <div class="d-grid gap-2 col-11 mx-auto mb-5">
       <button id="bingo-btn" class="btn btn-warning btn-lg fw-bold shadow py-3 fs-4" onclick="claimBingo()">
         🎉 CLAIM BINGO!
@@ -337,10 +336,10 @@
     let currentRoom = null;
     
     let lobbyTimerInterval = null;
-    let lobbyTimeLeft = 30; // Synchronized 30 seconds lobby
+    let lobbyTimeLeft = 30;
 
     let gameTimerInterval = null;
-    let timeLeft = 120; // 2 Minutes Game Timer
+    let timeLeft = 120;
     let drawInterval = null;
 
     function selectTable(stake, element) {
@@ -496,7 +495,7 @@
           }
           updateBalanceUI(data.new_balance);
 
-          // 2 Players total pool calculation minus 5 ETB commission
+          // 2 Players pool: Total Stakes minus 5 ETB fixed commission
           const totalPool = selectedCardStake * 2;
           const commission = 5;
           const winnerPrize = totalPool - commission;
@@ -513,7 +512,7 @@
     }
 
     function startLobbyCountdown() {
-      lobbyTimeLeft = 30; // Synchronized 30 seconds
+      lobbyTimeLeft = 30;
       document.getElementById('lobby-timer').textContent = `00:30`;
       clearInterval(lobbyTimerInterval);
 
@@ -566,7 +565,7 @@
       generateCard();
       renderBoard();
       
-      timeLeft = 120; // Synchronized 2 minutes active playroom
+      timeLeft = 120;
       document.getElementById('game-timer').textContent = `⏱️ 02:00`;
       clearInterval(gameTimerInterval);
       
@@ -678,7 +677,7 @@
         .then(data => {
           if (data.success) {
             updateBalanceUI(data.new_balance);
-            alert(`✅ ${data.message || 'Withdrawal processed successfully!'}`);
+            alert(`✅ ${data.message || 'Withdrawal requested successfully!'}`);
           } else {
             alert(data.error || 'Withdrawal failed.');
           }
