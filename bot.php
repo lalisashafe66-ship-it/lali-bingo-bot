@@ -100,7 +100,16 @@ if ($chatId) {
         sendMessage($chatId, "💰 Your current balance is: <b>{$bal} ETB</b>");
     }
     elseif ($text === '💳 Deposit') {
-        sendMessage($chatId, "💳 <b>Deposit Funds</b>\n\nTo top up your account, transfer funds via Telebirr or CBE to our commercial account and send the transaction receipt to support.");
+        $depositText = "💳 <b>Deposit Funds & Top-Up</b>\n\n" .
+                       "To top up your Lali Bingo wallet, transfer funds to our accounts below and send your transaction receipt to support (@Lali_Support):\n\n" .
+                       "🏦 <b>Commercial Bank of Ethiopia (CBE)</b>\n" .
+                       "• Account Number: <code>100017461538</code>\n" .
+                       "• Account Name: Lalisa Shafe Nagari\n\n" .
+                       "📱 <b>Telebirr Account</b>\n" .
+                       "• Phone / Wallet: <code>0917461538</code>\n" .
+                       "• Account Name: Lalisa Shafe Nagari\n\n" .
+                       "<i>After transferring, send the screenshot receipt to support to credit your balance instantly!</i>";
+        sendMessage($chatId, $depositText);
     }
     elseif ($text === '📤 Invite Friends') {
         sendMessage($chatId, "📤 Share your referral link with friends and earn bonus cash when they play!\n\nhttps://t.me/Lali_Bingo_bot");
