@@ -15,6 +15,16 @@ try {
         balance REAL DEFAULT 0.00,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS withdrawals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id TEXT,
+        amount REAL,
+        method TEXT,
+        account TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
 } catch (PDOException $e) {
     echo json_encode(['success' => false, 'error' => 'Database connection failed']);
     exit;
@@ -69,6 +79,33 @@ elseif ($action === 'claim_win') {
     echo json_encode([
         'success' => true,
         'new_balance' => $updated ? (float)$updated['balance'] : 0.00
+    ]);
+}
+elseif ($action === 'request_withdrawal') {
+    $telegramId = $_POST['telegram_id'] ?? '';
+    $amount = (float)($_POST['amount'] ?? 0);
+    $method = $_POST['method'] ?? 'Telebirr';
+    $account = $_POST['account'] ?? '';
+
+    $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+    $stmt->execute([$telegramId]);
+    $player = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$player || $player['balance'] < $amount || $amount <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Invalid balance or amount.']);
+        exit;
+    }
+
+    $newBalance = $player['balance'] - $amount;
+    $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
+    $update->execute([$newBalance, $telegramId]);
+
+    $log = $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')");
+    $log->execute([$telegramId, $amount, $method, $account]);
+
+    echo json_encode([
+        'success' => true,
+        'new_balance' => $newBalance
     ]);
 }
 else {
