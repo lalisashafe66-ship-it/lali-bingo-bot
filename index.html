@@ -18,7 +18,7 @@
       color: #ffffff;
       font-family: system-ui, -apple-system, sans-serif;
       user-select: none;
-      padding-bottom: 110px; /* Extra space at bottom so nothing is hidden */
+      padding-bottom: 110px;
     }
     .card-custom {
       background-color: var(--card-bg);
@@ -41,7 +41,6 @@
       border-color: var(--accent-gold);
       background-color: #173b40;
     }
-    /* Force high-visibility bright text inside table cards */
     .table-option .text-muted, 
     .table-option small, 
     .table-option p {
@@ -121,6 +120,26 @@
       margin: 0 auto;
       box-shadow: 0 4px 12px rgba(255, 77, 77, 0.4);
     }
+    /* Moveable / Pulsing Circle for Lobby */
+    .pulse-circle {
+      width: 130px;
+      height: 130px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #ffc107, #d39e00);
+      color: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 15px auto;
+      box-shadow: 0 0 20px rgba(255, 193, 7, 0.5);
+      animation: pulseAnim 1.5s infinite;
+    }
+    @keyframes pulseAnim {
+      0% { transform: scale(1); box-shadow: 0 0 15px rgba(255, 193, 7, 0.4); }
+      50% { transform: scale(1.06); box-shadow: 0 0 25px rgba(255, 193, 7, 0.8); }
+      100% { transform: scale(1); box-shadow: 0 0 15px rgba(255, 193, 7, 0.4); }
+    }
   </style>
 </head>
 <body class="p-3">
@@ -192,12 +211,34 @@
     </button>
   </div>
 
-  <!-- 2. ACTIVE PLAY ROOM SCREEN -->
+  <!-- 2. WAITING LOBBY SCREEN (1 Minute Countdown & Prize Circle) -->
+  <div id="screen-lobby" class="container text-center d-none">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
+      <span class="badge bg-warning text-dark fs-6" id="lobby-room-title">Lali Table</span>
+    </div>
+
+    <div class="card-custom my-4 py-4">
+      <h5 class="text-light fw-bold mb-2">⏳ Game Starts In...</h5>
+      
+      <!-- Moveable / Pulsing Circle showing Prize Pool & Timer -->
+      <div class="pulse-circle">
+        <span class="small fw-bold text-uppercase" style="font-size: 0.65rem;">Prize Pool</span>
+        <strong id="lobby-prize-pool" class="fs-5">80 ETB</strong>
+        <span id="lobby-timer" class="badge bg-dark text-warning mt-1" style="font-size: 0.9rem;">01:00</span>
+      </div>
+
+      <p class="text-muted small mt-3 mb-0">Players Joined: <strong class="text-light" id="lobby-players-count">1 Player</strong></p>
+      <p class="text-muted small">Waiting for more players to join this table...</p>
+    </div>
+  </div>
+
+  <!-- 3. ACTIVE PLAY ROOM SCREEN (2 Minutes Game) -->
   <div id="screen-playroom" class="container text-center d-none">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
       <button id="sound-toggle" class="btn btn-outline-warning btn-sm" onclick="toggleSound()">🔊 Sound ON</button>
-      <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ 03:00</span>
+      <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ 02:00</span>
     </div>
 
     <div class="card-custom mb-2">
@@ -215,7 +256,6 @@
     </div>
     <div id="board" class="bingo-grid mb-3"></div>
 
-    <!-- Claim Bingo Button placed right under board, safely above bottom nav -->
     <div class="d-grid gap-2 col-11 mx-auto mb-4">
       <button id="bingo-btn" class="btn btn-warning btn-lg fw-bold shadow py-2 fs-5" onclick="claimBingo()">
         🎉 CLAIM BINGO!
@@ -223,7 +263,7 @@
     </div>
   </div>
 
-  <!-- 3. HISTORY SCREEN -->
+  <!-- 4. HISTORY SCREEN -->
   <div id="screen-history" class="container d-none">
     <h3 class="fw-bold text-light mb-3">Game History</h3>
     <div class="card-custom">
@@ -231,7 +271,7 @@
     </div>
   </div>
 
-  <!-- 4. WALLET SCREEN -->
+  <!-- 5. WALLET SCREEN -->
   <div id="screen-wallet" class="container d-none">
     <h3 class="fw-bold text-light mb-3">Wallet & Funds</h3>
     <div class="card-custom text-center mb-3">
@@ -249,7 +289,7 @@
     </div>
   </div>
 
-  <!-- 5. PROFILE SCREEN -->
+  <!-- 6. PROFILE SCREEN -->
   <div id="screen-profile" class="container d-none">
     <h3 class="fw-bold text-light mb-3">Player Profile</h3>
     <div class="card-custom">
@@ -285,7 +325,7 @@
 
     const user = tg.initDataUnsafe?.user;
     const playerName = user ? user.first_name : 'Player';
-    const telegramId = user ? user.id.toString() : '';
+    const telegramId = user ? user.id.toString() : '730967613';
     
     document.getElementById('profile-name').textContent = playerName;
     document.getElementById('profile-id').textContent = telegramId || 'Guest';
@@ -296,8 +336,12 @@
     let marked = Array(25).fill(false);
     let calledNumbers = new Set();
     let currentRoom = null;
+    
+    let lobbyTimerInterval = null;
+    let lobbyTimeLeft = 60; // 1 Minute Lobby Countdown
+
     let gameTimerInterval = null;
-    let timeLeft = 180;
+    let timeLeft = 120; // 2 Minutes Game Timer
     let drawInterval = null;
 
     function selectTable(stake, element) {
@@ -315,10 +359,11 @@
       if (tab === 'game') {
         clearInterval(drawInterval);
         clearInterval(gameTimerInterval);
+        clearInterval(lobbyTimerInterval);
         if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       }
 
-      ['game', 'playroom', 'history', 'wallet', 'profile'].forEach(s => {
+      ['game', 'lobby', 'playroom', 'history', 'wallet', 'profile'].forEach(s => {
         document.getElementById(`screen-${s}`).classList.add('d-none');
       });
       document.querySelectorAll('.bottom-nav .nav-item-custom').forEach(n => n.classList.remove('active'));
@@ -326,6 +371,8 @@
       if (tab === 'game') {
         document.getElementById('screen-game').classList.remove('d-none');
         document.getElementById('nav-game').classList.add('active');
+      } else if (tab === 'lobby') {
+        document.getElementById('screen-lobby').classList.remove('d-none');
       } else if (tab === 'playroom') {
         document.getElementById('screen-playroom').classList.remove('d-none');
       } else if (tab === 'history') {
@@ -423,11 +470,37 @@
           }
           updateBalanceUI(data.new_balance);
           currentRoom = { entry_fee: selectedCardStake, prize_pool: selectedCardStake * 8 };
+          
+          // Setup Lobby View
+          document.getElementById('lobby-room-title').textContent = `Lali Table (${selectedCardStake} ETB Stake)`;
+          document.getElementById('lobby-prize-pool').textContent = `${currentRoom.prize_pool.toFixed(2)} ETB`;
+          document.getElementById('lobby-players-count').textContent = `1 Player Active`;
+          
+          switchTab('lobby');
+          startLobbyCountdown();
+        })
+        .catch(() => alert('Network error while joining table.'));
+    }
+
+    function startLobbyCountdown() {
+      lobbyTimeLeft = 60; // 1 minute
+      document.getElementById('lobby-timer').textContent = `01:00`;
+      clearInterval(lobbyTimerInterval);
+
+      lobbyTimerInterval = setInterval(() => {
+        lobbyTimeLeft--;
+        let mins = Math.floor(lobbyTimeLeft / 60);
+        let secs = lobbyTimeLeft % 60;
+        document.getElementById('lobby-timer').textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+        if (lobbyTimeLeft <= 0) {
+          clearInterval(lobbyTimerInterval);
+          // Transition to active playroom game
           document.getElementById('room-title-display').textContent = `Lali Table (${selectedCardStake} ETB Stake)`;
           switchTab('playroom');
           startNewGame();
-        })
-        .catch(() => alert('Network error while joining table.'));
+        }
+      }, 1000);
     }
 
     function generateCard() {
@@ -464,8 +537,8 @@
       generateCard();
       renderBoard();
       
-      timeLeft = 180;
-      document.getElementById('game-timer').textContent = `⏱️ 03:00`;
+      timeLeft = 120; // 2 Minutes Game Timer
+      document.getElementById('game-timer').textContent = `⏱️ 02:00`;
       clearInterval(gameTimerInterval);
       
       gameTimerInterval = setInterval(() => {
@@ -541,7 +614,7 @@
           .then(res => res.json())
           .then(data => {
             if (data.success) updateBalanceUI(data.new_balance);
-            alert(`🎉 BINGO! You won ${currentRoom.prize_pool} ETB added to your balance!`);
+            alert(`🎉 BINGO WINNER!\n\nWinner: ${playerName} (ID: ${telegramId})\nPrize: ${currentRoom.prize_pool} ETB added to balance!`);
             switchTab('game');
           });
       } else {
