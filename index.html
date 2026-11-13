@@ -18,14 +18,14 @@
       color: #ffffff;
       font-family: system-ui, -apple-system, sans-serif;
       user-select: none;
-      padding-bottom: 70px; /* space for bottom nav */
+      padding-bottom: 110px; /* Extra space at bottom so nothing is hidden */
     }
     .card-custom {
       background-color: var(--card-bg);
       border: 1px solid #1f474d;
       border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
     }
     .table-option {
       background-color: var(--card-bg);
@@ -41,7 +41,7 @@
       border-color: var(--accent-gold);
       background-color: #173b40;
     }
-    /* Force high-visibility bright white/light-gray text inside table cards */
+    /* Force high-visibility bright text inside table cards */
     .table-option .text-muted, 
     .table-option small, 
     .table-option p {
@@ -73,8 +73,8 @@
     .bingo-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 6px;
-      max-width: 360px;
+      gap: 5px;
+      max-width: 340px;
       margin: 0 auto;
     }
     .bingo-header {
@@ -82,9 +82,9 @@
       color: #000;
       font-weight: 800;
       text-align: center;
-      padding: 8px 0;
-      border-radius: 8px;
-      font-size: 1.1rem;
+      padding: 6px 0;
+      border-radius: 6px;
+      font-size: 1rem;
     }
     .bingo-cell {
       aspect-ratio: 1;
@@ -93,8 +93,8 @@
       justify-content: center;
       background: #1a3c42;
       border: 2px solid #28545c;
-      border-radius: 8px;
-      font-size: 1.1rem;
+      border-radius: 6px;
+      font-size: 1rem;
       font-weight: 700;
     }
     .bingo-cell.marked {
@@ -105,15 +105,15 @@
     .bingo-cell.free {
       background: #0d6efd;
       border-color: #3d8bfd;
-      font-size: 0.75rem;
+      font-size: 0.7rem;
     }
     .called-ball {
-      width: 68px;
-      height: 68px;
+      width: 58px;
+      height: 58px;
       border-radius: 50%;
       background: radial-gradient(circle at 30% 30%, #ff4d4d, #b30000);
       color: white;
-      font-size: 1.5rem;
+      font-size: 1.3rem;
       font-weight: 800;
       display: flex;
       align-items: center;
@@ -192,7 +192,7 @@
     </button>
   </div>
 
-  <!-- 2. ACTIVE PLAY ROOM SCREEN (Hidden by default) -->
+  <!-- 2. ACTIVE PLAY ROOM SCREEN -->
   <div id="screen-playroom" class="container text-center d-none">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
@@ -200,13 +200,13 @@
       <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ 03:00</span>
     </div>
 
-    <div class="card-custom mb-3">
+    <div class="card-custom mb-2">
       <small class="text-uppercase text-warning fw-bold" id="room-title-display">Lali Table</small>
-      <div id="current-ball" class="called-ball mt-2">--</div>
-      <div id="history" class="mt-2 small text-muted">Recent: None</div>
+      <div id="current-ball" class="called-ball mt-1">--</div>
+      <div id="history" class="mt-1 small text-muted">Recent: None</div>
     </div>
 
-    <div class="bingo-grid mb-2">
+    <div class="bingo-grid mb-1">
       <div class="bingo-header">B</div>
       <div class="bingo-header">I</div>
       <div class="bingo-header">N</div>
@@ -215,14 +215,15 @@
     </div>
     <div id="board" class="bingo-grid mb-3"></div>
 
-    <div class="d-grid gap-2 col-11 mx-auto">
-      <button id="bingo-btn" class="btn btn-warning btn-lg fw-bold shadow" onclick="claimBingo()">
+    <!-- Claim Bingo Button placed right under board, safely above bottom nav -->
+    <div class="d-grid gap-2 col-11 mx-auto mb-4">
+      <button id="bingo-btn" class="btn btn-warning btn-lg fw-bold shadow py-2 fs-5" onclick="claimBingo()">
         🎉 CLAIM BINGO!
       </button>
     </div>
   </div>
 
-  <!-- 3. HISTORY SCREEN (Hidden by default) -->
+  <!-- 3. HISTORY SCREEN -->
   <div id="screen-history" class="container d-none">
     <h3 class="fw-bold text-light mb-3">Game History</h3>
     <div class="card-custom">
@@ -230,7 +231,7 @@
     </div>
   </div>
 
-  <!-- 4. WALLET SCREEN (Hidden by default) -->
+  <!-- 4. WALLET SCREEN -->
   <div id="screen-wallet" class="container d-none">
     <h3 class="fw-bold text-light mb-3">Wallet & Funds</h3>
     <div class="card-custom text-center mb-3">
@@ -248,7 +249,7 @@
     </div>
   </div>
 
-  <!-- 5. PROFILE SCREEN (Hidden by default) -->
+  <!-- 5. PROFILE SCREEN -->
   <div id="screen-profile" class="container d-none">
     <h3 class="fw-bold text-light mb-3">Player Profile</h3>
     <div class="card-custom">
