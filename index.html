@@ -126,6 +126,7 @@
   <div class="container text-center d-none" id="game-screen">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <button class="btn btn-outline-light btn-sm" onclick="exitToLobby()">← Rooms</button>
+      <button id="sound-toggle" class="btn btn-outline-warning btn-sm" onclick="toggleSound()">🔊 Sound ON</button>
       <span class="badge bg-warning text-dark p-2">Balance: <strong id="balance">0.00 ETB</strong></span>
     </div>
 
@@ -170,13 +171,77 @@
     let currentRoom = null;
     let currentStakeFilter = 'ALL';
 
+    // --- SOUND ENGINE (Web Audio API + Voice Caller) ---
+    let soundEnabled = true;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function toggleSound() {
+      soundEnabled = !soundEnabled;
+      const btn = document.getElementById('sound-toggle');
+      btn.textContent = soundEnabled ? '🔊 Sound ON' : '🔇 Muted';
+      btn.classList.toggle('btn-outline-warning', soundEnabled);
+      btn.classList.toggle('btn-outline-secondary', !soundEnabled);
+    }
+
+    function playTone(freq, type, duration, delay = 0) {
+      if (!soundEnabled) return;
+      initAudio();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(audioCtx.currentTime + delay);
+      osc.stop(audioCtx.currentTime + delay + duration);
+    }
+
+    const sounds = {
+      ballPop: () => {
+        playTone(520, 'sine', 0.12, 0);
+        playTone(780, 'sine', 0.15, 0.06);
+      },
+      daubMatch: () => {
+        playTone(659.25, 'triangle', 0.12, 0);
+        playTone(880, 'triangle', 0.25, 0.08);
+      },
+      winFanfare: () => {
+        [523.25, 659.25, 783.99, 1046.50].forEach((note, i) => {
+          playTone(note, 'triangle', 0.35, i * 0.12);
+        });
+      },
+      errorBuzz: () => {
+        playTone(180, 'sawtooth', 0.2, 0);
+        playTone(140, 'sawtooth', 0.25, 0.15);
+      }
+    };
+
+    function announceBall(letter, number) {
+      if (!soundEnabled || !('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(`${letter} ${number}`);
+      utterance.rate = 1.05;
+      utterance.pitch = 1.1;
+      window.speechSynthesis.speak(utterance);
+    }
+
     function updateBalanceUI(newBal) {
       balance = parseFloat(newBal) || 0.00;
       document.getElementById('balance').textContent = `${balance.toFixed(2)} ETB`;
       document.getElementById('balance-lobby').textContent = `${balance.toFixed(2)} ETB`;
     }
 
-    // Fetch live balance from Render SQLite database
     function syncBalance() {
       if (!telegramId) {
         updateBalanceUI(0.00);
@@ -190,7 +255,6 @@
         .catch(() => updateBalanceUI(0.00));
     }
 
-    // Generate 600 active rooms across 10 to 100 ETB stakes
     let allRooms = [];
     const stakes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     for (let i = 1; i <= 600; i++) {
@@ -250,7 +314,9 @@
     }
 
     function joinRoom(room) {
+      initAudio(); // Unlocks audio context on user interaction
       if (balance < room.entry_fee) {
+        sounds.errorBuzz();
         alert(`Insufficient balance! You need ${room.entry_fee} ETB to join. Please deposit via the bot first.`);
         return;
       }
@@ -264,6 +330,7 @@
         .then(res => res.json())
         .then(data => {
           if (!data.success) {
+            sounds.errorBuzz();
             alert(data.error || 'Could not join room.');
             return;
           }
@@ -279,6 +346,7 @@
 
     function exitToLobby() {
       clearInterval(drawInterval);
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       document.getElementById('game-screen').classList.add('d-none');
       document.getElementById('lobby-screen').classList.remove('d-none');
       syncBalance();
@@ -345,10 +413,15 @@
         const letter = n <= 15 ? 'B' : n <= 30 ? 'I' : n <= 45 ? 'N' : n <= 60 ? 'G' : 'O';
         document.getElementById('current-ball').textContent = `${letter}-${n}`;
         
+        // Play ball pop sound & voice announcement
+        sounds.ballPop();
+        announceBall(letter, n);
+        
         // AUTO-DAUB
         card.forEach((num, idx) => {
           if (num === n) {
             marked[idx] = true;
+            sounds.daubMatch();
             tg.HapticFeedback?.impactOccurred('light');
           }
         });
@@ -374,6 +447,8 @@
     function claimBingo() {
       if (checkWin()) {
         clearInterval(drawInterval);
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        sounds.winFanfare();
         tg.HapticFeedback?.notificationOccurred('success');
         
         const formData = new FormData();
@@ -389,6 +464,7 @@
             exitToLobby();
           });
       } else {
+        sounds.errorBuzz();
         tg.HapticFeedback?.notificationOccurred('error');
         alert('❌ Not a valid Bingo yet! Keep watching the auto-dauber.');
       }
