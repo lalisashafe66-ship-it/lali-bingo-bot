@@ -103,7 +103,7 @@ if ($chatId) {
         $depositText = "💳 <b>Deposit Funds & Top-Up</b>\n\n" .
                        "To top up your Lali Bingo wallet, transfer funds to our accounts below and send your transaction receipt to support (@Lali_Support):\n\n" .
                        "🏦 <b>Commercial Bank of Ethiopia (CBE)</b>\n" .
-                       "• Account Number: <code>100017461538</code>\n" .
+                       "• Account Number: <code>1000171689116</code>\n" .
                        "• Account Name: Lalisa Shafe Nagari\n\n" .
                        "📱 <b>Telebirr Account</b>\n" .
                        "• Phone / Wallet: <code>0917461538</code>\n" .
