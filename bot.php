@@ -17,8 +17,6 @@ $firstName = $update['message']['from']['first_name'] ?? 'Player';
 $telegramId = (string)($update['message']['from']['id'] ?? '');
 
 $token = "9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0";
-
-// Your Admin Telegram ID to authorize /add and /users commands
 $ADMIN_ID = "730967613"; 
 
 function sendMessage($chatId, $message, $keyboard = null) {
@@ -79,17 +77,18 @@ if ($chatId) {
             foreach ($users as $u) {
                 $msg .= "• <b>{$u['first_name']}</b> | ID: <code>{$u['telegram_id']}</code> | Tel: {$u['phone']} | Bal: <b>{$u['balance']} ETB</b>\n";
             }
-            $msg .= "\n<i>To credit a user, send:</i>\n<code>/add USER_ID AMOUNT</code>";
             sendMessage($chatId, $msg);
         }
     }
-    elseif (strpos($text, '/add ') === 0) {
+    elseif (stripos($text, '/add') === 0) {
         if ($telegramId !== $ADMIN_ID) {
             sendMessage($chatId, "⛔ Unauthorized.");
             exit;
         }
-        $parts = explode(' ', $text);
-        if (count($parts) === 3 && is_numeric($parts[2])) {
+        // Split by any whitespace cleanly
+        $parts = preg_split('/\s+/', trim($text));
+        
+        if (count($parts) >= 3 && is_numeric($parts[2])) {
             $targetId = trim($parts[1]);
             $amount = (float)$parts[2];
 
@@ -105,10 +104,10 @@ if ($chatId) {
                 sendMessage($chatId, "✅ Credited <b>{$amount} ETB</b> to <b>{$targetPlayer['first_name']}</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$newBal} ETB</b>");
                 sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Lali Bingo wallet.\nCurrent Balance: <b>{$newBal} ETB</b>");
             } else {
-                sendMessage($chatId, "❌ Player with Telegram ID <code>{$targetId}</code> not found.");
+                sendMessage($chatId, "❌ Player with Telegram ID <code>{$targetId}</code> not found in database.");
             }
         } else {
-            sendMessage($chatId, "⚠️ Usage: <code>/add TELEGRAM_ID AMOUNT</code>\nExample: <code>/add 730967613 200</code>");
+            sendMessage($chatId, "⚠️ Usage format: <code>/add TELEGRAM_ID AMOUNT</code>\nExample: <code>/add 730967613 200</code>");
         }
     }
     elseif ($text === '/start' || stripos($text, 'start') !== false) {
@@ -119,14 +118,11 @@ if ($chatId) {
         if ($player && !empty($player['phone'])) {
             sendMessage($chatId, "👋 Welcome back, <b>{$firstName}</b>!\nChoose an option from the menu below:", $mainMenu);
         } else {
-            $contactKeyboard = [
-                'keyboard' => [
-                    [['text' => '📱 Share contact', 'request_contact' => true]]
-                ],
-                'resize_keyboard' => true,
-                'one_time_keyboard' => true
-            ];
-            sendMessage($chatId, "🎲 <b>Welcome to Lali Bingo!</b>\n\nTo finish registration, tap <b>\"📱 Share contact\"</b> below.", $contactKeyboard);
+            // Automatically insert player if not fully registered yet
+            $stmt = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, ?, 0.00) ON CONFLICT(telegram_id) DO NOTHING");
+            $stmt->execute([$telegramId, $firstName, 'WebUser']);
+
+            sendMessage($chatId, "👋 Welcome, <b>{$firstName}</b>!\nYour profile is registered. Choose an option from the menu below:", $mainMenu);
         }
     }
     elseif ($contact) {
