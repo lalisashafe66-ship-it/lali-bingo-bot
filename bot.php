@@ -105,7 +105,7 @@ if ($chatId) {
     elseif (stripos($text, 'Deposit') !== false) {
         $depositText = "💳 <b>Deposit Funds & Top-Up</b>\n\n" .
                        "Transfer funds to our accounts below and send your transaction receipt along with your ID (<code>{$telegramId}</code>) to support (@Lali_Support):\n\n" .
-                       "🏦 <b>CBE:</b> <code>100017461538</code> (Lalisa Shafe)\n" .
+                       "🏦 <b>CBE:</b> <code>1000171689116</code> (Lalisa Shafe)\n" .
                        "📱 <b>Telebirr:</b> <code>0917461538</code> (Lalisa Shafe)";
         sendMessage($chatId, $depositText, $mainMenu);
     }
