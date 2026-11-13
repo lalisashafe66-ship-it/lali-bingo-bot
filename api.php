@@ -3,9 +3,6 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 
-// REPLACE WITH YOUR ACTUAL CHAPA SECRET KEY FROM YOUR DASHBOARD
-define('CHAPA_SECRET_KEY', 'YOUR_CHASECK_SECRET_KEY_HERE');
-
 try {
     $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -122,59 +119,19 @@ elseif ($action === 'request_withdrawal') {
         exit;
     }
 
-    // Call Chapa Transfer / Payout API for automated delivery
-    $chapaBankCode = (strtolower($method) === 'cbe') ? 'CBE' : 'Telebirr';
-    
-    $payload = json_encode([
-        "account_name" => "Lali Bingo Player",
-        "account_number" => $account,
-        "amount" => $amount,
-        "currency" => "ETB",
-        "bank_code" => $chapaBankCode
+    // Deduct balance and queue as pending for manual admin fulfillment
+    $newBalance = $player['balance'] - $amount;
+    $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
+    $update->execute([$newBalance, $telegramId]);
+
+    $log = $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')");
+    $log->execute([$telegramId, $amount, $method, $account]);
+
+    echo json_encode([
+        'success' => true,
+        'new_balance' => $newBalance,
+        'message' => 'Withdrawal request submitted! Admin will review and send your funds shortly.'
     ]);
-
-    $ch = curl_init('https://api.chapa.co/v1/transfers');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        "Authorization: Bearer " . CHAPA_SECRET_KEY,
-        "Content-Type: application/json"
-    ]);
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    $chapaRes = json_decode($response, true);
-
-    if ($httpCode === 200 || ($chapaRes['status'] ?? '') === 'success') {
-        $newBalance = $player['balance'] - $amount;
-        $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
-        $update->execute([$newBalance, $telegramId]);
-
-        $log = $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'success')");
-        $log->execute([$telegramId, $amount, $method, $account]);
-
-        echo json_encode([
-            'success' => true,
-            'new_balance' => $newBalance,
-            'message' => 'Withdrawal sent successfully to your account!'
-        ]);
-    } else {
-        $newBalance = $player['balance'] - $amount;
-        $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
-        $update->execute([$newBalance, $telegramId]);
-
-        $log = $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending_gateway')");
-        $log->execute([$telegramId, $amount, $method, $account]);
-
-        echo json_encode([
-            'success' => true,
-            'new_balance' => $newBalance,
-            'message' => 'Withdrawal request submitted successfully.'
-        ]);
-    }
 }
 else {
     echo json_encode(['success' => false, 'error' => 'Invalid action']);
