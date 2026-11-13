@@ -120,7 +120,7 @@ if ($chatId) {
         ];
         sendMessage($chatId, "✅ <b>Player registered successfully!</b>\n\nWelcome to Lali Bingo! Your wallet balance is <b>0.00 ETB</b>.\nTap <b>💳 Deposit</b> to fund your account or <b>🎮 Play Bingo</b> to browse tables.", $mainMenu);
     } 
-    elseif ($text === '/start') {
+    elseif ($text === '/start' || strpos($text, 'Start') !== false) {
         $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -155,14 +155,14 @@ if ($chatId) {
         ];
         sendMessage($chatId, "Tap the button below to open your Lali Bingo game app and choose a table:", $webAppKeyboard);
     }
-    elseif ($text === '💰 Balance') {
+    elseif (strpos($text, 'Balance') !== false) {
         $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
         $bal = number_format((float)($player['balance'] ?? 0.00), 2);
         sendMessage($chatId, "💰 Your current balance is: <b>{$bal} ETB</b>");
     }
-    elseif ($text === '💳 Deposit') {
+    elseif (strpos($text, 'Deposit') !== false) {
         $depositText = "💳 <b>Deposit Funds & Top-Up</b>\n\n" .
                        "To top up your Lali Bingo wallet, transfer funds to our accounts below and send your transaction receipt along with your ID (<code>{$telegramId}</code>) to support (@Lali_Support):\n\n" .
                        "🏦 <b>Commercial Bank of Ethiopia (CBE)</b>\n" .
@@ -174,7 +174,7 @@ if ($chatId) {
                        "<i>After transferring, send the screenshot receipt to support to credit your balance!</i>";
         sendMessage($chatId, $depositText);
     }
-    elseif ($text === '💸 Withdraw') {
+    elseif (strpos($text, 'Withdraw') !== false) {
         $withdrawText = "💸 <b>Withdraw Funds</b>\n\n" .
                         "To cash out your winnings:\n" .
                         "1. Open the <b>🎮 Play Bingo</b> WebApp.\n" .
@@ -183,13 +183,13 @@ if ($chatId) {
                         "<i>Admin processes withdrawal requests promptly to your specified account!</i>";
         sendMessage($chatId, $withdrawText);
     }
-    elseif ($text === '📤 Invite Friends') {
+    elseif (strpos($text, 'Invite Friends') !== false) {
         sendMessage($chatId, "📤 Share your referral link with friends and win together!\n\nhttps://t.me/Lali_Bingo_bot");
     }
-    elseif ($text === 'ℹ️ Instruction') {
+    elseif (strpos($text, 'Instruction') !== false) {
         sendMessage($chatId, "📖 <b>How to Play:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, 50, or 100 ETB).\n3. Numbers are daubed automatically as balls are called.\n4. Complete a line and tap <b>CLAIM BINGO</b> to win 80% of all stakes!");
     }
-    elseif ($text === '📞 Support') {
+    elseif (strpos($text, 'Support') !== false) {
         sendMessage($chatId, "📞 For any deposit or withdrawal issues, contact our support team: @Lali_Support");
     }
 }
