@@ -211,7 +211,7 @@
     </button>
   </div>
 
-  <!-- 2. WAITING LOBBY SCREEN (1 Minute Countdown & Prize Circle) -->
+  <!-- 2. WAITING LOBBY SCREEN (30 Seconds Countdown & Prize Circle) -->
   <div id="screen-lobby" class="container text-center d-none">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
@@ -225,7 +225,7 @@
       <div class="pulse-circle">
         <span class="small fw-bold text-uppercase" style="font-size: 0.65rem;">Prize Pool</span>
         <strong id="lobby-prize-pool" class="fs-5">80 ETB</strong>
-        <span id="lobby-timer" class="badge bg-dark text-warning mt-1" style="font-size: 0.9rem;">01:00</span>
+        <span id="lobby-timer" class="badge bg-dark text-warning mt-1" style="font-size: 0.9rem;">00:30</span>
       </div>
 
       <p class="text-muted small mt-3 mb-0">Players Joined: <strong class="text-light" id="lobby-players-count">1 Player</strong></p>
@@ -338,7 +338,7 @@
     let currentRoom = null;
     
     let lobbyTimerInterval = null;
-    let lobbyTimeLeft = 60; // 1 Minute Lobby Countdown
+    let lobbyTimeLeft = 30; // 30 Seconds Lobby Countdown
 
     let gameTimerInterval = null;
     let timeLeft = 120; // 2 Minutes Game Timer
@@ -483,8 +483,8 @@
     }
 
     function startLobbyCountdown() {
-      lobbyTimeLeft = 60; // 1 minute
-      document.getElementById('lobby-timer').textContent = `01:00`;
+      lobbyTimeLeft = 30; // 30 seconds
+      document.getElementById('lobby-timer').textContent = `00:30`;
       clearInterval(lobbyTimerInterval);
 
       lobbyTimerInterval = setInterval(() => {
