@@ -3,15 +3,66 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Lali Bingo - Multiplayer</title>
+  <title>Lali Bingo</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
+    :root {
+      --bg-dark: #0B1E22;
+      --card-bg: #132F33;
+      --accent-gold: #FFC107;
+      --accent-green: #198754;
+    }
     body {
-      background-color: var(--tg-theme-bg-color, #121212);
-      color: var(--tg-theme-text-color, #ffffff);
+      background-color: var(--bg-dark);
+      color: #ffffff;
       font-family: system-ui, -apple-system, sans-serif;
       user-select: none;
+      padding-bottom: 70px; /* space for bottom nav */
+    }
+    .card-custom {
+      background-color: var(--card-bg);
+      border: 1px solid #1f474d;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .table-option {
+      background-color: var(--card-bg);
+      border: 2px solid #234d54;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: left;
+    }
+    .table-option.selected {
+      border-color: var(--accent-gold);
+      background-color: #173b40;
+    }
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background-color: #081619;
+      border-top: 1px solid #1a3c42;
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 0;
+      z-index: 1000;
+    }
+    .nav-item-custom {
+      color: #8a9b9e;
+      text-align: center;
+      font-size: 0.8rem;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .nav-item-custom.active {
+      color: var(--accent-gold);
+      font-weight: bold;
     }
     .bingo-grid {
       display: grid;
@@ -21,35 +72,34 @@
       margin: 0 auto;
     }
     .bingo-header {
-      background: #ffc107;
+      background: var(--accent-gold);
       color: #000;
       font-weight: 800;
       text-align: center;
-      padding: 10px 0;
+      padding: 8px 0;
       border-radius: 8px;
-      font-size: 1.2rem;
+      font-size: 1.1rem;
     }
     .bingo-cell {
       aspect-ratio: 1;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: var(--tg-theme-secondary-bg-color, #242424);
-      border: 2px solid #333;
-      border-radius: 10px;
-      font-size: 1.2rem;
+      background: #1a3c42;
+      border: 2px solid #28545c;
+      border-radius: 8px;
+      font-size: 1.1rem;
       font-weight: 700;
     }
     .bingo-cell.marked {
-      background: #198754;
+      background: var(--accent-green);
       border-color: #20c997;
       color: #fff;
-      transition: background 0.3s ease;
     }
     .bingo-cell.free {
       background: #0d6efd;
       border-color: #3d8bfd;
-      font-size: 0.85rem;
+      font-size: 0.75rem;
     }
     .called-ball {
       width: 68px;
@@ -65,86 +115,89 @@
       margin: 0 auto;
       box-shadow: 0 4px 12px rgba(255, 77, 77, 0.4);
     }
-    #rooms-list {
-      max-height: 320px;
-      overflow-y: auto;
-    }
-    .stake-scroll {
-      display: flex;
-      overflow-x: auto;
-      gap: 6px;
-      padding-bottom: 6px;
-      scrollbar-width: none;
-    }
-    .stake-scroll::-webkit-scrollbar {
-      display: none;
-    }
   </style>
 </head>
 <body class="p-3">
 
-  <div class="container text-center" id="lobby-screen">
-    <h2 class="fw-bold text-warning mb-3">🎲 Lali Bingo Arena</h2>
-    <p class="text-muted small">Choose your stake (10 to 100 ETB), play rooms up to #600, and win the pot!</p>
-    
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <span id="player-name-lobby" class="badge bg-secondary p-2">Player</span>
-      <span class="badge bg-warning text-dark p-2">Balance: <strong id="balance-lobby">Loading...</strong></span>
+  <!-- TOP HEADER / BALANCE BAR -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex align-items-center gap-2">
+      <span style="font-size: 1.3rem;">🔶</span>
+      <h4 class="fw-bold mb-0 text-warning">Lali Bingo</h4>
+    </div>
+    <div class="badge bg-warning text-dark p-2 fs-6">
+      Balance: <strong id="balance-display">0.00 ETB</strong>
+    </div>
+  </div>
+
+  <!-- SCREENS CONTAINER -->
+
+  <!-- 1. GAME / TABLE SELECTION SCREEN -->
+  <div id="screen-game" class="container text-center">
+    <div class="text-start mb-3">
+      <h3 class="fw-bold text-light">Choose a table</h3>
+      <p class="text-muted small">Pick a stake per cartela. First cartela with a full line wins 80% of all stakes!</p>
     </div>
 
-    <!-- Withdraw Button -->
-    <div class="mb-3">
-      <button class="btn btn-outline-success w-100 fw-bold" onclick="requestWithdrawal()">
-        💸 Withdraw Funds (Telebirr / CBE)
-      </button>
+    <div id="table-options-list">
+      <div class="table-option selected" onclick="selectTable(10, this)">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h4 class="fw-bold text-warning mb-1">10 ETB <small class="text-muted fs-6">per cartela</small></h4>
+            <p class="small text-muted mb-0">1 line to win. Winner takes 80% of stakes</p>
+          </div>
+          <input type="radio" name="stake" checked class="form-check-input">
+        </div>
+      </div>
+
+      <div class="table-option" onclick="selectTable(20, this)">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h4 class="fw-bold text-warning mb-1">20 ETB <small class="text-muted fs-6">per cartela</small></h4>
+            <p class="small text-muted mb-0">1 line to win. Winner takes 80% of stakes</p>
+          </div>
+          <input type="radio" name="stake" class="form-check-input">
+        </div>
+      </div>
+
+      <div class="table-option" onclick="selectTable(50, this)">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h4 class="fw-bold text-warning mb-1">50 ETB <small class="text-muted fs-6">per cartela</small></h4>
+            <p class="small text-muted mb-0">1 line to win. Winner takes 80% of stakes</p>
+          </div>
+          <input type="radio" name="stake" class="form-check-input">
+        </div>
+      </div>
+
+      <div class="table-option" onclick="selectTable(100, this)">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h4 class="fw-bold text-warning mb-1">100 ETB <small class="text-muted fs-6">per cartela</small></h4>
+            <p class="small text-muted mb-0">1 line to win. Winner takes 80% of stakes</p>
+          </div>
+          <input type="radio" name="stake" class="form-check-input">
+        </div>
+      </div>
     </div>
 
-    <!-- Scrollable Stake Filters (10 to 100 ETB) -->
-    <div class="stake-scroll mb-3" role="group">
-      <button type="button" class="btn btn-warning btn-sm active flex-shrink-0" onclick="filterStake('ALL', this)">All</button>
-      <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" onclick="filterStake(10, this)">10 ETB</button>
-      <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" onclick="filterStake(20, this)">20 ETB</button>
-      <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" onclick="filterStake(30, this)">30 ETB</button>
-      <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" onclick="filterStake(40, this)">40 ETB</button>
-      <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" onclick="filterStake(50, this)">50 ETB</button>
-      <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" onclick="filterStake(60, this)">60 ETB</button>
-      <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" onclick="filterStake(70, this)">70 ETB</button>
-      <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" onclick="filterStake(80, this)">80 ETB</button>
-      <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" onclick="filterStake(90, this)">90 ETB</button>
-      <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" onclick="filterStake(100, this)">100 ETB</button>
-    </div>
-
-    <!-- Search Room Number -->
-    <div class="mb-3">
-      <input type="number" id="room-search" class="form-control bg-dark text-white border-secondary text-center" placeholder="🔍 Search Room Number (1 - 600)..." min="1" max="600" oninput="filterRooms()">
-    </div>
-
-    <div class="card bg-dark border-secondary p-3 mb-3">
-      <h5 class="text-light">Active Game Rooms (1 - 600)</h5>
-      <div id="rooms-list" class="list-group text-start mt-2"></div>
-    </div>
-
-    <button class="btn btn-warning w-100 fw-bold py-2" onclick="createRoomModal()">
-      ➕ Create Custom Game Room
+    <button class="btn btn-warning w-100 fw-bold py-3 mt-2 fs-5 shadow" id="play-btn" onclick="joinSelectedTable()">
+      Play for 10 ETB
     </button>
   </div>
 
-  <!-- GAMEPLAY SCREEN -->
-  <div class="container text-center d-none" id="game-screen">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <button class="btn btn-outline-light btn-sm" onclick="exitToLobby()">← Rooms</button>
+  <!-- 2. ACTIVE PLAY ROOM SCREEN (Hidden by default) -->
+  <div id="screen-playroom" class="container text-center d-none">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
       <button id="sound-toggle" class="btn btn-outline-warning btn-sm" onclick="toggleSound()">🔊 Sound ON</button>
-      <span class="badge bg-warning text-dark p-2">Balance: <strong id="balance">0.00 ETB</strong></span>
+      <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ 03:00</span>
     </div>
 
-    <div class="mb-2">
-      <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ Time Left: 03:00</span>
-    </div>
-
-    <div class="mb-3">
-      <small class="text-uppercase opacity-75" id="room-title-display">Auto-Daubing Active</small>
-      <div id="current-ball" class="called-ball mt-1">--</div>
-      <div id="history" class="mt-2 small opacity-75">Recent: None</div>
+    <div class="card-custom mb-3">
+      <small class="text-uppercase text-warning fw-bold" id="room-title-display">Lali Table</small>
+      <div id="current-ball" class="called-ball mt-2">--</div>
+      <div id="history" class="mt-2 small text-muted">Recent: None</div>
     </div>
 
     <div class="bingo-grid mb-2">
@@ -154,15 +207,68 @@
       <div class="bingo-header">G</div>
       <div class="bingo-header">O</div>
     </div>
-    <div id="board" class="bingo-grid mb-4"></div>
+    <div id="board" class="bingo-grid mb-3"></div>
 
-    <div class="d-grid gap-2 col-10 mx-auto">
+    <div class="d-grid gap-2 col-11 mx-auto">
       <button id="bingo-btn" class="btn btn-warning btn-lg fw-bold shadow" onclick="claimBingo()">
         🎉 CLAIM BINGO!
       </button>
-      <button class="btn btn-outline-warning btn-sm" onclick="shareGame()">
-        📤 Invite Friends to Room
+    </div>
+  </div>
+
+  <!-- 3. HISTORY SCREEN (Hidden by default) -->
+  <div id="screen-history" class="container d-none">
+    <h3 class="fw-bold text-light mb-3">Game History</h3>
+    <div class="card-custom">
+      <p class="text-muted small text-center my-3">No recent games recorded yet. Play a table to see your history!</p>
+    </div>
+  </div>
+
+  <!-- 4. WALLET SCREEN (Hidden by default) -->
+  <div id="screen-wallet" class="container d-none">
+    <h3 class="fw-bold text-light mb-3">Wallet & Funds</h3>
+    <div class="card-custom text-center mb-3">
+      <p class="text-muted mb-1">Available Balance</p>
+      <h2 class="text-warning fw-bold" id="wallet-balance">0.00 ETB</h2>
+    </div>
+
+    <div class="d-grid gap-2">
+      <button class="btn btn-success fw-bold py-2" onclick="showDepositInfo()">
+        💳 Deposit via CBE / Telebirr
       </button>
+      <button class="btn btn-outline-warning fw-bold py-2" onclick="requestWithdrawal()">
+        💸 Request Withdrawal
+      </button>
+    </div>
+  </div>
+
+  <!-- 5. PROFILE SCREEN (Hidden by default) -->
+  <div id="screen-profile" class="container d-none">
+    <h3 class="fw-bold text-light mb-3">Player Profile</h3>
+    <div class="card-custom">
+      <p class="mb-2"><strong>Name:</strong> <span id="profile-name">Player</span></p>
+      <p class="mb-2"><strong>Telegram ID:</strong> <span id="profile-id">--</span></p>
+      <p class="mb-0"><strong>Status:</strong> <span class="badge bg-success">Verified Active</span></p>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAVIGATION BAR -->
+  <div class="bottom-nav">
+    <div class="nav-item-custom active" onclick="switchTab('game')" id="nav-game">
+      <div>🎲</div>
+      <div>Game</div>
+    </div>
+    <div class="nav-item-custom" onclick="switchTab('history')" id="nav-history">
+      <div>📜</div>
+      <div>History</div>
+    </div>
+    <div class="nav-item-custom" onclick="switchTab('wallet')" id="nav-wallet">
+      <div>💰</div>
+      <div>Wallet</div>
+    </div>
+    <div class="nav-item-custom" onclick="switchTab('profile')" id="nav-profile">
+      <div>👤</div>
+      <div>Profile</div>
     </div>
   </div>
 
@@ -173,37 +279,73 @@
     const user = tg.initDataUnsafe?.user;
     const playerName = user ? user.first_name : 'Player';
     const telegramId = user ? user.id.toString() : '';
-    document.getElementById('player-name-lobby').textContent = `👤 ${playerName}`;
+    
+    document.getElementById('profile-name').textContent = playerName;
+    document.getElementById('profile-id').textContent = telegramId || 'Guest';
 
     let balance = 0.00;
+    let selectedCardStake = 10;
     let card = [];
     let marked = Array(25).fill(false);
     let calledNumbers = new Set();
     let currentRoom = null;
-    let currentStakeFilter = 'ALL';
     let gameTimerInterval = null;
     let timeLeft = 180;
     let drawInterval = null;
 
-    // --- SOUND ENGINE (Web Audio API + Voice Caller) ---
+    function selectTable(stake, element) {
+      document.querySelectorAll('.table-option').forEach(el => {
+        el.classList.remove('selected');
+        el.querySelector('input').checked = false;
+      });
+      element.classList.add('selected');
+      element.querySelector('input').checked = true;
+      selectedCardStake = stake;
+      document.getElementById('play-btn').textContent = `Play for ${stake} ETB`;
+    }
+
+    function switchTab(tab) {
+      if (tab === 'game') {
+        clearInterval(drawInterval);
+        clearInterval(gameTimerInterval);
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      }
+
+      ['game', 'playroom', 'history', 'wallet', 'profile'].forEach(s => {
+        document.getElementById(`screen-${s}`).classList.add('d-none');
+      });
+      document.querySelectorAll('.bottom-nav .nav-item-custom').forEach(n => n.classList.remove('active'));
+
+      if (tab === 'game') {
+        document.getElementById('screen-game').classList.remove('d-none');
+        document.getElementById('nav-game').classList.add('active');
+      } else if (tab === 'playroom') {
+        document.getElementById('screen-playroom').classList.remove('d-none');
+      } else if (tab === 'history') {
+        document.getElementById('screen-history').classList.remove('d-none');
+        document.getElementById('nav-history').classList.add('active');
+      } else if (tab === 'wallet') {
+        document.getElementById('screen-wallet').classList.remove('d-none');
+        document.getElementById('nav-wallet').classList.add('active');
+      } else if (tab === 'profile') {
+        document.getElementById('screen-profile').classList.remove('d-none');
+        document.getElementById('nav-profile').classList.add('active');
+      }
+      syncBalance();
+    }
+
     let soundEnabled = true;
     let audioCtx = null;
 
     function initAudio() {
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
     }
 
     function toggleSound() {
       soundEnabled = !soundEnabled;
       const btn = document.getElementById('sound-toggle');
       btn.textContent = soundEnabled ? '🔊 Sound ON' : '🔇 Muted';
-      btn.classList.toggle('btn-outline-warning', soundEnabled);
-      btn.classList.toggle('btn-outline-secondary', !soundEnabled);
     }
 
     function playTone(freq, type, duration, delay = 0) {
@@ -222,202 +364,63 @@
     }
 
     const sounds = {
-      ballPop: () => {
-        playTone(520, 'sine', 0.12, 0);
-        playTone(780, 'sine', 0.15, 0.06);
-      },
-      daubMatch: () => {
-        playTone(659.25, 'triangle', 0.12, 0);
-        playTone(880, 'triangle', 0.25, 0.08);
-      },
-      winFanfare: () => {
-        [523.25, 659.25, 783.99, 1046.50].forEach((note, i) => {
-          playTone(note, 'triangle', 0.35, i * 0.12);
-        });
-      },
-      errorBuzz: () => {
-        playTone(180, 'sawtooth', 0.2, 0);
-        playTone(140, 'sawtooth', 0.25, 0.15);
-      }
+      ballPop: () => { playTone(520, 'sine', 0.12, 0); playTone(780, 'sine', 0.15, 0.06); },
+      daubMatch: () => { playTone(659.25, 'triangle', 0.12, 0); playTone(880, 'triangle', 0.25, 0.08); },
+      winFanfare: () => { [523.25, 659.25, 783.99, 1046.50].forEach((n, i) => playTone(n, 'triangle', 0.35, i * 0.12)); },
+      errorBuzz: () => { playTone(180, 'sawtooth', 0.2, 0); playTone(140, 'sawtooth', 0.25, 0.15); }
     };
 
     function announceBall(letter, number) {
       if (!soundEnabled || !('speechSynthesis' in window)) return;
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(`${letter} ${number}`);
-      utterance.rate = 1.05;
-      utterance.pitch = 1.1;
-      window.speechSynthesis.speak(utterance);
+      const ut = new SpeechSynthesisUtterance(`${letter} ${number}`);
+      ut.rate = 1.05; ut.pitch = 1.1;
+      window.speechSynthesis.speak(ut);
     }
 
     function updateBalanceUI(newBal) {
       balance = parseFloat(newBal) || 0.00;
-      document.getElementById('balance').textContent = `${balance.toFixed(2)} ETB`;
-      document.getElementById('balance-lobby').textContent = `${balance.toFixed(2)} ETB`;
+      document.getElementById('balance-display').textContent = `${balance.toFixed(2)} ETB`;
+      document.getElementById('wallet-balance').textContent = `${balance.toFixed(2)} ETB`;
     }
 
     function syncBalance() {
-      if (!telegramId) {
-        updateBalanceUI(0.00);
-        return;
-      }
+      if (!telegramId) { updateBalanceUI(0.00); return; }
       fetch(`api.php?action=get_balance&telegram_id=${encodeURIComponent(telegramId)}`)
         .then(res => res.json())
-        .then(data => {
-          if (data.success) updateBalanceUI(data.balance);
-        })
+        .then(data => { if (data.success) updateBalanceUI(data.balance); })
         .catch(() => updateBalanceUI(0.00));
     }
 
-    let allRooms = [];
-    const stakes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-    for (let i = 1; i <= 600; i++) {
-      let fee = stakes[(i - 1) % stakes.length];
-      let pool = fee * 8;
-      allRooms.push({
-        id: i,
-        room_name: `Lali Room #${i} (${fee} ETB)`,
-        entry_fee: fee,
-        prize_pool: pool
-      });
-    }
-
-    function renderRooms(roomsToDisplay) {
-      const list = document.getElementById('rooms-list');
-      if (roomsToDisplay.length === 0) {
-        list.innerHTML = `<div class="text-muted small text-center p-3">No rooms found for this filter.</div>`;
-        return;
-      }
-      list.innerHTML = roomsToDisplay.slice(0, 50).map(room => `
-        <div class="list-group-item bg-black text-white d-flex justify-content-between align-items-center border-secondary mb-2 rounded">
-          <div>
-            <strong>${room.room_name}</strong><br>
-            <small class="text-warning">Stake: ${room.entry_fee} ETB | Pool: ${room.prize_pool} ETB</small>
-          </div>
-          <button class="btn btn-success btn-sm fw-bold" onclick='joinRoom(${JSON.stringify(room)})'>Join</button>
-        </div>
-      `).join('') + (roomsToDisplay.length > 50 ? `<div class="text-muted small text-center p-2">Showing first 50 results. Use search above for specific room numbers.</div>` : '');
-    }
-
-    function filterStake(stake, btnElement) {
-      currentStakeFilter = stake;
-      document.querySelectorAll('.stake-scroll .btn').forEach(b => {
-        b.classList.remove('btn-warning', 'active');
-        b.classList.add('btn-outline-warning');
-      });
-      btnElement.classList.remove('btn-outline-warning');
-      btnElement.classList.add('btn-warning', 'active');
-      document.getElementById('room-search').value = '';
-      applyFilters();
-    }
-
-    function filterRooms() {
-      const query = document.getElementById('room-search').value.trim();
-      applyFilters(query);
-    }
-
-    function applyFilters(searchQuery = '') {
-      let filtered = allRooms;
-      if (currentStakeFilter !== 'ALL') {
-        filtered = filtered.filter(r => r.entry_fee === currentStakeFilter);
-      }
-      if (searchQuery) {
-        filtered = filtered.filter(r => r.id.toString() === searchQuery || r.room_name.toLowerCase().includes(searchQuery.toLowerCase()));
-      }
-      renderRooms(filtered);
-    }
-
-    function joinRoom(room) {
+    function joinSelectedTable() {
       initAudio();
-      if (balance < room.entry_fee) {
+      if (balance < selectedCardStake) {
         sounds.errorBuzz();
-        alert(`Insufficient balance! You need ${room.entry_fee} ETB to join. Please deposit via the bot first.`);
+        alert(`Insufficient balance! You need ${selectedCardStake} ETB. Please top up in the Wallet tab.`);
+        switchTab('wallet');
         return;
       }
 
       const formData = new FormData();
       formData.append('action', 'join_room');
       formData.append('telegram_id', telegramId);
-      formData.append('fee', room.entry_fee);
+      formData.append('fee', selectedCardStake);
 
       fetch('api.php', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
           if (!data.success) {
             sounds.errorBuzz();
-            alert(data.error || 'Could not join room.');
+            alert(data.error || 'Could not join table.');
             return;
           }
           updateBalanceUI(data.new_balance);
-          currentRoom = room;
-          document.getElementById('room-title-display').textContent = `${room.room_name} | Auto-Daubing Active`;
-          document.getElementById('lobby-screen').classList.add('d-none');
-          document.getElementById('game-screen').classList.remove('d-none');
+          currentRoom = { entry_fee: selectedCardStake, prize_pool: selectedCardStake * 8 };
+          document.getElementById('room-title-display').textContent = `Lali Table (${selectedCardStake} ETB Stake)`;
+          switchTab('playroom');
           startNewGame();
         })
-        .catch(() => alert('Network error while joining room.'));
-    }
-
-    function exitToLobby() {
-      clearInterval(drawInterval);
-      clearInterval(gameTimerInterval);
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-      document.getElementById('game-screen').classList.add('d-none');
-      document.getElementById('lobby-screen').classList.remove('d-none');
-      syncBalance();
-      applyFilters();
-    }
-
-    function requestWithdrawal() {
-      const amount = prompt(`Enter amount to withdraw (Available: ${balance.toFixed(2)} ETB):`, "50");
-      if (!amount) return;
-      const amtNum = parseFloat(amount);
-      
-      if (isNaN(amtNum) || amtNum <= 0) {
-        alert("Please enter a valid amount.");
-        return;
-      }
-      if (amtNum > balance) {
-        alert("Insufficient balance for this withdrawal.");
-        return;
-      }
-
-      const method = prompt("Choose payout method:\n1. Telebirr\n2. CBE (Commercial Bank of Ethiopia)", "Telebirr");
-      if (!method) return;
-      
-      const accountInfo = prompt(`Enter your ${method} Phone Number or Account Number:`, "");
-      if (!accountInfo) return;
-
-      const formData = new FormData();
-      formData.append('action', 'request_withdrawal');
-      formData.append('telegram_id', telegramId);
-      formData.append('amount', amtNum);
-      formData.append('method', method);
-      formData.append('account', accountInfo);
-
-      fetch('api.php', { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            updateBalanceUI(data.new_balance);
-            alert(`✅ Withdrawal request of ${amtNum} ETB submitted successfully! Admin will process it to your ${method} account (${accountInfo}).`);
-          } else {
-            alert(data.error || 'Withdrawal failed.');
-          }
-        })
-        .catch(() => alert('Network error while processing withdrawal.'));
-    }
-
-    function createRoomModal() {
-      const stakeChoice = prompt("Choose stake for your room (10, 20, 30, 40, 50, 60, 70, 80, 90, or 100):", "10");
-      const fee = parseFloat(stakeChoice);
-      if (![10, 20, 30, 40, 50, 60, 70, 80, 90, 100].includes(fee)) {
-        alert("Invalid stake! Please choose a value from 10 to 100 ETB in steps of 10.");
-        return;
-      }
-      const roomName = prompt("Enter Custom Room Name:", `${playerName}'s ${fee} ETB Room`);
-      if (!roomName) return;
-      alert(`Room "${roomName}" created successfully with ${fee} ETB entry fee!`);
+        .catch(() => alert('Network error while joining table.'));
     }
 
     function generateCard() {
@@ -432,9 +435,7 @@
       const cols = [getCols(1,15), getCols(16,30), getCols(31,45), getCols(46,60), getCols(61,75)];
       card = [];
       for(let r=0; r<5; r++) {
-        for(let c=0; c<5; c++) {
-          card.push(cols[c][r]);
-        }
+        for(let c=0; c<5; c++) card.push(cols[c][r]);
       }
       marked = Array(25).fill(false);
       marked[12] = true;
@@ -456,15 +457,15 @@
       generateCard();
       renderBoard();
       
-      timeLeft = 180; // 3 minutes
-      document.getElementById('game-timer').textContent = `⏱️ Time Left: 03:00`;
+      timeLeft = 180;
+      document.getElementById('game-timer').textContent = `⏱️ 03:00`;
       clearInterval(gameTimerInterval);
       
       gameTimerInterval = setInterval(() => {
         timeLeft--;
         let mins = Math.floor(timeLeft / 60);
         let secs = timeLeft % 60;
-        document.getElementById('game-timer').textContent = `⏱️ Time Left: ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        document.getElementById('game-timer').textContent = `⏱️ ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         
         if (timeLeft <= 0) {
           clearInterval(gameTimerInterval);
@@ -472,7 +473,7 @@
           if ('speechSynthesis' in window) window.speechSynthesis.cancel();
           sounds.errorBuzz();
           alert('⏰ Time is up! Round ended with no winner.');
-          exitToLobby();
+          switchTab('game');
         }
       }, 1000);
 
@@ -534,7 +535,7 @@
           .then(data => {
             if (data.success) updateBalanceUI(data.new_balance);
             alert(`🎉 BINGO! You won ${currentRoom.prize_pool} ETB added to your balance!`);
-            exitToLobby();
+            switchTab('game');
           });
       } else {
         sounds.errorBuzz();
@@ -543,13 +544,44 @@
       }
     }
 
-    function shareGame() {
-      const url = `https://t.me/share/url?url=https://t.me/Lali_Bingo_bot&text=🎲%20Join%20my%20Lali%20Bingo%20room!%20Win%20cash%20prizes!`;
-      window.open(url, '_blank');
+    function showDepositInfo() {
+      alert("💳 Deposit Instructions:\n\nTransfer funds to:\n• CBE: 100017461538 (Lalisa Shafe)\n• Telebirr: 0917461538 (Lalisa Shafe)\n\nThen send receipt to support (@Lali_Support) to credit your wallet.");
+    }
+
+    function requestWithdrawal() {
+      const amount = prompt(`Enter amount to withdraw (Available: ${balance.toFixed(2)} ETB):`, "50");
+      if (!amount) return;
+      const amtNum = parseFloat(amount);
+      if (isNaN(amtNum) || amtNum <= 0 || amtNum > balance) {
+        alert("Invalid amount or insufficient balance.");
+        return;
+      }
+      const method = prompt("Choose payout method:\n1. Telebirr\n2. CBE", "Telebirr");
+      if (!method) return;
+      const account = prompt(`Enter your ${method} Phone/Account number:`, "");
+      if (!account) return;
+
+      const formData = new FormData();
+      formData.append('action', 'request_withdrawal');
+      formData.append('telegram_id', telegramId);
+      formData.append('amount', amtNum);
+      formData.append('method', method);
+      formData.append('account', account);
+
+      fetch('api.php', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            updateBalanceUI(data.new_balance);
+            alert(`✅ Withdrawal request of ${amtNum} ETB submitted successfully!`);
+          } else {
+            alert(data.error || 'Withdrawal failed.');
+          }
+        })
+        .catch(() => alert('Network error.'));
     }
 
     syncBalance();
-    renderRooms(allRooms);
   </script>
 </body>
 </html>
