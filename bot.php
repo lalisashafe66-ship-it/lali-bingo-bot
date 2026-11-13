@@ -18,6 +18,9 @@ $telegramId = (string)($update['message']['from']['id'] ?? '');
 
 $token = "9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0";
 
+// Your Admin Telegram ID to authorize /add and /users commands
+$ADMIN_ID = "730967613"; 
+
 function sendMessage($chatId, $message, $keyboard = null) {
     global $token;
     $url = "https://api.telegram.org/bot$token/sendMessage";
@@ -62,6 +65,52 @@ if ($chatId) {
     if ($text === '/myid') {
         sendMessage($chatId, "🆔 Your Telegram ID is: <code>{$telegramId}</code>");
     }
+    elseif ($text === '/users') {
+        if ($telegramId !== $ADMIN_ID) {
+            sendMessage($chatId, "⛔ Unauthorized.");
+            exit;
+        }
+        $stmt = $pdo->query("SELECT telegram_id, first_name, phone, balance FROM players ORDER BY id DESC LIMIT 20");
+        $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$users) {
+            sendMessage($chatId, "No registered players yet.");
+        } else {
+            $msg = "👥 <b>Registered Players (Last 20):</b>\n\n";
+            foreach ($users as $u) {
+                $msg .= "• <b>{$u['first_name']}</b> | ID: <code>{$u['telegram_id']}</code> | Tel: {$u['phone']} | Bal: <b>{$u['balance']} ETB</b>\n";
+            }
+            $msg .= "\n<i>To credit a user, send:</i>\n<code>/add USER_ID AMOUNT</code>";
+            sendMessage($chatId, $msg);
+        }
+    }
+    elseif (strpos($text, '/add ') === 0) {
+        if ($telegramId !== $ADMIN_ID) {
+            sendMessage($chatId, "⛔ Unauthorized.");
+            exit;
+        }
+        $parts = explode(' ', $text);
+        if (count($parts) === 3 && is_numeric($parts[2])) {
+            $targetId = trim($parts[1]);
+            $amount = (float)$parts[2];
+
+            $stmt = $pdo->prepare("SELECT first_name, balance FROM players WHERE telegram_id = ?");
+            $stmt->execute([$targetId]);
+            $targetPlayer = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($targetPlayer) {
+                $newBal = $targetPlayer['balance'] + $amount;
+                $upd = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
+                $upd->execute([$newBal, $targetId]);
+
+                sendMessage($chatId, "✅ Credited <b>{$amount} ETB</b> to <b>{$targetPlayer['first_name']}</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$newBal} ETB</b>");
+                sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Lali Bingo wallet.\nCurrent Balance: <b>{$newBal} ETB</b>");
+            } else {
+                sendMessage($chatId, "❌ Player with Telegram ID <code>{$targetId}</code> not found.");
+            }
+        } else {
+            sendMessage($chatId, "⚠️ Usage: <code>/add TELEGRAM_ID AMOUNT</code>\nExample: <code>/add 730967613 200</code>");
+        }
+    }
     elseif ($text === '/start' || stripos($text, 'start') !== false) {
         $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegramId]);
@@ -105,8 +154,8 @@ if ($chatId) {
     elseif (stripos($text, 'Deposit') !== false) {
         $depositText = "💳 <b>Deposit Funds & Top-Up</b>\n\n" .
                        "Transfer funds to our accounts below and send your transaction receipt along with your ID (<code>{$telegramId}</code>) to support (@Lali_Support):\n\n" .
-                       "🏦 <b>CBE:</b> <code>1000171689116</code> (Lalisa Shafe)\n" .
-                       "📱 <b>Telebirr:</b> <code>0917461538</code> (Lalisa Shafe)";
+                       "🏦 <b>CBE:</b> <code>1000171689116</code> (Lalisa Shafe Nagari)\n" .
+                       "📱 <b>Telebirr:</b> <code>0917461538</code> (Lalisa Shafe Nagari)";
         sendMessage($chatId, $depositText, $mainMenu);
     }
     elseif (stripos($text, 'Withdraw') !== false) {
