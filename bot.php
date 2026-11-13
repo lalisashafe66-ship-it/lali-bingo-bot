@@ -118,7 +118,7 @@ if ($chatId) {
             ],
             'resize_keyboard' => true
         ];
-        sendMessage($chatId, "✅ <b>Player registered successfully!</b>\n\nWelcome to Lali Bingo! Your wallet balance is <b>0.00 ETB</b>.\nTap <b>💳 Deposit</b> to fund your account or <b>🎮 Play Bingo</b> to browse rooms.", $mainMenu);
+        sendMessage($chatId, "✅ <b>Player registered successfully!</b>\n\nWelcome to Lali Bingo! Your wallet balance is <b>0.00 ETB</b>.\nTap <b>💳 Deposit</b> to fund your account or <b>🎮 Play Bingo</b> to browse tables.", $mainMenu);
     } 
     elseif ($text === '/start') {
         $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = ?");
@@ -147,13 +147,13 @@ if ($chatId) {
             sendMessage($chatId, "🎲 <b>Welcome to Lali Bingo!</b>\n\nTo finish registration and secure your wallet, tap <b>\"📱 Share contact\"</b> below.", $contactKeyboard);
         }
     }
-    elseif ($text === '🎮 Play Bingo') {
+    elseif (strpos($text, 'Play Bingo') !== false) {
         $webAppKeyboard = [
             'inline_keyboard' => [
                 [['text' => '🚀 Launch Lali Bingo App', 'web_app' => ['url' => 'https://lali-bingo-bot.onrender.com/index.html']]]
             ]
         ];
-        sendMessage($chatId, "Tap the button below to open your Bingo game card and join rooms up to #600:", $webAppKeyboard);
+        sendMessage($chatId, "Tap the button below to open your Lali Bingo game app and choose a table:", $webAppKeyboard);
     }
     elseif ($text === '💰 Balance') {
         $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
@@ -178,8 +178,8 @@ if ($chatId) {
         $withdrawText = "💸 <b>Withdraw Funds</b>\n\n" .
                         "To cash out your winnings:\n" .
                         "1. Open the <b>🎮 Play Bingo</b> WebApp.\n" .
-                        "2. Tap the <b>💸 Withdraw Funds (Telebirr / CBE)</b> button at the top of the lobby.\n" .
-                        "3. Enter your preferred amount, payout method (Telebirr or CBE), and account/phone details.\n\n" .
+                        "2. Go to the <b>💰 Wallet</b> tab at the bottom.\n" .
+                        "3. Tap <b>💸 Request Withdrawal</b>, enter your amount, and provide your Telebirr or CBE account details.\n\n" .
                         "<i>Admin processes withdrawal requests promptly to your specified account!</i>";
         sendMessage($chatId, $withdrawText);
     }
@@ -187,7 +187,7 @@ if ($chatId) {
         sendMessage($chatId, "📤 Share your referral link with friends and win together!\n\nhttps://t.me/Lali_Bingo_bot");
     }
     elseif ($text === 'ℹ️ Instruction') {
-        sendMessage($chatId, "📖 <b>How to Play:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a room (1–600) with stakes from 10 to 100 ETB.\n3. Numbers are daubed automatically as balls are called.\n4. Complete a row, column, or diagonal and tap <b>CLAIM BINGO</b> to win the pot!");
+        sendMessage($chatId, "📖 <b>How to Play:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, 50, or 100 ETB).\n3. Numbers are daubed automatically as balls are called.\n4. Complete a line and tap <b>CLAIM BINGO</b> to win 80% of all stakes!");
     }
     elseif ($text === '📞 Support') {
         sendMessage($chatId, "📞 For any deposit or withdrawal issues, contact our support team: @Lali_Support");
