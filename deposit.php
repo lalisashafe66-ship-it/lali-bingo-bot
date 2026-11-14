@@ -2,6 +2,11 @@
 // deposit.php - Initiates payment with Chapa
 header('Content-Type: application/json');
 
+// =========================================================================
+// 🔑 PASTE YOUR CHAPA SECRET KEY HERE (e.g. "CHASECK_TEST-xxxxxxxx...")
+// =========================================================================
+$CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-PASTE_YOUR_KEY_HERE'; 
+
 $telegram_id = $_POST['telegram_id'] ?? '';
 $amount = floatval($_POST['amount'] ?? 0);
 $email = $_POST['email'] ?? 'player@lalibingo.et';
@@ -12,7 +17,6 @@ if (empty($telegram_id) || $amount <= 0) {
     exit;
 }
 
-$CHAPA_SECRET_KEY = "CHASECK_TEST-xxxxxxxxxxxxxxxxxxxxx"; // Replace with your Chapa Secret Key
 $tx_ref = "lali-bingo-" . $telegram_id . "-" . time();
 
 $data = [
