@@ -508,7 +508,6 @@
       document.getElementById('wallet-balance').textContent = `${balance.toFixed(2)} ETB`;
     }
 
-    // Fixed balance syncing endpoint check
     function syncBalance() {
       if (!telegramId) { updateBalanceUI(0.00); return; }
       fetch(`api.php?action=get_balance&telegram_id=${encodeURIComponent(telegramId)}`)
@@ -521,7 +520,6 @@
           }
         })
         .catch(() => {
-          // Fallback to balance.php if api.php fails
           fetch(`balance.php?telegram_id=${encodeURIComponent(telegramId)}`)
             .then(res => res.json())
             .then(data => { if (data.balance !== undefined) updateBalanceUI(data.balance); })
@@ -553,7 +551,7 @@
             alert(data.error || 'Failed to initialize instant deposit.');
           }
         })
-        .catch(() => alert('Network error connecting to payment gateway.'));
+        .catch(err => alert('Network error: ' + err.message));
     }
 
     function joinSelectedTable() {
