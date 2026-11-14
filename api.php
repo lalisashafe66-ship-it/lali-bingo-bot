@@ -108,10 +108,17 @@ elseif ($action === 'join_room') {
     $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
     $logRoom->execute([$roomId, $telegramId, $playerNumber]);
 
+    // Count how many unique players have joined this room to calculate dynamic 75% pool
+    $countStmt = $pdo->prepare("SELECT COUNT(DISTINCT telegram_id) as total_players FROM room_players WHERE room_id = ?");
+    $countStmt->execute([$roomId]);
+    $countRes = $countStmt->fetch(PDO::FETCH_ASSOC);
+    $totalPlayers = $countRes ? (int)$countRes['total_players'] : 1;
+
     echo json_encode([
         'success' => true,
         'room_id' => $roomId,
         'player_number' => $playerNumber,
+        'total_players' => $totalPlayers,
         'new_balance' => $newBalance
     ]);
 }
