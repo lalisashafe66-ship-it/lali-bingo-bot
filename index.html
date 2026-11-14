@@ -508,10 +508,8 @@
       fetch(`api.php?action=get_balance&telegram_id=${encodeURIComponent(telegramId)}`)
         .then(res => res.json())
         .then(data => { 
-          if (data.success) {
+          if (data.success && data.balance !== undefined) {
             updateBalanceUI(data.balance); 
-          } else if (data.balance !== undefined) {
-            updateBalanceUI(data.balance);
           }
         })
         .catch(() => {});
@@ -569,8 +567,6 @@
           }
           updateBalanceUI(data.new_balance);
 
-          // Dynamic calculation: (Stake * Total Players) * 75% for the single winner
-          // For example: 10 players * 10 ETB * 0.75 = 75.00 ETB
           const totalPlayersCount = data.total_players || 1;
           const totalPool = selectedCardStake * totalPlayersCount;
           const winnerPrize = totalPool * 0.75;
