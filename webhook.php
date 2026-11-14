@@ -1,9 +1,14 @@
 <?php
 // webhook.php - Receives payment confirmation from Chapa and updates SQLite
+
+// =========================================================================
+// 🔑 PASTE YOUR CHAPA SECRET KEY HERE (e.g. "CHASECK_TEST-xxxxxxxx...")
+// =========================================================================
+$CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-PASTE_YOUR_KEY_HERE'; 
+
 $input = @file_get_contents("php://input");
 $event = json_decode($input, true);
 
-// Alternatively, Chapa sends GET request verification or POST webhook event
 $tx_ref = $_GET['tx_ref'] ?? $event['tx_ref'] ?? null;
 
 if (!$tx_ref) {
@@ -16,8 +21,6 @@ if (count($parts) < 3) {
     exit;
 }
 $telegram_id = $parts[2];
-
-$CHAPA_SECRET_KEY = "CHASECK_TEST-xxxxxxxxxxxxxxxxxxxxx"; // Replace with your Chapa Secret Key
 
 // Verify transaction with Chapa API to prevent fake webhooks
 $ch = curl_init();
@@ -49,7 +52,7 @@ if (isset($res['status']) && $res['status'] === 'success') {
 
         if ($player) {
             $newBal = $player['balance'];
-            $token = "9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0";
+            $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
             
             // Send instant Telegram notification to the player
             $msg = "🎉 <b>Automated Deposit Confirmed!</b>\n\n" .
