@@ -40,6 +40,16 @@ try {
         status TEXT DEFAULT 'pending',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
+
+    // Table to track game winners
+    $pdo->exec("CREATE TABLE IF NOT EXISTS game_winners (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id INTEGER,
+        telegram_id TEXT,
+        winner_name TEXT,
+        prize REAL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
 } catch (PDOException $e) {
     echo json_encode(['success' => false, 'error' => 'Database connection failed']);
     exit;
@@ -50,13 +60,11 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 if ($action === 'get_balance') {
     $telegramId = $_GET['telegram_id'] ?? '';
     
-    // Look up the player first without overwriting their balance to 0
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$player) {
-        // Only create the player row if they don't exist yet
         $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
         $stmtIns->execute([$telegramId]);
         $balance = 0.00;
@@ -64,27 +72,15 @@ if ($action === 'get_balance') {
         $balance = (float)$player['balance'];
     }
     
-    echo json_encode([
-        'success' => true,
-        'balance' => $balance
-    ]);
+    echo json_encode(['success' => true, 'balance' => $balance]);
 }
 elseif ($action === 'join_room') {
     $telegramId = $_POST['telegram_id'] ?? '';
     $fee = (float)($_POST['fee'] ?? 0);
     $playerNumber = (int)($_POST['player_number'] ?? 0);
 
-    // Strictly match your 56-cartela grid picker UI limit
     if ($playerNumber < 1 || $playerNumber > 56) {
         echo json_encode(['success' => false, 'error' => 'Please choose a valid cartela number between 1 and 56.']);
-        exit;
-    }
-
-    // Check if there is an active room currently playing for this stake
-    $activeRoomStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'playing' ORDER BY id DESC LIMIT 1");
-    $activeRoomStmt->execute([$fee]);
-    if ($activeRoomStmt->fetch(PDO::FETCH_ASSOC)) {
-        echo json_encode(['success' => false, 'error' => 'Wait until the current game ends!']);
         exit;
     }
 
@@ -95,7 +91,7 @@ elseif ($action === 'join_room') {
     $currentBalance = $player ? (float)$player['balance'] : 0.00;
 
     if ($currentBalance < $fee) {
-        echo json_encode(['success' => false, 'error' => 'Insufficient balance! Please top up via Deposit in the Wallet tab.']);
+        echo json_encode(['success' => false, 'error' => 'Insufficient balance! Please top up via Deposit.']);
         exit;
     }
 
@@ -103,7 +99,6 @@ elseif ($action === 'join_room') {
     $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
     $update->execute([$newBalance, $telegramId]);
 
-    // Find or create shared multiplayer room for this stake
     $roomStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'waiting' ORDER BY id ASC LIMIT 1");
     $roomStmt->execute([$fee]);
     $room = $roomStmt->fetch(PDO::FETCH_ASSOC);
@@ -116,11 +111,9 @@ elseif ($action === 'join_room') {
         $roomId = $room['id'];
     }
 
-    // Log player room selection
     $logRoom = $pdo->prepare("INSERT OR REPLACE INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
     $logRoom->execute([$roomId, $telegramId, $playerNumber]);
 
-    // Count how many unique players have joined this room to calculate dynamic 75% pool
     $countStmt = $pdo->prepare("SELECT COUNT(DISTINCT telegram_id) as total_players FROM room_players WHERE room_id = ?");
     $countStmt->execute([$roomId]);
     $countRes = $countStmt->fetch(PDO::FETCH_ASSOC);
@@ -137,9 +130,20 @@ elseif ($action === 'join_room') {
 elseif ($action === 'claim_win') {
     $telegramId = $_POST['telegram_id'] ?? '';
     $prize = (float)($_POST['prize'] ?? 0);
+    $roomId = $_POST['room_id'] ?? 0;
+    $winnerName = $_POST['winner_name'] ?? 'Player';
 
+    // Add prize to player balance
     $stmt = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
     $stmt->execute([$prize, $telegramId]);
+
+    // Log winner name and ID
+    $winLog = $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)");
+    $winLog->execute([$roomId, $telegramId, $winnerName, $prize]);
+
+    // Mark room as finished/playing ended
+    $roomUp = $pdo->prepare("UPDATE rooms SET status = 'finished' WHERE id = ?");
+    $roomUp->execute([$roomId]);
 
     $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $balStmt->execute([$telegramId]);
@@ -175,7 +179,7 @@ elseif ($action === 'request_withdrawal') {
     echo json_encode([
         'success' => true,
         'new_balance' => $newBalance,
-        'message' => 'Withdrawal request submitted! Admin will review and send your funds shortly.'
+        'message' => 'Withdrawal request submitted!'
     ]);
 }
 else {
