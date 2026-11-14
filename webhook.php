@@ -2,7 +2,7 @@
 // webhook.php - Receives payment confirmation from Chapa and updates SQLite
 
 // =========================================================================
-// 🔑 PASTE YOUR CHAPA SECRET KEY HERE (e.g. "CHASECK_TEST-xxxxxxxx...")
+// 🔑 CHAPA SECRET KEY (Loaded from Render Environment or fallback below)
 // =========================================================================
 $CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
 
@@ -52,7 +52,7 @@ if (isset($res['status']) && $res['status'] === 'success') {
             $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
             
             $msg = "🎉 <b>Automated Deposit Confirmed!</b>\n\n" .
-                   "<b>{$amount_paid} ETB</b> has been successfully added to your Lali Bingo wallet.\n" .
+                   "<b>{$amount_paid} ETB</b> has been successfully added to your Future Bingo wallet.\n" .
                    "New Balance: <b>{$newBal} ETB</b>\n\n" .
                    "You can now play instantly!";
             
