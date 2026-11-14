@@ -208,7 +208,7 @@
         <div class="d-flex justify-content-between align-items-center">
           <div>
             <h6 class="fw-bold text-warning mb-1">10 ETB <small class="text-muted">per cartela</small></h6>
-            <p class="small text-muted mb-0">Stake 10 ETB | 1 line to win</p>
+            <p class="small text-muted mb-0">Stake 10 ETB | 75% for Single Winner</p>
           </div>
           <input type="radio" name="stake" checked class="form-check-input">
         </div>
@@ -218,7 +218,7 @@
         <div class="d-flex justify-content-between align-items-center">
           <div>
             <h6 class="fw-bold text-warning mb-1">20 ETB <small class="text-muted">per cartela</small></h6>
-            <p class="small text-muted mb-0">Stake 20 ETB | 1 line to win</p>
+            <p class="small text-muted mb-0">Stake 20 ETB | 75% for Single Winner</p>
           </div>
           <input type="radio" name="stake" class="form-check-input">
         </div>
@@ -228,7 +228,7 @@
         <div class="d-flex justify-content-between align-items-center">
           <div>
             <h6 class="fw-bold text-warning mb-1">50 ETB <small class="text-muted">per cartela</small></h6>
-            <p class="small text-muted mb-0">Stake 50 ETB | 1 line to win</p>
+            <p class="small text-muted mb-0">Stake 50 ETB | 75% for Single Winner</p>
           </div>
           <input type="radio" name="stake" class="form-check-input">
         </div>
@@ -267,12 +267,12 @@
       <h5 class="text-light fw-bold mb-1">⏳ Room Starting Soon</h5>
       
       <div class="pulse-circle">
-        <span class="small fw-bold text-uppercase" style="font-size: 0.6rem;">Prize so far</span>
-        <strong id="lobby-prize-pool" class="fs-5">15.00 ETB</strong>
+        <span class="small fw-bold text-uppercase" style="font-size: 0.6rem;">Winner Prize (75%)</span>
+        <strong id="lobby-prize-pool" class="fs-5">0.00 ETB</strong>
         <span id="lobby-timer" class="badge bg-dark text-warning mt-1" style="font-size: 0.85rem;">00:30</span>
       </div>
 
-      <p class="text-muted small mt-2 mb-0">1 line to win • Stake <span id="lobby-stake-text">10</span> ETB per cartela</p>
+      <p class="text-muted small mt-2 mb-0">Single Winner gets 75% of pool • Stake <span id="lobby-stake-text">10</span> ETB</p>
     </div>
   </div>
 
@@ -579,14 +579,20 @@
           }
           updateBalanceUI(data.new_balance);
 
-          const totalPool = selectedCardStake * 2;
-          const commission = 5;
-          const winnerPrize = totalPool - commission;
+          // Dynamic calculation: (Stake * Total Players) * 75% for the single winner
+          const totalPlayersCount = data.total_players || 1;
+          const totalPool = selectedCardStake * totalPlayersCount;
+          const winnerPrize = totalPool * 0.75;
 
-          currentRoom = { room_id: data.room_id, entry_fee: selectedCardStake, prize_pool: winnerPrize, player_number: selectedCartelaNumber };
+          currentRoom = { 
+            room_id: data.room_id, 
+            entry_fee: selectedCardStake, 
+            prize_pool: winnerPrize, 
+            player_number: selectedCartelaNumber 
+          };
           
           document.getElementById('lobby-room-title').textContent = `Table (${selectedCardStake} ETB)`;
-          document.getElementById('lobby-prize-pool').textContent = `${currentRoom.prize_pool.toFixed(2)} ETB`;
+          document.getElementById('lobby-prize-pool').textContent = `${winnerPrize.toFixed(2)} ETB`;
           document.getElementById('lobby-stake-text').textContent = selectedCardStake;
           
           switchTab('lobby');
