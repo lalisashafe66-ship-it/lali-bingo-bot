@@ -19,8 +19,8 @@ $telegramId = (string)($update['message']['from']['id'] ?? '');
 $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
 
-// 📢 SET YOUR OFFICIAL TELEGRAM CHANNEL USERNAME HERE (e.g. "@Lali_Bingo")
-$REQUIRED_CHANNEL = "@Lali_Bingo"; 
+// 📢 SET YOUR OFFICIAL TELEGRAM CHANNEL USERNAME HERE (e.g. "@Future_Bingo")
+$REQUIRED_CHANNEL = "@Future_Bingo"; 
 
 function sendMessage($chatId, $message, $keyboard = null) {
     global $token;
