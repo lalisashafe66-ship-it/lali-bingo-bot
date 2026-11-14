@@ -1,5 +1,4 @@
 <?php
-// Enable error logging for debugging
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
@@ -16,7 +15,6 @@ $contact = $update['message']['contact'] ?? null;
 $firstName = $update['message']['from']['first_name'] ?? 'Player';
 $telegramId = (string)($update['message']['from']['id'] ?? '');
 
-// Load Telegram Token securely from environment variables
 $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
 
@@ -34,7 +32,6 @@ function sendMessage($chatId, $message, $keyboard = null) {
     @file_get_contents($url . '?' . http_build_query($data));
 }
 
-// Connect to SQLite Database
 try {
     $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
