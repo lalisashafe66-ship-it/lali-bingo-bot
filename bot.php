@@ -21,7 +21,7 @@ $callbackData = $update['callback_query']['data'] ?? null;
 $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
 
-// 📢 YOUR OFFICIAL TELEGRAM CHANNEL USERNAME
+// 📢 OFFICIAL TELEGRAM CHANNEL USERNAME
 $REQUIRED_CHANNEL = "@Future_Bingo"; 
 
 function sendMessage($chatId, $message, $keyboard = null) {
@@ -185,7 +185,7 @@ if ($chatId) {
     elseif (stripos($text, 'Play Bingo') !== false) {
         $webAppKeyboard = [
             'inline_keyboard' => [
-                [['text' => '🚀 Launch Future Bingo App', 'web_app' => ['url' => 'https://future-bingo-bot.onrender.com/index.html']]]
+                [['text' => '🚀 Launch Future Bingo App', 'web_app' => ['url' => 'https://lali-bingo-bot.onrender.com/index.html']]]
             ]
         ];
         sendMessage($chatId, "Tap the button below to open your Future Bingo game app and choose a table:", $webAppKeyboard);
