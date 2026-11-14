@@ -74,6 +74,14 @@ elseif ($action === 'join_room') {
         exit;
     }
 
+    // Check if there is an active room currently playing for this stake
+    $activeRoomStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'playing' ORDER BY id DESC LIMIT 1");
+    $activeRoomStmt->execute([$fee]);
+    if ($activeRoomStmt->fetch(PDO::FETCH_ASSOC)) {
+        echo json_encode(['success' => false, 'error' => 'Wait until the current game ends!']);
+        exit;
+    }
+
     // Ensure player exists in database
     $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
     $stmtIns->execute([$telegramId]);
@@ -104,8 +112,8 @@ elseif ($action === 'join_room') {
         $roomId = $room['id'];
     }
 
-    // Log player room selection
-    $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
+    // Log player room selection (prevent duplicate cartelas/entries if needed)
+    $logRoom = $pdo->prepare("INSERT OR REPLACE INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
     $logRoom->execute([$roomId, $telegramId, $playerNumber]);
 
     // Count how many unique players have joined this room to calculate dynamic 75% pool
