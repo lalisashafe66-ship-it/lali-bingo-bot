@@ -277,7 +277,7 @@
     <div class="d-flex justify-content-between align-items-center mb-2">
       <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
       <button id="sound-toggle" class="btn btn-outline-warning btn-sm" onclick="toggleSound()">🔊 Sound ON</button>
-      <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ 02:00</span>
+      <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ 01:00</span>
     </div>
 
     <div class="card-custom mb-2">
@@ -381,7 +381,7 @@
     let lobbyTimeLeft = 30;
 
     let gameTimerInterval = null;
-    let timeLeft = 120;
+    let timeLeft = 60; // Set to 1 minute completion time
     let drawInterval = null;
 
     function buildCartelaPickerGrid() {
@@ -642,8 +642,8 @@
       generateCard();
       renderBoard();
       
-      timeLeft = 120;
-      document.getElementById('game-timer').textContent = `⏱️ 02:00`;
+      timeLeft = 60; // Set to 1 minute completion timer
+      document.getElementById('game-timer').textContent = `⏱️ 01:00`;
       clearInterval(gameTimerInterval);
       
       gameTimerInterval = setInterval(() => {
@@ -714,12 +714,15 @@
         formData.append('action', 'claim_win');
         formData.append('telegram_id', telegramId);
         formData.append('prize', currentRoom.prize_pool);
+        formData.append('room_id', currentRoom.room_id);
+        formData.append('winner_name', playerName);
 
         fetch('api.php', { method: 'POST', body: formData })
           .then(res => res.json())
           .then(data => {
             if (data.success) updateBalanceUI(data.new_balance);
-            alert(`🎉 BINGO WINNER!\n\nWinner: ${playerName} (Cartela #${currentRoom.player_number})\nPrize: ${currentRoom.prize_pool.toFixed(2)} ETB added to balance!`);
+            // Display explicit Winner Name and Telegram ID
+            alert(`🎉 BINGO WINNER!\n\n🏆 Winner Name: ${playerName}\n🆔 Telegram ID: ${telegramId}\n🎯 Cartela: #${currentRoom.player_number}\n💰 Prize: ${currentRoom.prize_pool.toFixed(2)} ETB added to balance!`);
             switchTab('game');
           });
       } else {
