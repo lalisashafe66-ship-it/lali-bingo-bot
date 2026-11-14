@@ -49,6 +49,11 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 if ($action === 'get_balance') {
     $telegramId = $_GET['telegram_id'] ?? '';
+    
+    // Auto-create player row if missing so /add works instantly
+    $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
+    $stmtIns->execute([$telegramId]);
+
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -63,18 +68,21 @@ elseif ($action === 'join_room') {
     $fee = (float)($_POST['fee'] ?? 0);
     $playerNumber = (int)($_POST['player_number'] ?? 0);
 
-    if ($playerNumber < 1 || $playerNumber > 500) {
-        echo json_encode(['success' => false, 'error' => 'Please choose a valid number between 1 and 500.']);
+    // Strictly match your 56-cartela grid picker UI limit
+    if ($playerNumber < 1 || $playerNumber > 56) {
+        echo json_encode(['success' => false, 'error' => 'Please choose a valid cartela number between 1 and 56.']);
         exit;
     }
+
+    // Ensure player exists in database
+    $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
+    $stmtIns->execute([$telegramId]);
 
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$player || $player['balance'] < $fee) {
-        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
-        $stmtIns->execute([$telegramId]);
         echo json_encode(['success' => false, 'error' => 'Insufficient balance! Please top up via Deposit in the Wallet tab.']);
         exit;
     }
