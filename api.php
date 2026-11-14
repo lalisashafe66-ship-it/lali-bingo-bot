@@ -41,7 +41,6 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Table to track game winners
     $pdo->exec("CREATE TABLE IF NOT EXISTS game_winners (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         room_id INTEGER,
@@ -60,19 +59,25 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 if ($action === 'get_balance') {
     $telegramId = $_GET['telegram_id'] ?? '';
     
+    // 1. First, check if player already exists in database
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    if (!$player) {
-        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
+    if ($player) {
+        // Player exists! Return their actual saved balance (e.g. 190.00 or 200.00)
+        $balance = (float)$player['balance'];
+    } else {
+        // Player does not exist at all, create them with 0.00
+        $stmtIns = $pdo->prepare("INSERT INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
         $stmtIns->execute([$telegramId]);
         $balance = 0.00;
-    } else {
-        $balance = (float)$player['balance'];
     }
     
-    echo json_encode(['success' => true, 'balance' => $balance]);
+    echo json_encode([
+        'success' => true,
+        'balance' => $balance
+    ]);
 }
 elseif ($action === 'join_room') {
     $telegramId = $_POST['telegram_id'] ?? '';
@@ -133,15 +138,12 @@ elseif ($action === 'claim_win') {
     $roomId = $_POST['room_id'] ?? 0;
     $winnerName = $_POST['winner_name'] ?? 'Player';
 
-    // Add prize to player balance
     $stmt = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
     $stmt->execute([$prize, $telegramId]);
 
-    // Log winner name and ID
     $winLog = $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)");
     $winLog->execute([$roomId, $telegramId, $winnerName, $prize]);
 
-    // Mark room as finished/playing ended
     $roomUp = $pdo->prepare("UPDATE rooms SET status = 'finished' WHERE id = ?");
     $roomUp->execute([$roomId]);
 
