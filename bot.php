@@ -16,7 +16,8 @@ $contact = $update['message']['contact'] ?? null;
 $firstName = $update['message']['from']['first_name'] ?? 'Player';
 $telegramId = (string)($update['message']['from']['id'] ?? '');
 
-$token = "9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0";
+// Load Telegram Token securely from environment variables
+$token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
 
 function sendMessage($chatId, $message, $keyboard = null) {
@@ -85,7 +86,6 @@ if ($chatId) {
             sendMessage($chatId, "⛔ Unauthorized.");
             exit;
         }
-        // Split by any whitespace cleanly
         $parts = preg_split('/\s+/', trim($text));
         
         if (count($parts) >= 3 && is_numeric($parts[2])) {
@@ -118,7 +118,6 @@ if ($chatId) {
         if ($player && !empty($player['phone'])) {
             sendMessage($chatId, "👋 Welcome back, <b>{$firstName}</b>!\nChoose an option from the menu below:", $mainMenu);
         } else {
-            // Automatically insert player if not fully registered yet
             $stmt = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, ?, 0.00) ON CONFLICT(telegram_id) DO NOTHING");
             $stmt->execute([$telegramId, $firstName, 'WebUser']);
 
