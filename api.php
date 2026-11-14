@@ -50,17 +50,23 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 if ($action === 'get_balance') {
     $telegramId = $_GET['telegram_id'] ?? '';
     
-    // Auto-create player row if missing so /add works instantly
-    $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
-    $stmtIns->execute([$telegramId]);
-
+    // Look up the player first without overwriting their balance to 0
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
     
+    if (!$player) {
+        // Only create the player row if they don't exist yet
+        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
+        $stmtIns->execute([$telegramId]);
+        $balance = 0.00;
+    } else {
+        $balance = (float)$player['balance'];
+    }
+    
     echo json_encode([
         'success' => true,
-        'balance' => $player ? (float)$player['balance'] : 0.00
+        'balance' => $balance
     ]);
 }
 elseif ($action === 'join_room') {
@@ -82,20 +88,18 @@ elseif ($action === 'join_room') {
         exit;
     }
 
-    // Ensure player exists in database
-    $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
-    $stmtIns->execute([$telegramId]);
-
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$player || $player['balance'] < $fee) {
+    $currentBalance = $player ? (float)$player['balance'] : 0.00;
+
+    if ($currentBalance < $fee) {
         echo json_encode(['success' => false, 'error' => 'Insufficient balance! Please top up via Deposit in the Wallet tab.']);
         exit;
     }
 
-    $newBalance = $player['balance'] - $fee;
+    $newBalance = $currentBalance - $fee;
     $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
     $update->execute([$newBalance, $telegramId]);
 
@@ -112,7 +116,7 @@ elseif ($action === 'join_room') {
         $roomId = $room['id'];
     }
 
-    // Log player room selection (prevent duplicate cartelas/entries if needed)
+    // Log player room selection
     $logRoom = $pdo->prepare("INSERT OR REPLACE INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
     $logRoom->execute([$roomId, $telegramId, $playerNumber]);
 
