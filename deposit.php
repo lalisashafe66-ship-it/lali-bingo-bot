@@ -1,52 +1,66 @@
 <?php
-// deposit.php - Initiates payment with Chapa
 header('Content-Type: application/json');
 
-// =========================================================================
-// 🔑 CHAPA SECRET KEY (Loaded from Render Environment or fallback below)
-// =========================================================================
-$CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
+// Get POST data
+$telegramId = $_POST['telegram_id'] ?? '';
+$amount = (float)($_POST['amount'] ?? 0);
+$firstName = $_POST['first_name'] ?? 'Player';
 
-$telegram_id = $_POST['telegram_id'] ?? '';
-$amount = floatval($_POST['amount'] ?? 0);
-$email = $_POST['email'] ?? 'player@futurebingo.et';
-$first_name = $_POST['first_name'] ?? 'Player';
-
-if (empty($telegram_id) || $amount <= 0) {
-    echo json_encode(['success' => false, 'error' => 'Invalid parameters.']);
+if (!$telegramId || $amount < 10) {
+    echo json_encode(['success' => false, 'error' => 'Invalid amount or player ID. Minimum deposit is 10 ETB.']);
     exit;
 }
 
-$tx_ref = "future-bingo-" . $telegram_id . "-" . time();
+// Chapa API Configuration (Replace with your live Chapa Secret Key if needed)
+$chapaSecretKey = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
+$txRef = "future_bingo_" . uniqid();
+
+$callbackUrl = "https://lali-bingo-bot.onrender.com/verify_payment.php?telegram_id=" . urlencode($telegramId) . "&amount=" . $amount;
+$returnUrl = "https://lali-bingo-bot.onrender.com/index.html";
 
 $data = [
     'amount' => $amount,
     'currency' => 'ETB',
-    'email' => $email,
-    'first_name' => $first_name,
-    'tx_ref' => $tx_ref,
-    'callback_url' => 'https://lali-bingo-bot.onrender.com/webhook.php',
-    'return_url' => 'https://t.me/Future_Bingo_bot'
+    'email' => 'player_' . $telegramId . '@futurebingo.et',
+    'first_name' => $firstName,
+    'last_name' => 'Player',
+    'tx_ref' => $txRef,
+    'callback_url' => $callbackUrl,
+    'return_url' => $returnUrl,
+    'customization[title]' => 'Future Bingo Wallet Top-Up',
+    'customization[description]' => 'Deposit funds to Future Bingo wallet'
 ];
 
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, "https://api.chapa.co/v1/transaction/initialize");
-curl_setopt($ch, CURLOPT_POST, 1);
+curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    "Authorization: Bearer " . $CHAPA_SECRET_KEY,
+    "Authorization: Bearer " . $chapaSecretKey,
     "Content-Type: application/json"
 ]);
 
 $response = curl_exec($ch);
+$err = curl_error($ch);
 curl_close($ch);
 
-$res = json_decode($response, true);
+if ($err) {
+    echo json_encode(['success' => false, 'error' => 'Gateway connection error.']);
+    exit;
+}
 
-if (isset($res['status']) && $res['status'] === 'success') {
-    echo json_encode(['success' => true, 'checkout_url' => $res['data']['checkout_url']]);
+$result = json_decode($response, true);
+
+if (isset($result['status']) && $result['status'] === 'success') {
+    echo json_encode([
+        'success' => true,
+        'checkout_url' => $result['data']['checkout_url']
+    ]);
 } else {
-    echo json_encode(['success' => false, 'error' => 'Could not initialize payment.']);
+    echo json_encode([
+        'success' => false,
+        'error' => $result['message'] ?? 'Could not initialize Chapa payment.'
+    ]);
 }
 ?>
