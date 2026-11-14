@@ -23,6 +23,14 @@ try {
         created_at INTEGER
     )");
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS room_players (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id INTEGER,
+        telegram_id TEXT,
+        player_number INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS withdrawals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id TEXT,
@@ -53,6 +61,12 @@ if ($action === 'get_balance') {
 elseif ($action === 'join_room') {
     $telegramId = $_POST['telegram_id'] ?? '';
     $fee = (float)($_POST['fee'] ?? 0);
+    $playerNumber = (int)($_POST['player_number'] ?? 0);
+
+    if ($playerNumber < 1 || $playerNumber > 500) {
+        echo json_encode(['success' => false, 'error' => 'Please choose a valid number between 1 and 500.']);
+        exit;
+    }
 
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
@@ -82,9 +96,14 @@ elseif ($action === 'join_room') {
         $roomId = $room['id'];
     }
 
+    // Log player room selection
+    $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
+    $logRoom->execute([$roomId, $telegramId, $playerNumber]);
+
     echo json_encode([
         'success' => true,
         'room_id' => $roomId,
+        'player_number' => $playerNumber,
         'new_balance' => $newBalance
     ]);
 }
@@ -119,7 +138,6 @@ elseif ($action === 'request_withdrawal') {
         exit;
     }
 
-    // Deduct balance and queue as pending for manual admin fulfillment
     $newBalance = $player['balance'] - $amount;
     $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
     $update->execute([$newBalance, $telegramId]);
