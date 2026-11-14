@@ -3,13 +3,13 @@
 header('Content-Type: application/json');
 
 // =========================================================================
-// 🔑 PASTE YOUR CHAPA SECRET KEY HERE (e.g. "CHASECK_TEST-xxxxxxxx...")
+// 🔑 CHAPA SECRET KEY (Loaded from Render Environment or fallback below)
 // =========================================================================
 $CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
 
 $telegram_id = $_POST['telegram_id'] ?? '';
 $amount = floatval($_POST['amount'] ?? 0);
-$email = $_POST['email'] ?? 'player@lalibingo.et';
+$email = $_POST['email'] ?? 'player@futurebingo.et';
 $first_name = $_POST['first_name'] ?? 'Player';
 
 if (empty($telegram_id) || $amount <= 0) {
@@ -17,7 +17,7 @@ if (empty($telegram_id) || $amount <= 0) {
     exit;
 }
 
-$tx_ref = "lali-bingo-" . $telegram_id . "-" . time();
+$tx_ref = "future-bingo-" . $telegram_id . "-" . time();
 
 $data = [
     'amount' => $amount,
@@ -26,7 +26,7 @@ $data = [
     'first_name' => $first_name,
     'tx_ref' => $tx_ref,
     'callback_url' => 'https://lali-bingo-bot.onrender.com/webhook.php',
-    'return_url' => 'https://t.me/Lali_Bingo_bot'
+    'return_url' => 'https://t.me/Future_Bingo_bot'
 ];
 
 $ch = curl_init();
