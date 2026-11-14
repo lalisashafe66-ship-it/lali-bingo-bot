@@ -13,28 +13,28 @@
       --accent-gold: #FFC107;
       --accent-green: #198754;
       --cell-taken: #1a444a;
-      --cell-selected: #FFC107;
     }
     body {
       background-color: var(--bg-dark);
       color: #ffffff;
       font-family: system-ui, -apple-system, sans-serif;
       user-select: none;
-      padding-bottom: 110px;
+      /* Generous bottom padding so content never hides behind navigation bar */
+      padding-bottom: 140px; 
     }
     .card-custom {
       background-color: var(--card-bg);
       border: 1px solid #1f474d;
       border-radius: 12px;
-      padding: 14px;
+      padding: 12px;
       margin-bottom: 10px;
     }
     .table-option {
       background-color: var(--card-bg);
       border: 2px solid #234d54;
-      border-radius: 12px;
-      padding: 14px;
-      margin-bottom: 10px;
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 8px;
       cursor: pointer;
       transition: all 0.2s ease;
       text-align: left;
@@ -48,6 +48,7 @@
     .table-option p {
       color: #e2e8f0 !important;
     }
+    /* Fixed Bottom Navigation */
     .bottom-nav {
       position: fixed;
       bottom: 0;
@@ -58,7 +59,7 @@
       display: flex;
       justify-content: space-around;
       padding: 10px 0;
-      z-index: 1000;
+      z-index: 1050;
     }
     .nav-item-custom {
       color: #8a9b9e;
@@ -71,14 +72,14 @@
       color: var(--accent-gold);
       font-weight: bold;
     }
-    /* Cartela Grid Selector Style */
+    /* Exactly 56 Cartela Circles Grid (7 columns x 8 rows) */
     .cartela-picker-grid {
       display: grid;
-      grid-template-columns: repeat(8, 1fr);
+      grid-template-columns: repeat(7, 1fr);
       gap: 6px;
-      max-height: 240px;
+      max-height: 190px;
       overflow-y: auto;
-      padding: 4px;
+      padding: 2px;
     }
     .cartela-circle {
       aspect-ratio: 1;
@@ -86,7 +87,7 @@
       background-color: var(--cell-taken);
       border: 1px solid #28545c;
       color: #ffffff;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -99,11 +100,11 @@
       color: #000000;
       border-color: #ffca2c;
       transform: scale(1.08);
-      box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+      box-shadow: 0 0 10px rgba(255, 193, 7, 0.6);
     }
     .legend-dot {
-      width: 12px;
-      height: 12px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
       display: inline-block;
     }
@@ -112,7 +113,7 @@
       display: grid;
       grid-template-columns: repeat(5, 1fr);
       gap: 5px;
-      max-width: 340px;
+      max-width: 320px;
       margin: 0 auto;
     }
     .bingo-header {
@@ -120,9 +121,9 @@
       color: #000;
       font-weight: 800;
       text-align: center;
-      padding: 6px 0;
+      padding: 5px 0;
       border-radius: 6px;
-      font-size: 1rem;
+      font-size: 0.9rem;
     }
     .bingo-cell {
       aspect-ratio: 1;
@@ -132,7 +133,7 @@
       background: #1a3c42;
       border: 2px solid #28545c;
       border-radius: 6px;
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 700;
     }
     .bingo-cell.marked {
@@ -143,15 +144,15 @@
     .bingo-cell.free {
       background: #0d6efd;
       border-color: #3d8bfd;
-      font-size: 0.7rem;
+      font-size: 0.65rem;
     }
     .called-ball {
-      width: 58px;
-      height: 58px;
+      width: 52px;
+      height: 52px;
       border-radius: 50%;
       background: radial-gradient(circle at 30% 30%, #ff4d4d, #b30000);
       color: white;
-      font-size: 1.3rem;
+      font-size: 1.2rem;
       font-weight: 800;
       display: flex;
       align-items: center;
@@ -160,8 +161,8 @@
       box-shadow: 0 4px 12px rgba(255, 77, 77, 0.4);
     }
     .pulse-circle {
-      width: 120px;
-      height: 120px;
+      width: 110px;
+      height: 110px;
       border-radius: 50%;
       background: radial-gradient(circle at 30% 30%, #ffc107, #d39e00);
       color: #000;
@@ -183,12 +184,12 @@
 <body class="p-3">
 
   <!-- TOP HEADER / BALANCE BAR -->
-  <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
     <div class="d-flex align-items-center gap-2">
-      <span style="font-size: 1.3rem;">🔶</span>
-      <h4 class="fw-bold mb-0 text-warning">Future Bingo</h4>
+      <span style="font-size: 1.2rem;">🔶</span>
+      <h5 class="fw-bold mb-0 text-warning">Future Bingo</h5>
     </div>
-    <div class="badge bg-warning text-dark p-2 fs-6">
+    <div class="badge bg-warning text-dark p-2" style="font-size: 0.9rem;">
       Balance: <strong id="balance-display">0.00 ETB</strong>
     </div>
   </div>
@@ -200,9 +201,9 @@
     
     <!-- Stake Selection Options -->
     <div class="text-start mb-2">
-      <h5 class="fw-bold text-light mb-1">Choose a Table Stake</h5>
+      <h6 class="fw-bold text-light mb-1">Choose a Table Stake</h6>
     </div>
-    <div id="table-options-list" class="mb-3">
+    <div id="table-options-list" class="mb-2">
       <div class="table-option selected" onclick="selectTable(10, this)">
         <div class="d-flex justify-content-between align-items-center">
           <div>
@@ -234,23 +235,25 @@
       </div>
     </div>
 
-    <!-- Visual Cartela Grid Selector (1 to 56) -->
+    <!-- Visual Cartela Grid Selector (Capped strictly to 56) -->
     <div class="card-custom text-start mb-3">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <span class="small fw-bold text-warning">Tap to pick your Cartela(s):</span>
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="small fw-bold text-warning">Tap to pick your Cartela (1 - 56):</span>
         <div class="small text-muted d-flex align-items-center gap-2">
           <span><span class="legend-dot bg-warning align-middle"></span> Yours</span>
           <span><span class="legend-dot align-middle" style="background:#1a444a;"></span> Taken</span>
         </div>
       </div>
-      <!-- Grid container generated via JavaScript -->
-      <div id="cartela-grid-picker" class="cartela-picker-grid mb-2"></div>
-      <p class="text-muted text-center small mb-0" id="selected-cartela-info">Selected: None</p>
+      <div id="cartela-grid-picker" class="cartela-picker-grid mb-1"></div>
+      <p class="text-warning text-center small fw-bold mb-0" id="selected-cartela-info">Selected Cartela: #1</p>
     </div>
 
-    <button class="btn btn-warning w-100 fw-bold py-3 fs-5 shadow" id="play-btn" onclick="joinSelectedTable()">
-      Play for 10 ETB
-    </button>
+    <!-- Play Button (Properly spaced so it never hides) -->
+    <div class="mb-4">
+      <button class="btn btn-warning w-100 fw-bold py-3 fs-5 shadow" id="play-btn" onclick="joinSelectedTable()">
+        Play for 10 ETB
+      </button>
+    </div>
   </div>
 
   <!-- 2. WAITING LOBBY SCREEN -->
@@ -260,7 +263,7 @@
       <span class="badge bg-warning text-dark fs-6" id="lobby-room-title">Future Table</span>
     </div>
 
-    <div class="card-custom my-4 py-3">
+    <div class="card-custom my-3 py-3">
       <h5 class="text-light fw-bold mb-1">⏳ Room Starting Soon</h5>
       
       <div class="pulse-circle">
@@ -372,7 +375,7 @@
 
     let balance = 0.00;
     let selectedCardStake = 10;
-    let selectedCartelaNumber = 1; // Default selected cartela
+    let selectedCartelaNumber = 1;
     let card = [];
     let marked = Array(25).fill(false);
     let calledNumbers = new Set();
@@ -385,7 +388,7 @@
     let timeLeft = 120;
     let drawInterval = null;
 
-    // Initialize Visual Cartela Grid Selector (1 to 56 numbers like the reference image)
+    // Build exactly 56 Cartela Circles Grid (7 x 8)
     function buildCartelaPickerGrid() {
       const gridContainer = document.getElementById('cartela-grid-picker');
       gridContainer.innerHTML = '';
@@ -407,7 +410,7 @@
           el.classList.remove('selected');
         }
       });
-      document.getElementById('selected-cartela-info.textContent') || (document.getElementById('selected-cartela-info').textContent = `Selected Cartela: #${num}`);
+      document.getElementById('selected-cartela-info').textContent = `Selected Cartela: #${num}`;
     }
 
     function selectTable(stake, element) {
@@ -505,12 +508,25 @@
       document.getElementById('wallet-balance').textContent = `${balance.toFixed(2)} ETB`;
     }
 
+    // Fixed balance syncing endpoint check
     function syncBalance() {
       if (!telegramId) { updateBalanceUI(0.00); return; }
       fetch(`api.php?action=get_balance&telegram_id=${encodeURIComponent(telegramId)}`)
         .then(res => res.json())
-        .then(data => { if (data.success) updateBalanceUI(data.balance); })
-        .catch(() => updateBalanceUI(0.00));
+        .then(data => { 
+          if (data.success) {
+            updateBalanceUI(data.balance); 
+          } else if (data.balance !== undefined) {
+            updateBalanceUI(data.balance);
+          }
+        })
+        .catch(() => {
+          // Fallback to balance.php if api.php fails
+          fetch(`balance.php?telegram_id=${encodeURIComponent(telegramId)}`)
+            .then(res => res.json())
+            .then(data => { if (data.balance !== undefined) updateBalanceUI(data.balance); })
+            .catch(() => {});
+        });
     }
 
     function startInstantDeposit() {
@@ -755,7 +771,7 @@
         .catch(() => alert('Network error.'));
     }
 
-    // Initialize picker on load
+    // Initialize picker and sync balance immediately on load
     buildCartelaPickerGrid();
     syncBalance();
   </script>
