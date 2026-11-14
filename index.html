@@ -160,7 +160,13 @@
   <div id="screen-game" class="container text-center">
     <div class="text-start mb-3">
       <h3 class="fw-bold text-light">Choose a table</h3>
-      <p class="text-muted small">Pick a stake per cartela. 5 ETB platform commission applies per 2 players!</p>
+      <p class="text-muted small">Pick a stake and your Cartela number (1-500). 5 ETB commission applies!</p>
+    </div>
+
+    <!-- PLAYER CARTELA NUMBER INPUT (1 - 500) -->
+    <div class="card-custom mb-3 text-start">
+      <label for="player-number-input" class="form-label text-warning fw-bold small">Choose Your Cartela/Player Number (1 - 500):</label>
+      <input type="number" id="player-number-input" class="form-control bg-dark text-light border-secondary" min="1" max="500" value="1" placeholder="Enter number 1-500">
     </div>
 
     <div id="table-options-list">
@@ -210,7 +216,7 @@
     </button>
   </div>
 
-  <!-- 2. WAITING LOBBY SCREEN (30 Seconds Countdown) -->
+  <!-- 2. WAITING LOBBY SCREEN -->
   <div id="screen-lobby" class="container text-center d-none">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
@@ -227,11 +233,10 @@
       </div>
 
       <p class="text-muted small mt-3 mb-0">Room Status: <strong class="text-light" id="lobby-players-count">Synchronized Multiplayer</strong></p>
-      <p class="text-muted small">5 ETB platform commission deducted. Winner takes the rest!</p>
     </div>
   </div>
 
-  <!-- 3. ACTIVE PLAY ROOM SCREEN (2 Minutes Game & Persistent Claim Button) -->
+  <!-- 3. ACTIVE PLAY ROOM SCREEN -->
   <div id="screen-playroom" class="container text-center d-none">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
@@ -265,7 +270,7 @@
   <div id="screen-history" class="container d-none">
     <h3 class="fw-bold text-light mb-3">Game History</h3>
     <div class="card-custom">
-      <p class="text-muted small text-center my-3">No recent games recorded yet. Play a table to see your history!</p>
+      <p class="text-muted small text-center my-3">No recent games recorded yet.</p>
     </div>
   </div>
 
@@ -473,6 +478,15 @@
 
     function joinSelectedTable() {
       initAudio();
+      const playerNumInput = document.getElementById('player-number-input').value;
+      const playerNumber = parseInt(playerNumInput);
+
+      if (isNaN(playerNumber) || playerNumber < 1 || playerNumber > 500) {
+        sounds.errorBuzz();
+        alert('Please enter a valid cartela/player number between 1 and 500.');
+        return;
+      }
+
       if (balance < selectedCardStake) {
         sounds.errorBuzz();
         alert(`Insufficient balance! You need ${selectedCardStake} ETB. Please top up in the Wallet tab.`);
@@ -484,6 +498,7 @@
       formData.append('action', 'join_room');
       formData.append('telegram_id', telegramId);
       formData.append('fee', selectedCardStake);
+      formData.append('player_number', playerNumber);
 
       fetch('api.php', { method: 'POST', body: formData })
         .then(res => res.json())
@@ -495,14 +510,13 @@
           }
           updateBalanceUI(data.new_balance);
 
-          // 2 Players pool: Total Stakes minus 5 ETB fixed commission
           const totalPool = selectedCardStake * 2;
           const commission = 5;
           const winnerPrize = totalPool - commission;
 
-          currentRoom = { room_id: data.room_id, entry_fee: selectedCardStake, prize_pool: winnerPrize };
+          currentRoom = { room_id: data.room_id, entry_fee: selectedCardStake, prize_pool: winnerPrize, player_number: data.player_number };
           
-          document.getElementById('lobby-room-title').textContent = `Lali Table (${selectedCardStake} ETB Stake)`;
+          document.getElementById('lobby-room-title').textContent = `Table (${selectedCardStake} ETB) | No. #${data.player_number}`;
           document.getElementById('lobby-prize-pool').textContent = `${currentRoom.prize_pool.toFixed(2)} ETB`;
           
           switchTab('lobby');
@@ -524,7 +538,7 @@
 
         if (lobbyTimeLeft <= 0) {
           clearInterval(lobbyTimerInterval);
-          document.getElementById('room-title-display').textContent = `Lali Table (${selectedCardStake} ETB Stake)`;
+          document.getElementById('room-title-display').textContent = `Table (${selectedCardStake} ETB) | Cartela #${currentRoom.player_number}`;
           switchTab('playroom');
           startNewGame();
         }
@@ -642,7 +656,7 @@
           .then(res => res.json())
           .then(data => {
             if (data.success) updateBalanceUI(data.new_balance);
-            alert(`🎉 BINGO WINNER!\n\nWinner: ${playerName} (ID: ${telegramId})\nPrize: ${currentRoom.prize_pool} ETB added to balance!`);
+            alert(`🎉 BINGO WINNER!\n\nWinner: ${playerName} (Cartela #${currentRoom.player_number})\nPrize: ${currentRoom.prize_pool} ETB added to balance!`);
             switchTab('game');
           });
       } else {
