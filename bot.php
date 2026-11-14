@@ -19,7 +19,7 @@ $telegramId = (string)($update['message']['from']['id'] ?? '');
 $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
 
-// 📢 SET YOUR OFFICIAL TELEGRAM CHANNEL USERNAME HERE (e.g. "@Future_Bingo")
+// 📢 YOUR OFFICIAL TELEGRAM CHANNEL USERNAME
 $REQUIRED_CHANNEL = "@Future_Bingo"; 
 
 function sendMessage($chatId, $message, $keyboard = null) {
@@ -46,7 +46,6 @@ function checkChannelMembership($userId) {
     $res = json_decode($response, true);
     if (isset($res['ok']) && $res['ok'] === true) {
         $status = $res['result']['status'] ?? '';
-        // Valid statuses meaning they are in the channel
         if (in_array($status, ['creator', 'administrator', 'member'])) {
             return true;
         }
@@ -76,10 +75,10 @@ if ($chatId) {
         $joinKeyboard = [
             'inline_keyboard' => [
                 [['text' => '📢 Join Our Channel', 'url' => 'https://t.me/Future_Bingo']],
-                [['text' => '✅ I Have Joined', 'callback_data' => 'check_join'], ['text' => '🔄 Try Again', 'url' => 'https://t.me/Lali_Bingo_bot']]
+                [['text' => '✅ I Have Joined', 'callback_data' => 'check_join'], ['text' => '🔄 Try Again', 'url' => 'https://t.me/Future_Bingo_bot']]
             ]
         ];
-        sendMessage($chatId, "🚀 <b>Welcome to Lali Bingo!</b>\n\nTo use this bot and play games, you must first join our official channel: <b>{$REQUIRED_CHANNEL}</b>.\n\nAfter joining, tap <b>Try Again</b> below!", $joinKeyboard);
+        sendMessage($chatId, "🚀 <b>Welcome to Future Bingo!</b>\n\nTo use this bot and play games, you must first join our official channel: <b>{$REQUIRED_CHANNEL}</b>.\n\nAfter joining, tap <b>Try Again</b> below!", $joinKeyboard);
         exit;
     }
 
@@ -134,7 +133,7 @@ if ($chatId) {
                 $upd->execute([$newBal, $targetId]);
 
                 sendMessage($chatId, "✅ Credited <b>{$amount} ETB</b> to <b>{$targetPlayer['first_name']}</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$newBal} ETB</b>");
-                sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Lali Bingo wallet.\nCurrent Balance: <b>{$newBal} ETB</b>");
+                sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\nCurrent Balance: <b>{$newBal} ETB</b>");
             } else {
                 sendMessage($chatId, "❌ Player with Telegram ID <code>{$targetId}</code> not found in database.");
             }
@@ -166,10 +165,10 @@ if ($chatId) {
     elseif (stripos($text, 'Play Bingo') !== false) {
         $webAppKeyboard = [
             'inline_keyboard' => [
-                [['text' => '🚀 Launch Lali Bingo App', 'web_app' => ['url' => 'https://lali-bingo-bot.onrender.com/index.html']]]
+                [['text' => '🚀 Launch Future Bingo App', 'web_app' => ['url' => 'https://lali-bingo-bot.onrender.com/index.html']]]
             ]
         ];
-        sendMessage($chatId, "Tap the button below to open your Lali Bingo game app and choose a table:", $webAppKeyboard);
+        sendMessage($chatId, "Tap the button below to open your Future Bingo game app and choose a table:", $webAppKeyboard);
     }
     elseif (stripos($text, 'Balance') !== false) {
         $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
@@ -180,7 +179,7 @@ if ($chatId) {
     }
     elseif (stripos($text, 'Deposit') !== false) {
         $depositText = "💳 <b>Deposit Funds & Top-Up</b>\n\n" .
-                       "Transfer funds to our accounts below and send your transaction receipt along with your ID (<code>{$telegramId}</code>) to support (@Lali_Support):\n\n" .
+                       "Transfer funds to our accounts below and send your transaction receipt along with your ID (<code>{$telegramId}</code>) to support (@Future_Support):\n\n" .
                        "🏦 <b>CBE:</b> <code>1000171689116</code> (Lalisa Shafe Nagari)\n" .
                        "📱 <b>Telebirr:</b> <code>0917461538</code> (Lalisa Shafe Nagari)";
         sendMessage($chatId, $depositText, $mainMenu);
@@ -193,13 +192,13 @@ if ($chatId) {
         sendMessage($chatId, $withdrawText, $mainMenu);
     }
     elseif (stripos($text, 'Invite Friends') !== false) {
-        sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/Lali_Bingo_bot", $mainMenu);
+        sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/Future_Bingo_bot", $mainMenu);
     }
     elseif (stripos($text, 'Instruction') !== false) {
-        sendMessage($chatId, "📖 <b>How to Play:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, 50, or 100 ETB).\n3. Complete a line and tap <b>CLAIM BINGO</b> to win 80% of all stakes!", $mainMenu);
+        sendMessage($chatId, "📖 <b>How to Play:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, 50, or 100 ETB) and your Cartela number (1-500).\n3. Complete a line and tap <b>CLAIM BINGO</b> to win!", $mainMenu);
     }
     elseif (stripos($text, 'Support') !== false) {
-        sendMessage($chatId, "📞 Contact our support team: @Lali_Support", $mainMenu);
+        sendMessage($chatId, "📞 Contact our support team: @Future_Support", $mainMenu);
     }
 }
 ?>
