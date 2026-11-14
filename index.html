@@ -19,7 +19,6 @@
       color: #ffffff;
       font-family: system-ui, -apple-system, sans-serif;
       user-select: none;
-      /* Generous bottom padding so content never hides behind navigation bar */
       padding-bottom: 140px; 
     }
     .card-custom {
@@ -48,7 +47,6 @@
     .table-option p {
       color: #e2e8f0 !important;
     }
-    /* Fixed Bottom Navigation */
     .bottom-nav {
       position: fixed;
       bottom: 0;
@@ -72,7 +70,6 @@
       color: var(--accent-gold);
       font-weight: bold;
     }
-    /* Exactly 56 Cartela Circles Grid (7 columns x 8 rows) */
     .cartela-picker-grid {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
@@ -108,7 +105,6 @@
       border-radius: 50%;
       display: inline-block;
     }
-    /* Bingo Game Play Grid */
     .bingo-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
@@ -161,8 +157,8 @@
       box-shadow: 0 4px 12px rgba(255, 77, 77, 0.4);
     }
     .pulse-circle {
-      width: 110px;
-      height: 110px;
+      width: 120px;
+      height: 120px;
       border-radius: 50%;
       background: radial-gradient(circle at 30% 30%, #ffc107, #d39e00);
       color: #000;
@@ -248,7 +244,7 @@
       <p class="text-warning text-center small fw-bold mb-0" id="selected-cartela-info">Selected Cartela: #1</p>
     </div>
 
-    <!-- Play Button (Properly spaced so it never hides) -->
+    <!-- Play Button -->
     <div class="mb-4">
       <button class="btn btn-warning w-100 fw-bold py-3 fs-5 shadow" id="play-btn" onclick="joinSelectedTable()">
         Play for 10 ETB
@@ -260,15 +256,15 @@
   <div id="screen-lobby" class="container text-center d-none">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
-      <span class="badge bg-warning text-dark fs-6" id="lobby-room-title">Future Table</span>
+      <span class="badge bg-info text-dark fs-6 px-3 py-2" id="lobby-player-count">👥 Players: 1</span>
     </div>
 
     <div class="card-custom my-3 py-3">
       <h5 class="text-light fw-bold mb-1">⏳ Room Starting Soon</h5>
       
       <div class="pulse-circle">
-        <span class="small fw-bold text-uppercase" style="font-size: 0.6rem;">Winner Prize (75%)</span>
-        <strong id="lobby-prize-pool" class="fs-5">0.00 ETB</strong>
+        <span class="small fw-bold text-uppercase" style="font-size: 0.55rem;">Winner Prize (75%)</span>
+        <strong id="lobby-prize-pool" class="fs-5">7.50 ETB</strong>
         <span id="lobby-timer" class="badge bg-dark text-warning mt-1" style="font-size: 0.85rem;">00:30</span>
       </div>
 
@@ -388,7 +384,6 @@
     let timeLeft = 120;
     let drawInterval = null;
 
-    // Build exactly 56 Cartela Circles Grid (7 x 8)
     function buildCartelaPickerGrid() {
       const gridContainer = document.getElementById('cartela-grid-picker');
       gridContainer.innerHTML = '';
@@ -519,12 +514,7 @@
             updateBalanceUI(data.balance);
           }
         })
-        .catch(() => {
-          fetch(`balance.php?telegram_id=${encodeURIComponent(telegramId)}`)
-            .then(res => res.json())
-            .then(data => { if (data.balance !== undefined) updateBalanceUI(data.balance); })
-            .catch(() => {});
-        });
+        .catch(() => {});
     }
 
     function startInstantDeposit() {
@@ -580,6 +570,7 @@
           updateBalanceUI(data.new_balance);
 
           // Dynamic calculation: (Stake * Total Players) * 75% for the single winner
+          // For example: 10 players * 10 ETB * 0.75 = 75.00 ETB
           const totalPlayersCount = data.total_players || 1;
           const totalPool = selectedCardStake * totalPlayersCount;
           const winnerPrize = totalPool * 0.75;
@@ -591,7 +582,7 @@
             player_number: selectedCartelaNumber 
           };
           
-          document.getElementById('lobby-room-title').textContent = `Table (${selectedCardStake} ETB)`;
+          document.getElementById('lobby-player-count').textContent = `👥 Players: ${totalPlayersCount}`;
           document.getElementById('lobby-prize-pool').textContent = `${winnerPrize.toFixed(2)} ETB`;
           document.getElementById('lobby-stake-text').textContent = selectedCardStake;
           
@@ -732,7 +723,7 @@
           .then(res => res.json())
           .then(data => {
             if (data.success) updateBalanceUI(data.new_balance);
-            alert(`🎉 BINGO WINNER!\n\nWinner: ${playerName} (Cartela #${currentRoom.player_number})\nPrize: ${currentRoom.prize_pool} ETB added to balance!`);
+            alert(`🎉 BINGO WINNER!\n\nWinner: ${playerName} (Cartela #${currentRoom.player_number})\nPrize: ${currentRoom.prize_pool.toFixed(2)} ETB added to balance!`);
             switchTab('game');
           });
       } else {
@@ -775,7 +766,6 @@
         .catch(() => alert('Network error.'));
     }
 
-    // Initialize picker and sync balance immediately on load
     buildCartelaPickerGrid();
     syncBalance();
   </script>
