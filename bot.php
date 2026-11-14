@@ -75,7 +75,7 @@ if ($chatId) {
     if (!checkChannelMembership($telegramId)) {
         $joinKeyboard = [
             'inline_keyboard' => [
-                [['text' => '📢 Join Our Channel', 'url' => 'https://t.me/Lali_Bingo']],
+                [['text' => '📢 Join Our Channel', 'url' => 'https://t.me/Future_Bingo']],
                 [['text' => '✅ I Have Joined', 'callback_data' => 'check_join'], ['text' => '🔄 Try Again', 'url' => 'https://t.me/Lali_Bingo_bot']]
             ]
         ];
