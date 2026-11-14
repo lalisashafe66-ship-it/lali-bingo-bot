@@ -5,7 +5,8 @@ header('Content-Type: application/json');
 // =========================================================================
 // 🔑 PASTE YOUR CHAPA SECRET KEY HERE (e.g. "CHASECK_TEST-xxxxxxxx...")
 // =========================================================================
-$CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-PASTE_YOUR_KEY_HERE'; 
+
+$CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
 
 $telegram_id = $_POST['telegram_id'] ?? '';
 $amount = floatval($_POST['amount'] ?? 0);
