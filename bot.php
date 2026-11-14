@@ -1,4 +1,5 @@
 <?php
+// Enable error logging for debugging
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
@@ -18,6 +19,9 @@ $telegramId = (string)($update['message']['from']['id'] ?? '');
 $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
 
+// 📢 SET YOUR OFFICIAL TELEGRAM CHANNEL USERNAME HERE (e.g. "@Lali_Bingo")
+$REQUIRED_CHANNEL = "@Lali_Bingo"; 
+
 function sendMessage($chatId, $message, $keyboard = null) {
     global $token;
     $url = "https://api.telegram.org/bot$token/sendMessage";
@@ -32,6 +36,25 @@ function sendMessage($chatId, $message, $keyboard = null) {
     @file_get_contents($url . '?' . http_build_query($data));
 }
 
+// Function to check if user has joined your channel
+function checkChannelMembership($userId) {
+    global $token, $REQUIRED_CHANNEL;
+    $url = "https://api.telegram.org/bot$token/getChatMember?chat_id=" . urlencode($REQUIRED_CHANNEL) . "&user_id=" . $userId;
+    $response = @file_get_contents($url);
+    if (!$response) return true; // Fail safe if API is unreachable so users aren't locked out
+    
+    $res = json_decode($response, true);
+    if (isset($res['ok']) && $res['ok'] === true) {
+        $status = $res['result']['status'] ?? '';
+        // Valid statuses meaning they are in the channel
+        if (in_array($status, ['creator', 'administrator', 'member'])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Connect to SQLite Database
 try {
     $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -48,6 +71,18 @@ try {
 }
 
 if ($chatId) {
+    // 1. Mandatory Channel Subscription Check
+    if (!checkChannelMembership($telegramId)) {
+        $joinKeyboard = [
+            'inline_keyboard' => [
+                [['text' => '📢 Join Our Channel', 'url' => 'https://t.me/Lali_Bingo']],
+                [['text' => '✅ I Have Joined', 'callback_data' => 'check_join'], ['text' => '🔄 Try Again', 'url' => 'https://t.me/Lali_Bingo_bot']]
+            ]
+        ];
+        sendMessage($chatId, "🚀 <b>Welcome to Lali Bingo!</b>\n\nTo use this bot and play games, you must first join our official channel: <b>{$REQUIRED_CHANNEL}</b>.\n\nAfter joining, tap <b>Try Again</b> below!", $joinKeyboard);
+        exit;
+    }
+
     $mainMenu = [
         'keyboard' => [
             [['text' => '🎮 Play Bingo'], ['text' => '💰 Balance']],
