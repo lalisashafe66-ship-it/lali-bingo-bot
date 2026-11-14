@@ -10,7 +10,8 @@ if (!$telegramId || $amount < 10) {
     exit;
 }
 
-$chapaSecretKey = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-XXXXXXXXXXXXXXXXXXXXXXXXX'; 
+// 🔑 REPLACE THIS WITH YOUR LIVE OR TEST CHAPA SECRET KEY
+$chapaSecretKey = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
 $txRef = "future_bingo_" . uniqid();
 
 $callbackUrl = "https://lali-bingo-bot.onrender.com/verify_payment.php?telegram_id=" . urlencode($telegramId) . "&amount=" . $amount;
@@ -19,7 +20,7 @@ $returnUrl = "https://lali-bingo-bot.onrender.com/index.html";
 $data = [
     'amount' => $amount,
     'currency' => 'ETB',
-    'email' => 'player_' . $telegramId . '@gmail.com', // Valid email format for Chapa
+    'email' => 'player_' . $telegramId . '@gmail.com',
     'first_name' => $firstName,
     'last_name' => 'Player',
     'tx_ref' => $txRef,
