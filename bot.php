@@ -6,15 +6,17 @@ error_reporting(E_ALL);
 $content = file_get_contents("php://input");
 $update = json_decode($content, true);
 
-if (!$update || !isset($update['message'])) {
+if (!$update) {
     exit;
 }
 
-$chatId = $update['message']['chat']['id'] ?? null;
+// Handle both standard messages and inline keyboard callbacks
+$chatId = $update['message']['chat']['id'] ?? $update['callback_query']['message']['chat']['id'] ?? null;
 $text = trim($update['message']['text'] ?? '');
 $contact = $update['message']['contact'] ?? null;
-$firstName = $update['message']['from']['first_name'] ?? 'Player';
-$telegramId = (string)($update['message']['from']['id'] ?? '');
+$firstName = $update['message']['from']['first_name'] ?? $update['callback_query']['from']['first_name'] ?? 'Player';
+$telegramId = (string)($update['message']['from']['id'] ?? $update['callback_query']['from']['id'] ?? '');
+$callbackData = $update['callback_query']['data'] ?? null;
 
 $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
@@ -41,7 +43,7 @@ function checkChannelMembership($userId) {
     global $token, $REQUIRED_CHANNEL;
     $url = "https://api.telegram.org/bot$token/getChatMember?chat_id=" . urlencode($REQUIRED_CHANNEL) . "&user_id=" . $userId;
     $response = @file_get_contents($url);
-    if (!$response) return true; // Fail safe if API is unreachable so users aren't locked out
+    if (!$response) return true; // Fail safe if API is unreachable
     
     $res = json_decode($response, true);
     if (isset($res['ok']) && $res['ok'] === true) {
@@ -70,15 +72,33 @@ try {
 }
 
 if ($chatId) {
+    // Handle Callback Query (e.g. "I Have Joined" button)
+    if ($callbackData === 'check_join') {
+        if (checkChannelMembership($telegramId)) {
+            sendMessage($chatId, "🎉 <b>Thank you for joining!</b>\nChoose an option from your menu below:", [
+                'keyboard' => [
+                    [['text' => '🎮 Play Bingo'], ['text' => '💰 Balance']],
+                    [['text' => '💳 Deposit'], ['text' => '💸 Withdraw']],
+                    [['text' => '📤 Invite Friends'], ['text' => 'ℹ️ Instruction']],
+                    [['text' => '📞 Support']]
+                ],
+                'resize_keyboard' => true
+            ]);
+        } else {
+            sendMessage($chatId, "⚠️ We couldn't verify your membership yet. Please make sure you join <b>{$REQUIRED_CHANNEL}</b> and try again.");
+        }
+        exit;
+    }
+
     // 1. Mandatory Channel Subscription Check
     if (!checkChannelMembership($telegramId)) {
         $joinKeyboard = [
             'inline_keyboard' => [
                 [['text' => '📢 Join Our Channel', 'url' => 'https://t.me/Future_Bingo']],
-                [['text' => '✅ I Have Joined', 'callback_data' => 'check_join'], ['text' => '🔄 Try Again', 'url' => 'https://t.me/Future_Bingo_bot']]
+                [['text' => '✅ I Have Joined', 'callback_data' => 'check_join']]
             ]
         ];
-        sendMessage($chatId, "🚀 <b>Welcome to Future Bingo!</b>\n\nTo use this bot and play games, you must first join our official channel: <b>{$REQUIRED_CHANNEL}</b>.\n\nAfter joining, tap <b>Try Again</b> below!", $joinKeyboard);
+        sendMessage($chatId, "🚀 <b>Welcome to Future Bingo!</b>\n\nTo use this bot and play games, you must first join our official channel: <b>{$REQUIRED_CHANNEL}</b>.\n\nAfter joining, tap <b>✅ I Have Joined</b> below!", $joinKeyboard);
         exit;
     }
 
@@ -165,7 +185,7 @@ if ($chatId) {
     elseif (stripos($text, 'Play Bingo') !== false) {
         $webAppKeyboard = [
             'inline_keyboard' => [
-                [['text' => '🚀 Launch Future Bingo App', 'web_app' => ['url' => 'https://lali-bingo-bot.onrender.com/index.html']]]
+                [['text' => '🚀 Launch Future Bingo App', 'web_app' => ['url' => 'https://future-bingo-bot.onrender.com/index.html']]]
             ]
         ];
         sendMessage($chatId, "Tap the button below to open your Future Bingo game app and choose a table:", $webAppKeyboard);
