@@ -4,7 +4,7 @@
 // =========================================================================
 // 🔑 PASTE YOUR CHAPA SECRET KEY HERE (e.g. "CHASECK_TEST-xxxxxxxx...")
 // =========================================================================
-$CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-PASTE_YOUR_KEY_HERE'; 
+$CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
 
 $input = @file_get_contents("php://input");
 $event = json_decode($input, true);
