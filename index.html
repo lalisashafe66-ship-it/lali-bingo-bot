@@ -12,6 +12,8 @@
       --card-bg: #132F33;
       --accent-gold: #FFC107;
       --accent-green: #198754;
+      --cell-taken: #1a444a;
+      --cell-selected: #FFC107;
     }
     body {
       background-color: var(--bg-dark);
@@ -31,8 +33,8 @@
       background-color: var(--card-bg);
       border: 2px solid #234d54;
       border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
       cursor: pointer;
       transition: all 0.2s ease;
       text-align: left;
@@ -69,6 +71,43 @@
       color: var(--accent-gold);
       font-weight: bold;
     }
+    /* Cartela Grid Selector Style */
+    .cartela-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 6px;
+      max-height: 240px;
+      overflow-y: auto;
+      padding: 4px;
+    }
+    .cartela-circle {
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background-color: var(--cell-taken);
+      border: 1px solid #28545c;
+      color: #ffffff;
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .cartela-circle.selected {
+      background-color: var(--accent-gold);
+      color: #000000;
+      border-color: #ffca2c;
+      transform: scale(1.08);
+      box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    /* Bingo Game Play Grid */
     .bingo-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
@@ -121,8 +160,8 @@
       box-shadow: 0 4px 12px rgba(255, 77, 77, 0.4);
     }
     .pulse-circle {
-      width: 130px;
-      height: 130px;
+      width: 120px;
+      height: 120px;
       border-radius: 50%;
       background: radial-gradient(circle at 30% 30%, #ffc107, #d39e00);
       color: #000;
@@ -130,7 +169,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      margin: 15px auto;
+      margin: 10px auto;
       box-shadow: 0 0 20px rgba(255, 193, 7, 0.5);
       animation: pulseAnim 1.5s infinite;
     }
@@ -156,25 +195,19 @@
 
   <!-- SCREENS CONTAINER -->
 
-  <!-- 1. GAME / TABLE SELECTION SCREEN -->
+  <!-- 1. GAME / TABLE & CARTELA SELECTION SCREEN -->
   <div id="screen-game" class="container text-center">
-    <div class="text-start mb-3">
-      <h3 class="fw-bold text-light">Choose a table</h3>
-      <p class="text-muted small">Pick a stake and your Cartela number (1-500). 5 ETB commission applies!</p>
+    
+    <!-- Stake Selection Options -->
+    <div class="text-start mb-2">
+      <h5 class="fw-bold text-light mb-1">Choose a Table Stake</h5>
     </div>
-
-    <!-- PLAYER CARTELA NUMBER INPUT (1 - 500) -->
-    <div class="card-custom mb-3 text-start">
-      <label for="player-number-input" class="form-label text-warning fw-bold small">Choose Your Cartela/Player Number (1 - 500):</label>
-      <input type="number" id="player-number-input" class="form-control bg-dark text-light border-secondary" min="1" max="500" value="1" placeholder="Enter number 1-500">
-    </div>
-
-    <div id="table-options-list">
+    <div id="table-options-list" class="mb-3">
       <div class="table-option selected" onclick="selectTable(10, this)">
         <div class="d-flex justify-content-between align-items-center">
           <div>
-            <h4 class="fw-bold text-warning mb-1">10 ETB <small class="text-muted fs-6">per cartela</small></h4>
-            <p class="small text-muted mb-0">Total pool 20 ETB (-5 ETB commission = 15 ETB prize)</p>
+            <h6 class="fw-bold text-warning mb-1">10 ETB <small class="text-muted">per cartela</small></h6>
+            <p class="small text-muted mb-0">Stake 10 ETB | 1 line to win</p>
           </div>
           <input type="radio" name="stake" checked class="form-check-input">
         </div>
@@ -183,8 +216,8 @@
       <div class="table-option" onclick="selectTable(20, this)">
         <div class="d-flex justify-content-between align-items-center">
           <div>
-            <h4 class="fw-bold text-warning mb-1">20 ETB <small class="text-muted fs-6">per cartela</small></h4>
-            <p class="small text-muted mb-0">Total pool 40 ETB (-5 ETB commission = 35 ETB prize)</p>
+            <h6 class="fw-bold text-warning mb-1">20 ETB <small class="text-muted">per cartela</small></h6>
+            <p class="small text-muted mb-0">Stake 20 ETB | 1 line to win</p>
           </div>
           <input type="radio" name="stake" class="form-check-input">
         </div>
@@ -193,25 +226,29 @@
       <div class="table-option" onclick="selectTable(50, this)">
         <div class="d-flex justify-content-between align-items-center">
           <div>
-            <h4 class="fw-bold text-warning mb-1">50 ETB <small class="text-muted fs-6">per cartela</small></h4>
-            <p class="small text-muted mb-0">Total pool 100 ETB (-5 ETB commission = 95 ETB prize)</p>
-          </div>
-          <input type="radio" name="stake" class="form-check-input">
-        </div>
-      </div>
-
-      <div class="table-option" onclick="selectTable(100, this)">
-        <div class="d-flex justify-content-between align-items-center">
-          <div>
-            <h4 class="fw-bold text-warning mb-1">100 ETB <small class="text-muted fs-6">per cartela</small></h4>
-            <p class="small text-muted mb-0">Total pool 200 ETB (-5 ETB commission = 195 ETB prize)</p>
+            <h6 class="fw-bold text-warning mb-1">50 ETB <small class="text-muted">per cartela</small></h6>
+            <p class="small text-muted mb-0">Stake 50 ETB | 1 line to win</p>
           </div>
           <input type="radio" name="stake" class="form-check-input">
         </div>
       </div>
     </div>
 
-    <button class="btn btn-warning w-100 fw-bold py-3 mt-2 fs-5 shadow" id="play-btn" onclick="joinSelectedTable()">
+    <!-- Visual Cartela Grid Selector (1 to 56) -->
+    <div class="card-custom text-start mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="small fw-bold text-warning">Tap to pick your Cartela(s):</span>
+        <div class="small text-muted d-flex align-items-center gap-2">
+          <span><span class="legend-dot bg-warning align-middle"></span> Yours</span>
+          <span><span class="legend-dot align-middle" style="background:#1a444a;"></span> Taken</span>
+        </div>
+      </div>
+      <!-- Grid container generated via JavaScript -->
+      <div id="cartela-grid-picker" class="cartela-picker-grid mb-2"></div>
+      <p class="text-muted text-center small mb-0" id="selected-cartela-info">Selected: None</p>
+    </div>
+
+    <button class="btn btn-warning w-100 fw-bold py-3 fs-5 shadow" id="play-btn" onclick="joinSelectedTable()">
       Play for 10 ETB
     </button>
   </div>
@@ -223,16 +260,16 @@
       <span class="badge bg-warning text-dark fs-6" id="lobby-room-title">Future Table</span>
     </div>
 
-    <div class="card-custom my-4 py-4">
-      <h5 class="text-light fw-bold mb-2">⏳ Waiting for Room Players...</h5>
+    <div class="card-custom my-4 py-3">
+      <h5 class="text-light fw-bold mb-1">⏳ Room Starting Soon</h5>
       
       <div class="pulse-circle">
-        <span class="small fw-bold text-uppercase" style="font-size: 0.65rem;">Winner Prize</span>
+        <span class="small fw-bold text-uppercase" style="font-size: 0.6rem;">Prize so far</span>
         <strong id="lobby-prize-pool" class="fs-5">15.00 ETB</strong>
-        <span id="lobby-timer" class="badge bg-dark text-warning mt-1" style="font-size: 0.9rem;">00:30</span>
+        <span id="lobby-timer" class="badge bg-dark text-warning mt-1" style="font-size: 0.85rem;">00:30</span>
       </div>
 
-      <p class="text-muted small mt-3 mb-0">Room Status: <strong class="text-light" id="lobby-players-count">Synchronized Multiplayer</strong></p>
+      <p class="text-muted small mt-2 mb-0">1 line to win • Stake <span id="lobby-stake-text">10</span> ETB per cartela</p>
     </div>
   </div>
 
@@ -335,6 +372,7 @@
 
     let balance = 0.00;
     let selectedCardStake = 10;
+    let selectedCartelaNumber = 1; // Default selected cartela
     let card = [];
     let marked = Array(25).fill(false);
     let calledNumbers = new Set();
@@ -346,6 +384,31 @@
     let gameTimerInterval = null;
     let timeLeft = 120;
     let drawInterval = null;
+
+    // Initialize Visual Cartela Grid Selector (1 to 56 numbers like the reference image)
+    function buildCartelaPickerGrid() {
+      const gridContainer = document.getElementById('cartela-grid-picker');
+      gridContainer.innerHTML = '';
+      for (let i = 1; i <= 56; i++) {
+        const circle = document.createElement('div');
+        circle.className = 'cartela-circle' + (i === selectedCartelaNumber ? ' selected' : '');
+        circle.textContent = i;
+        circle.onclick = () => selectCartelaNumber(i);
+        gridContainer.appendChild(circle);
+      }
+    }
+
+    function selectCartelaNumber(num) {
+      selectedCartelaNumber = num;
+      document.querySelectorAll('.cartela-circle').forEach(el => {
+        if (parseInt(el.textContent) === num) {
+          el.classList.add('selected');
+        } else {
+          el.classList.remove('selected');
+        }
+      });
+      document.getElementById('selected-cartela-info.textContent') || (document.getElementById('selected-cartela-info').textContent = `Selected Cartela: #${num}`);
+    }
 
     function selectTable(stake, element) {
       document.querySelectorAll('.table-option').forEach(el => {
@@ -374,6 +437,7 @@
       if (tab === 'game') {
         document.getElementById('screen-game').classList.remove('d-none');
         document.getElementById('nav-game').classList.add('active');
+        buildCartelaPickerGrid();
       } else if (tab === 'lobby') {
         document.getElementById('screen-lobby').classList.remove('d-none');
       } else if (tab === 'playroom') {
@@ -478,15 +542,6 @@
 
     function joinSelectedTable() {
       initAudio();
-      const playerNumInput = document.getElementById('player-number-input').value;
-      const playerNumber = parseInt(playerNumInput);
-
-      if (isNaN(playerNumber) || playerNumber < 1 || playerNumber > 500) {
-        sounds.errorBuzz();
-        alert('Please enter a valid cartela/player number between 1 and 500.');
-        return;
-      }
-
       if (balance < selectedCardStake) {
         sounds.errorBuzz();
         alert(`Insufficient balance! You need ${selectedCardStake} ETB. Please top up in the Wallet tab.`);
@@ -498,7 +553,7 @@
       formData.append('action', 'join_room');
       formData.append('telegram_id', telegramId);
       formData.append('fee', selectedCardStake);
-      formData.append('player_number', playerNumber);
+      formData.append('player_number', selectedCartelaNumber);
 
       fetch('api.php', { method: 'POST', body: formData })
         .then(res => res.json())
@@ -514,10 +569,11 @@
           const commission = 5;
           const winnerPrize = totalPool - commission;
 
-          currentRoom = { room_id: data.room_id, entry_fee: selectedCardStake, prize_pool: winnerPrize, player_number: data.player_number };
+          currentRoom = { room_id: data.room_id, entry_fee: selectedCardStake, prize_pool: winnerPrize, player_number: selectedCartelaNumber };
           
-          document.getElementById('lobby-room-title').textContent = `Table (${selectedCardStake} ETB) | No. #${data.player_number}`;
+          document.getElementById('lobby-room-title').textContent = `Table (${selectedCardStake} ETB)`;
           document.getElementById('lobby-prize-pool').textContent = `${currentRoom.prize_pool.toFixed(2)} ETB`;
+          document.getElementById('lobby-stake-text').textContent = selectedCardStake;
           
           switchTab('lobby');
           startLobbyCountdown();
@@ -699,6 +755,8 @@
         .catch(() => alert('Network error.'));
     }
 
+    // Initialize picker on load
+    buildCartelaPickerGrid();
     syncBalance();
   </script>
 </body>
