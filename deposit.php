@@ -1,7 +1,6 @@
 <?php
 header('Content-Type: application/json');
 
-// Get POST data
 $telegramId = $_POST['telegram_id'] ?? '';
 $amount = (float)($_POST['amount'] ?? 0);
 $firstName = $_POST['first_name'] ?? 'Player';
@@ -11,7 +10,6 @@ if (!$telegramId || $amount < 10) {
     exit;
 }
 
-// Chapa API Configuration (Replace with your live Chapa Secret Key if needed)
 $chapaSecretKey = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
 $txRef = "future_bingo_" . uniqid();
 
@@ -46,7 +44,7 @@ $err = curl_error($ch);
 curl_close($ch);
 
 if ($err) {
-    echo json_encode(['success' => false, 'error' => 'Gateway connection error.']);
+    echo json_encode(['success' => false, 'error' => 'Gateway connection error: ' . $err]);
     exit;
 }
 
@@ -58,9 +56,13 @@ if (isset($result['status']) && $result['status'] === 'success') {
         'checkout_url' => $result['data']['checkout_url']
     ]);
 } else {
+    $errorMsg = $result['message'] ?? 'Could not initialize Chapa payment.';
+    if (is_array($errorMsg)) {
+        $errorMsg = json_encode($errorMsg);
+    }
     echo json_encode([
         'success' => false,
-        'error' => $result['message'] ?? 'Could not initialize Chapa payment.'
+        'error' => $errorMsg
     ]);
 }
 ?>
