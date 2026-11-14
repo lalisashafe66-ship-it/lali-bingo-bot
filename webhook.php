@@ -4,7 +4,7 @@
 // =========================================================================
 // 🔑 PASTE YOUR CHAPA SECRET KEY HERE (e.g. "CHASECK_TEST-xxxxxxxx...")
 // =========================================================================
-$CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
+$CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-PASTE_YOUR_KEY_HERE'; 
 
 $input = @file_get_contents("php://input");
 $event = json_decode($input, true);
@@ -15,14 +15,13 @@ if (!$tx_ref) {
     exit;
 }
 
-// Extract telegram_id from tx_ref format: lali-bingo-{telegram_id}-{timestamp}
 $parts = explode('-', $tx_ref);
 if (count($parts) < 3) {
     exit;
 }
 $telegram_id = $parts[2];
 
-// Verify transaction with Chapa API to prevent fake webhooks
+// Verify transaction with Chapa API
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, "https://api.chapa.co/v1/transaction/verify/" . urlencode($tx_ref));
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -41,11 +40,9 @@ if (isset($res['status']) && $res['status'] === 'success') {
         $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // Update player balance in SQLite
         $stmt = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
         $stmt->execute([$amount_paid, $telegram_id]);
 
-        // Fetch updated balance & name
         $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegram_id]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -54,7 +51,6 @@ if (isset($res['status']) && $res['status'] === 'success') {
             $newBal = $player['balance'];
             $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
             
-            // Send instant Telegram notification to the player
             $msg = "🎉 <b>Automated Deposit Confirmed!</b>\n\n" .
                    "<b>{$amount_paid} ETB</b> has been successfully added to your Lali Bingo wallet.\n" .
                    "New Balance: <b>{$newBal} ETB</b>\n\n" .
@@ -67,7 +63,7 @@ if (isset($res['status']) && $res['status'] === 'success') {
             ]));
         }
     } catch (Exception $e) {
-        // Log error if needed
+        // Log error
     }
 }
 http_response_code(200);
