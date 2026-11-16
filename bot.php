@@ -59,12 +59,24 @@ function checkChannelMembership($userId) {
 try {
     $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+    // Ensure players table exists
     $pdo->exec("CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id TEXT UNIQUE,
         first_name TEXT,
         phone TEXT,
         balance REAL DEFAULT 0.00,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
+
+    // Ensure transactions table exists for automated deposit tracking
+    $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id TEXT,
+        tx_reference TEXT UNIQUE,
+        amount REAL,
+        status TEXT DEFAULT 'unclaimed',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 } catch (PDOException $e) {
@@ -161,6 +173,33 @@ if ($chatId) {
             sendMessage($chatId, "⚠️ Usage format: <code>/add TELEGRAM_ID AMOUNT</code>\nExample: <code>/add 730967613 200</code>");
         }
     }
+    // Automated transaction code verification command
+    elseif (stripos($text, '/verify') === 0) {
+        $parts = preg_split('/\s+/', trim($text));
+        if (count($parts) >= 2) {
+            $txRef = trim($parts[1]);
+            
+            $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ? AND status = 'unclaimed'");
+            $stmt->execute([$txRef]);
+            $tx = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($tx) {
+                $amount = (float)$tx['amount'];
+                $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?")->execute([$telegramId, $tx['id']]);
+                $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?")->execute([$amount, $telegramId]);
+
+                $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+                $stmt->execute([$telegramId]);
+                $newBal = $stmt->fetch(PDO::FETCH_ASSOC)['balance'];
+
+                sendMessage($chatId, "✅ <b>Deposit Successful!</b>\n\n<b>{$amount} ETB</b> has been credited to your wallet.\nNew Balance: <b>{$newBal} ETB</b>", $mainMenu);
+            } else {
+                sendMessage($chatId, "❌ Transaction ID not found, already claimed, or waiting for SMS verification.");
+            }
+        } else {
+            sendMessage($chatId, "⚠️ Usage: <code>/verify TRANSACTION_ID</code>\nExample: <code>/verify BGH82K91LM</code>");
+        }
+    }
     elseif ($text === '/start' || stripos($text, 'start') !== false) {
         $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegramId]);
@@ -199,9 +238,12 @@ if ($chatId) {
     }
     elseif (stripos($text, 'Deposit') !== false) {
         $depositText = "💳 <b>Deposit Funds & Top-Up</b>\n\n" .
-                       "Transfer funds to our accounts below and send your transaction receipt along with your ID (<code>{$telegramId}</code>) to support (@Future_Support):\n\n" .
+                       "1. Transfer funds to our accounts below:\n" .
                        "🏦 <b>CBE:</b> <code>1000171689116</code> (Lalisa Shafe Nagari)\n" .
-                       "📱 <b>Telebirr:</b> <code>0917461538</code> (Lalisa Shafe Nagari)";
+                       "📱 <b>Telebirr:</b> <code>0917461538</code> (Lalisa Shafe Nagari)\n\n" .
+                       "2. Once you receive your confirmation SMS, reply right here in the chat with your <b>Transaction ID</b> using the command:\n" .
+                       "<code>/verify TRANSACTION_ID</code>\n\n" .
+                       "<i>Example:</i> <code>/verify BGH82K91LM</code>";
         sendMessage($chatId, $depositText, $mainMenu);
     }
     elseif (stripos($text, 'Withdraw') !== false) {
