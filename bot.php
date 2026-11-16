@@ -20,7 +20,7 @@ $callbackData = $update['callback_query']['data'] ?? null;
 $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
 
-// 📢 OFFICIAL TELEGRAM CHANNEL USERNAME
+// 📢 OFFICIAL TELEGRAM CHANNEL USERNAME (FIXED)
 $REQUIRED_CHANNEL = "@Future_Bingo"; 
 
 function sendMessage($chatId, $message, $keyboard = null) {
@@ -162,7 +162,6 @@ if ($chatId) {
                 sendMessage($chatId, "✅ Credited <b>{$amount} ETB</b> to <b>{$targetPlayer['first_name']}</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$newBal} ETB</b>");
                 sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\nCurrent Balance: <b>{$newBal} ETB</b>");
             } else {
-                // Automatically create player record if missing so admin /add never fails
                 $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', ?)");
                 $ins->execute([$targetId, $amount]);
 
