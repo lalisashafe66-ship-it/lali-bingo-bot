@@ -15,7 +15,6 @@ try {
     $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // 1. Check if transaction exists and is unclaimed
     $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ? AND status = 'unclaimed'");
     $stmt->execute([$txRef]);
     $tx = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -27,21 +26,17 @@ try {
 
     $amount = (float)$tx['amount'];
 
-    // 2. Mark transaction as claimed
     $updateTx = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?");
     $updateTx->execute([$telegramId, $tx['id']]);
 
-    // 3. Credit player balance
     $updateBalance = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
     $updateBalance->execute([$amount, $telegramId]);
 
-    // Fetch new balance
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
     $newBal = $player ? $player['balance'] : $amount;
 
-    // Send Telegram Notification
     $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
     $msg = "🎉 <b>Automated Deposit Confirmed!</b>\n\n" .
            "<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\n" .
