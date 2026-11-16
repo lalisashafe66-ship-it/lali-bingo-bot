@@ -2,7 +2,6 @@
 // webhook.php - Receives incoming SMS notifications from Android SMS Forwarder
 header('Content-Type: application/json');
 
-// Verify secret token to block unauthorized posts
 $secret = $_GET['secret'] ?? '';
 if ($secret !== 'LaliBingoSecret2026') {
     http_response_code(403);
@@ -14,7 +13,6 @@ $input = json_decode(file_get_contents('php://input'), true);
 $smsText = $input['message'] ?? $input['text'] ?? $_POST['message'] ?? $_POST['text'] ?? '';
 
 if (empty($smsText)) {
-    // Fallback if raw post body is sent
     $smsText = file_get_contents('php://input');
 }
 
@@ -29,7 +27,6 @@ try {
     $pdo = new PDO("sqlite:" . $dbPath);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // Ensure transactions table exists
     $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id TEXT,
@@ -40,10 +37,8 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Check if this is an incoming credit SMS (Telebirr or Bank deposit)
     if (stripos($smsText, 'received') !== false || stripos($smsText, 'credited') !== false || stripos($smsText, 'ETB') !== false || stripos($smsText, 'Birr') !== false) {
         
-        // Robust Amount Extractor: Finds numbers preceding or following ETB/Birr
         $amount = 0.0;
         if (preg_match('/([0-9]{1,3}(?:,\d{3})*(?:\.\d+)?|[0-9]+(?:\.\d+)?)\s*(?:ETB|Birr)/i', $smsText, $m)) {
             $amount = (float)str_replace(',', '', $m[1]);
@@ -53,7 +48,6 @@ try {
             $amount = (float)$m[1];
         }
 
-        // Extract Transaction Number (e.g. DKG49EJKIE or similar reference)
         $txRef = '';
         if (preg_match('/(?:transaction number is|reference number is|Ref No[:\s]*)([A-Z0-9]+)/i', $smsText, $refMatches)) {
             $txRef = trim($refMatches[1]);
@@ -70,7 +64,6 @@ try {
             }
         }
 
-        // If regex didn't catch the exact ref, grab the last large alphanumeric token as fallback
         if (empty($txRef)) {
             preg_match_all('/\b[A-Z0-9]{8,12}\b/', $smsText, $allTokens);
             if (!empty($allTokens[0])) {
@@ -79,7 +72,6 @@ try {
         }
 
         if ($amount > 0 && !empty($txRef)) {
-            // Insert or replace so if an amount updates, it records correctly
             $stmt = $pdo->prepare("INSERT OR REPLACE INTO transactions (tx_reference, amount, source, status) VALUES (?, ?, 'Telebirr_SMS', 'unclaimed')");
             $stmt->execute([$txRef, $amount]);
         }
