@@ -1,70 +1,47 @@
 <?php
-// webhook.php - Receives payment confirmation from Chapa and updates SQLite
+// webhook.php - Receives forwarded bank/Telebirr SMS or transaction logs
+header('Content-Type: application/json');
 
-// =========================================================================
-// 🔑 CHAPA SECRET KEY (Loaded from Render Environment or fallback below)
-// =========================================================================
-$CHAPA_SECRET_KEY = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
+$input = file_get_contents("php://input");
+$data = json_decode($input, true);
 
-$input = @file_get_contents("php://input");
-$event = json_decode($input, true);
+$sms_text = $data['text'] ?? $_GET['text'] ?? '';
+$tx_ref = $data['tx_ref'] ?? $_GET['tx_ref'] ?? null;
+$amount = (float)($data['amount'] ?? $_GET['amount'] ?? 0);
 
-$tx_ref = $_GET['tx_ref'] ?? $event['tx_ref'] ?? null;
+try {
+    $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-if (!$tx_ref) {
-    exit;
-}
+    $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id TEXT,
+        tx_reference TEXT UNIQUE,
+        amount REAL,
+        status TEXT DEFAULT 'unclaimed',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
 
-$parts = explode('-', $tx_ref);
-if (count($parts) < 3) {
-    exit;
-}
-$telegram_id = $parts[2];
-
-// Verify transaction with Chapa API
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, "https://api.chapa.co/v1/transaction/verify/" . urlencode($tx_ref));
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    "Authorization: Bearer " . $CHAPA_SECRET_KEY
-]);
-
-$response = curl_exec($ch);
-curl_close($ch);
-$res = json_decode($response, true);
-
-if (isset($res['status']) && $res['status'] === 'success') {
-    $amount_paid = floatval($res['data']['amount']);
-
-    try {
-        $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-        $stmt = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
-        $stmt->execute([$amount_paid, $telegram_id]);
-
-        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ?");
-        $stmt->execute([$telegram_id]);
-        $player = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($player) {
-            $newBal = $player['balance'];
-            $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
-            
-            $msg = "🎉 <b>Automated Deposit Confirmed!</b>\n\n" .
-                   "<b>{$amount_paid} ETB</b> has been successfully added to your Future Bingo wallet.\n" .
-                   "New Balance: <b>{$newBal} ETB</b>\n\n" .
-                   "You can now play instantly!";
-            
-            @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?" . http_build_query([
-                'chat_id' => $telegram_id,
-                'text' => $msg,
-                'parse_mode' => 'HTML'
-            ]));
+    // If an SMS forwarder sends raw message text, parse Transaction ID & Amount automatically
+    if (!empty($sms_text)) {
+        if (preg_match('/([A-Z0-9]{8,12})/', $sms_text, $matches)) {
+            $tx_ref = $matches[1];
+            preg_match('/([0-9]+(?:\.[0-9]+)?)\s*(?:ETB|Br)/i', $sms_text, $amount_matches);
+            $amount = $amount_matches[1] ?? 0;
         }
-    } catch (Exception $e) {
-        // Log error
     }
+
+    if ($tx_ref && $amount > 0) {
+        $stmt = $pdo->prepare("INSERT OR IGNORE INTO transactions (tx_reference, amount, status) VALUES (?, ?, 'unclaimed')");
+        $stmt->execute([$tx_ref, $amount]);
+
+        echo json_encode(["status" => "success", "message" => "Transaction logged successfully"]);
+        exit;
+    }
+
+    echo json_encode(["status" => "error", "message" => "Invalid data or SMS format"]);
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(["status" => "error", "message" => $e->getMessage()]);
 }
-http_response_code(200);
 ?>
