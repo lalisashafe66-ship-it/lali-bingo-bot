@@ -10,7 +10,6 @@ if (!$update) {
     exit;
 }
 
-// Handle both standard messages and inline keyboard callbacks
 $chatId = $update['message']['chat']['id'] ?? $update['callback_query']['message']['chat']['id'] ?? null;
 $text = trim($update['message']['text'] ?? '');
 $contact = $update['message']['contact'] ?? null;
@@ -38,12 +37,11 @@ function sendMessage($chatId, $message, $keyboard = null) {
     @file_get_contents($url . '?' . http_build_query($data));
 }
 
-// Function to check if user has joined your channel
 function checkChannelMembership($userId) {
     global $token, $REQUIRED_CHANNEL;
     $url = "https://api.telegram.org/bot$token/getChatMember?chat_id=" . urlencode($REQUIRED_CHANNEL) . "&user_id=" . $userId;
     $response = @file_get_contents($url);
-    if (!$response) return true; // Fail safe if API is unreachable
+    if (!$response) return true;
     
     $res = json_decode($response, true);
     if (isset($res['ok']) && $res['ok'] === true) {
@@ -55,12 +53,10 @@ function checkChannelMembership($userId) {
     return false;
 }
 
-// Connect to SQLite Database
 try {
     $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
-    // Ensure players table exists with referral tracking
     $pdo->exec("CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id TEXT UNIQUE,
@@ -71,7 +67,6 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Ensure transactions table exists for automated deposit tracking
     $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id TEXT,
@@ -86,10 +81,9 @@ try {
 }
 
 if ($chatId) {
-    // Handle Callback Query (e.g. "I Have Joined" button)
     if ($callbackData === 'check_join') {
         if (checkChannelMembership($telegramId)) {
-            sendMessage($chatId, "🎉 <b>Thank you for joining!</b>\nChoose an option from your menu below:", [
+            sendMessage($chatId, "🎉 <b>Thank you for joining Future Bingo!</b>\nChoose an option from your menu below:", [
                 'keyboard' => [
                     [['text' => '🎮 Play Bingo'], ['text' => '💰 Balance']],
                     [['text' => '💳 Deposit'], ['text' => '💸 Withdraw']],
@@ -104,7 +98,6 @@ if ($chatId) {
         exit;
     }
 
-    // 1. Mandatory Channel Subscription Check
     if (!checkChannelMembership($telegramId)) {
         $joinKeyboard = [
             'inline_keyboard' => [
@@ -175,7 +168,6 @@ if ($chatId) {
             sendMessage($chatId, "⚠️ Usage format: <code>/add TELEGRAM_ID AMOUNT</code>\nExample: <code>/add 730967613 200</code>");
         }
     }
-    // Automated transaction code verification command
     elseif (stripos($text, '/verify') === 0) {
         $parts = preg_split('/\s+/', trim($text));
         if (count($parts) >= 2) {
@@ -222,9 +214,9 @@ if ($chatId) {
                 sendMessage($referrerId, "🎉 <b>Referral Bonus!</b>\nA new friend joined using your link. <b>{$bonusAmount} ETB</b> has been added to your balance!");
             }
 
-            sendMessage($chatId, "👋 Welcome, <b>{$firstName}</b>!\nYour profile is registered. Choose an option from the menu below:", $mainMenu);
+            sendMessage($chatId, "👋 Welcome to <b>Future Bingo</b>, <b>{$firstName}</b>!\nYour profile is registered. Choose an option from the menu below:", $mainMenu);
         } else {
-            sendMessage($chatId, "👋 Welcome back, <b>{$firstName}</b>!\nChoose an option from the menu below:", $mainMenu);
+            sendMessage($chatId, "👋 Welcome back to <b>Future Bingo</b>, <b>{$firstName}</b>!\nChoose an option from the menu below:", $mainMenu);
         }
     }
     elseif ($contact) {
@@ -270,7 +262,7 @@ if ($chatId) {
         sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/Future_Bingo_bot?start={$telegramId}", $mainMenu);
     }
     elseif (stripos($text, 'Instruction') !== false) {
-        sendMessage($chatId, "📖 <b>How to Play:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, 50, or 100 ETB) and your Cartela number (1-56).\n3. Complete a line and tap <b>CLAIM BINGO</b> to win!", $mainMenu);
+        sendMessage($chatId, "📖 <b>How to Play Future Bingo:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, or 50 ETB) and your Cartela number (1-56).\n3. Complete a line and tap <b>CLAIM BINGO</b> to win!", $mainMenu);
     }
     elseif (stripos($text, 'Support') !== false) {
         sendMessage($chatId, "📞 Contact our support team: @Future_Support", $mainMenu);
