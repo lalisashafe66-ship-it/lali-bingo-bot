@@ -59,16 +59,13 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 if ($action === 'get_balance') {
     $telegramId = $_GET['telegram_id'] ?? '';
     
-    // 1. First, check if player already exists in database
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($player) {
-        // Player exists! Return their actual saved balance (e.g. 190.00 or 200.00)
         $balance = (float)$player['balance'];
     } else {
-        // Player does not exist at all, create them with 0.00
         $stmtIns = $pdo->prepare("INSERT INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
         $stmtIns->execute([$telegramId]);
         $balance = 0.00;
@@ -162,7 +159,7 @@ elseif ($action === 'request_withdrawal') {
     $method = $_POST['method'] ?? 'Telebirr';
     $account = $_POST['account'] ?? '';
 
-    $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+    $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -178,10 +175,26 @@ elseif ($action === 'request_withdrawal') {
     $log = $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')");
     $log->execute([$telegramId, $amount, $method, $account]);
 
+    // Admin Alert Notification
+    $ADMIN_ID = "730967613";
+    $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
+    $adminMsg = "💸 <b>New Withdrawal Request!</b>\n\n" .
+                "• <b>Player:</b> {$player['first_name']}\n" .
+                "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
+                "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
+                "• <b>Method:</b> {$method}\n" .
+                "• <b>Account/Phone:</b> <code>{$account}</code>";
+
+    @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?" . http_build_query([
+        'chat_id' => $ADMIN_ID,
+        'text' => $adminMsg,
+        'parse_mode' => 'HTML'
+    ]));
+
     echo json_encode([
         'success' => true,
         'new_balance' => $newBalance,
-        'message' => 'Withdrawal request submitted!'
+        'message' => 'Withdrawal request submitted! Admin has been notified.'
     ]);
 }
 else {
