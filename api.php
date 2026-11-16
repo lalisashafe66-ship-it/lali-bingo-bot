@@ -59,6 +59,11 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 if ($action === 'get_balance') {
     $telegramId = $_GET['telegram_id'] ?? '';
     
+    if (empty($telegramId)) {
+        echo json_encode(['success' => false, 'balance' => 0.00]);
+        exit;
+    }
+
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -66,9 +71,14 @@ if ($action === 'get_balance') {
     if ($player) {
         $balance = (float)$player['balance'];
     } else {
-        $stmtIns = $pdo->prepare("INSERT INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
+        // Safely initialize new players with 0.00 only if they don't exist yet
+        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
         $stmtIns->execute([$telegramId]);
-        $balance = 0.00;
+        
+        // Re-query to guarantee we fetch the exact existing balance if a race condition occurred
+        $stmt->execute([$telegramId]);
+        $playerCheck = $stmt->fetch(PDO::FETCH_ASSOC);
+        $balance = $playerCheck ? (float)$playerCheck['balance'] : 0.00;
     }
     
     echo json_encode([
