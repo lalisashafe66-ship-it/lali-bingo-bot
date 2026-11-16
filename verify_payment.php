@@ -1,4 +1,5 @@
 <?php
+// verify_payment.php - Verifies local transaction reference and credits wallet
 header('Content-Type: application/json');
 
 $input = json_decode(file_get_contents('php://input'), true);
@@ -14,12 +15,23 @@ try {
     $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
+    // Ensure transactions table exists to prevent SQLSTATE errors
+    $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id TEXT,
+        tx_reference TEXT UNIQUE,
+        amount REAL,
+        source TEXT,
+        status TEXT DEFAULT 'unclaimed',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
+
     $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ? AND status = 'unclaimed'");
     $stmt->execute([$txRef]);
     $tx = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$tx) {
-        echo json_encode(['success' => false, 'message' => 'Transaction ID not found, already claimed, or waiting for SMS confirmation.']);
+        echo json_encode(['success' => false, 'message' => 'Transaction ID not found, already claimed, or waiting for SMS confirmation from your SMS forwarder.']);
         exit;
     }
 
