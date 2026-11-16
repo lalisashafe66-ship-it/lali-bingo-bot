@@ -4,7 +4,9 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 
 try {
-    $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
+    // Explicit absolute database path matching bot.php
+    $dbPath = __DIR__ . '/bingo.db';
+    $pdo = new PDO("sqlite:" . $dbPath);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS players (
@@ -13,6 +15,7 @@ try {
         first_name TEXT,
         phone TEXT,
         balance REAL DEFAULT 0.00,
+        referred_by TEXT DEFAULT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
@@ -50,7 +53,7 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 } catch (PDOException $e) {
-    echo json_encode(['success' => false, 'error' => 'Database connection failed']);
+    echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
     exit;
 }
 
@@ -71,7 +74,8 @@ if ($action === 'get_balance') {
     if ($player) {
         $balance = (float)$player['balance'];
     } else {
-        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
+        // Automatically initialize new players with 0.00 if they don't exist yet
+        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', 0.00)");
         $stmtIns->execute([$telegramId]);
         
         $stmt->execute([$telegramId]);
@@ -121,7 +125,7 @@ elseif ($action === 'join_room') {
         $roomId = $room['id'];
     }
 
-    $logRoom = $pdo->prepare("INSERT OR REPLACE INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
+    $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
     $logRoom->execute([$roomId, $telegramId, $playerNumber]);
 
     $countStmt = $pdo->prepare("SELECT COUNT(DISTINCT telegram_id) as total_players FROM room_players WHERE room_id = ?");
