@@ -20,7 +20,7 @@ $callbackData = $update['callback_query']['data'] ?? null;
 $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
 
-// 📢 OFFICIAL TELEGRAM CHANNEL USERNAME (FIXED)
+// 📢 OFFICIAL TELEGRAM CHANNEL USERNAME
 $REQUIRED_CHANNEL = "@Future_Bingo"; 
 
 function sendMessage($chatId, $message, $keyboard = null) {
