@@ -57,9 +57,9 @@ try {
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 if ($action === 'get_balance') {
-    $telegramId = $_GET['telegram_id'] ?? '';
+    $telegramId = trim($_GET['telegram_id'] ?? '');
     
-    if (empty($telegramId)) {
+    if (empty($telegramId) || $telegramId === 'undefined' || $telegramId === 'null') {
         echo json_encode(['success' => false, 'balance' => 0.00]);
         exit;
     }
@@ -85,7 +85,7 @@ if ($action === 'get_balance') {
     ]);
 }
 elseif ($action === 'join_room') {
-    $telegramId = $_POST['telegram_id'] ?? '';
+    $telegramId = trim($_POST['telegram_id'] ?? '');
     $fee = (float)($_POST['fee'] ?? 0);
     $playerNumber = (int)($_POST['player_number'] ?? 0);
 
@@ -121,7 +121,7 @@ elseif ($action === 'join_room') {
         $roomId = $room['id'];
     }
 
-    $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
+    $logRoom = $pdo->prepare("INSERT OR REPLACE INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
     $logRoom->execute([$roomId, $telegramId, $playerNumber]);
 
     $countStmt = $pdo->prepare("SELECT COUNT(DISTINCT telegram_id) as total_players FROM room_players WHERE room_id = ?");
@@ -138,7 +138,7 @@ elseif ($action === 'join_room') {
     ]);
 }
 elseif ($action === 'claim_win') {
-    $telegramId = $_POST['telegram_id'] ?? '';
+    $telegramId = trim($_POST['telegram_id'] ?? '');
     $prize = (float)($_POST['prize'] ?? 0);
     $roomId = $_POST['room_id'] ?? 0;
     $winnerName = $_POST['winner_name'] ?? 'Player';
@@ -162,7 +162,7 @@ elseif ($action === 'claim_win') {
     ]);
 }
 elseif ($action === 'request_withdrawal') {
-    $telegramId = $_POST['telegram_id'] ?? '';
+    $telegramId = trim($_POST['telegram_id'] ?? '');
     $amount = (float)($_POST['amount'] ?? 0);
     $method = $_POST['method'] ?? 'Telebirr';
     $account = $_POST['account'] ?? '';
