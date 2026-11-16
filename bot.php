@@ -60,13 +60,14 @@ try {
     $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
-    // Ensure players table exists
+    // Ensure players table exists with referral tracking
     $pdo->exec("CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id TEXT UNIQUE,
         first_name TEXT,
         phone TEXT,
         balance REAL DEFAULT 0.00,
+        referred_by TEXT DEFAULT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
@@ -76,6 +77,7 @@ try {
         telegram_id TEXT,
         tx_reference TEXT UNIQUE,
         amount REAL,
+        source TEXT,
         status TEXT DEFAULT 'unclaimed',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
@@ -201,17 +203,28 @@ if ($chatId) {
         }
     }
     elseif ($text === '/start' || stripos($text, 'start') !== false) {
+        $parts = preg_split('/\s+/', trim($text));
+        $referrerId = ($parts && count($parts) > 1) ? trim($parts[1]) : null;
+
         $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($player && !empty($player['phone'])) {
-            sendMessage($chatId, "👋 Welcome back, <b>{$firstName}</b>!\nChoose an option from the menu below:", $mainMenu);
-        } else {
-            $stmt = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, ?, 0.00) ON CONFLICT(telegram_id) DO NOTHING");
-            $stmt->execute([$telegramId, $firstName, 'WebUser']);
+        if (!$player) {
+            $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance, referred_by) VALUES (?, ?, 'WebUser', 0.00, ?)");
+            $ins->execute([$telegramId, $firstName, $referrerId]);
+
+            if ($referrerId && $referrerId !== $telegramId) {
+                $bonusAmount = 5.00;
+                $updRef = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
+                $updRef->execute([$bonusAmount, $referrerId]);
+
+                sendMessage($referrerId, "🎉 <b>Referral Bonus!</b>\nA new friend joined using your link. <b>{$bonusAmount} ETB</b> has been added to your balance!");
+            }
 
             sendMessage($chatId, "👋 Welcome, <b>{$firstName}</b>!\nYour profile is registered. Choose an option from the menu below:", $mainMenu);
+        } else {
+            sendMessage($chatId, "👋 Welcome back, <b>{$firstName}</b>!\nChoose an option from the menu below:", $mainMenu);
         }
     }
     elseif ($contact) {
@@ -254,10 +267,10 @@ if ($chatId) {
         sendMessage($chatId, $withdrawText, $mainMenu);
     }
     elseif (stripos($text, 'Invite Friends') !== false) {
-        sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/Future_Bingo_bot", $mainMenu);
+        sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/Future_Bingo_bot?start={$telegramId}", $mainMenu);
     }
     elseif (stripos($text, 'Instruction') !== false) {
-        sendMessage($chatId, "📖 <b>How to Play:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, 50, or 100 ETB) and your Cartela number (1-500).\n3. Complete a line and tap <b>CLAIM BINGO</b> to win!", $mainMenu);
+        sendMessage($chatId, "📖 <b>How to Play:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, 50, or 100 ETB) and your Cartela number (1-56).\n3. Complete a line and tap <b>CLAIM BINGO</b> to win!", $mainMenu);
     }
     elseif (stripos($text, 'Support') !== false) {
         sendMessage($chatId, "📞 Contact our support team: @Future_Support", $mainMenu);
