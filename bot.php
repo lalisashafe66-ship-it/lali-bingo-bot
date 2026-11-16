@@ -162,7 +162,12 @@ if ($chatId) {
                 sendMessage($chatId, "✅ Credited <b>{$amount} ETB</b> to <b>{$targetPlayer['first_name']}</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$newBal} ETB</b>");
                 sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\nCurrent Balance: <b>{$newBal} ETB</b>");
             } else {
-                sendMessage($chatId, "❌ Player with Telegram ID <code>{$targetId}</code> not found in database.");
+                // Automatically create player record if missing so admin /add never fails
+                $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', ?)");
+                $ins->execute([$targetId, $amount]);
+
+                sendMessage($chatId, "✅ Player created and credited <b>{$amount} ETB</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$amount} ETB</b>");
+                sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\nCurrent Balance: <b>{$amount} ETB</b>");
             }
         } else {
             sendMessage($chatId, "⚠️ Usage format: <code>/add TELEGRAM_ID AMOUNT</code>\nExample: <code>/add 730967613 200</code>");
