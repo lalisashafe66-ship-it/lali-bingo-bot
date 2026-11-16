@@ -4,10 +4,12 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 
 try {
-    // Explicit absolute database path matching bot.php
     $dbPath = __DIR__ . '/bingo.db';
     $pdo = new PDO("sqlite:" . $dbPath);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+    // Enable WAL mode for concurrent write safety on Render
+    $pdo->exec("PRAGMA journal_mode = WAL;");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,7 +76,6 @@ if ($action === 'get_balance') {
     if ($player) {
         $balance = (float)$player['balance'];
     } else {
-        // Automatically initialize new players with 0.00 if they don't exist yet
         $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', 0.00)");
         $stmtIns->execute([$telegramId]);
         
@@ -83,10 +84,7 @@ if ($action === 'get_balance') {
         $balance = $playerCheck ? (float)$playerCheck['balance'] : 0.00;
     }
     
-    echo json_encode([
-        'success' => true,
-        'balance' => $balance
-    ]);
+    echo json_encode(['success' => true, 'balance' => $balance]);
 }
 elseif ($action === 'join_room') {
     $telegramId = trim($_POST['telegram_id'] ?? '');
@@ -98,48 +96,58 @@ elseif ($action === 'join_room') {
         exit;
     }
 
-    $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
-    $stmt->execute([$telegramId]);
-    $player = $stmt->fetch(PDO::FETCH_ASSOC);
+    // Use transaction to ensure balance is never miscalculated during simultaneous plays
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+        $stmt->execute([$telegramId]);
+        $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    $currentBalance = $player ? (float)$player['balance'] : 0.00;
+        $currentBalance = $player ? (float)$player['balance'] : 0.00;
 
-    if ($currentBalance < $fee) {
-        echo json_encode(['success' => false, 'error' => 'Insufficient balance! Please top up via Deposit.']);
-        exit;
+        if ($currentBalance < $fee) {
+            $pdo->rollBack();
+            echo json_encode(['success' => false, 'error' => 'Insufficient balance! Please top up via Deposit.']);
+            exit;
+        }
+
+        $newBalance = $currentBalance - $fee;
+        $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
+        $update->execute([$newBalance, $telegramId]);
+
+        $roomStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'waiting' ORDER BY id ASC LIMIT 1");
+        $roomStmt->execute([$fee]);
+        $room = $roomStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$room) {
+            $insRoom = $pdo->prepare("INSERT INTO rooms (stake, status, created_at) VALUES (?, 'waiting', ?)");
+            $insRoom->execute([$fee, time()]);
+            $roomId = $pdo->lastInsertId();
+        } else {
+            $roomId = $room['id'];
+        }
+
+        $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
+        $logRoom->execute([$roomId, $telegramId, $playerNumber]);
+
+        $pdo->commit();
+
+        $countStmt = $pdo->prepare("SELECT COUNT(DISTINCT telegram_id) as total_players FROM room_players WHERE room_id = ?");
+        $countStmt->execute([$roomId]);
+        $countRes = $countStmt->fetch(PDO::FETCH_ASSOC);
+        $totalPlayers = $countRes ? (int)$countRes['total_players'] : 1;
+
+        echo json_encode([
+            'success' => true,
+            'room_id' => $roomId,
+            'player_number' => $playerNumber,
+            'total_players' => $totalPlayers,
+            'new_balance' => $newBalance
+        ]);
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'error' => 'Transaction error: ' . $e->getMessage()]);
     }
-
-    $newBalance = $currentBalance - $fee;
-    $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
-    $update->execute([$newBalance, $telegramId]);
-
-    $roomStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'waiting' ORDER BY id ASC LIMIT 1");
-    $roomStmt->execute([$fee]);
-    $room = $roomStmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$room) {
-        $insRoom = $pdo->prepare("INSERT INTO rooms (stake, status, created_at) VALUES (?, 'waiting', ?)");
-        $insRoom->execute([$fee, time()]);
-        $roomId = $pdo->lastInsertId();
-    } else {
-        $roomId = $room['id'];
-    }
-
-    $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
-    $logRoom->execute([$roomId, $telegramId, $playerNumber]);
-
-    $countStmt = $pdo->prepare("SELECT COUNT(DISTINCT telegram_id) as total_players FROM room_players WHERE room_id = ?");
-    $countStmt->execute([$roomId]);
-    $countRes = $countStmt->fetch(PDO::FETCH_ASSOC);
-    $totalPlayers = $countRes ? (int)$countRes['total_players'] : 1;
-
-    echo json_encode([
-        'success' => true,
-        'room_id' => $roomId,
-        'player_number' => $playerNumber,
-        'total_players' => $totalPlayers,
-        'new_balance' => $newBalance
-    ]);
 }
 elseif ($action === 'claim_win') {
     $telegramId = trim($_POST['telegram_id'] ?? '');
@@ -147,23 +155,31 @@ elseif ($action === 'claim_win') {
     $roomId = $_POST['room_id'] ?? 0;
     $winnerName = $_POST['winner_name'] ?? 'Player';
 
-    $stmt = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
-    $stmt->execute([$prize, $telegramId]);
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
+        $stmt->execute([$prize, $telegramId]);
 
-    $winLog = $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)");
-    $winLog->execute([$roomId, $telegramId, $winnerName, $prize]);
+        $winLog = $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)");
+        $winLog->execute([$roomId, $telegramId, $winnerName, $prize]);
 
-    $roomUp = $pdo->prepare("UPDATE rooms SET status = 'finished' WHERE id = ?");
-    $roomUp->execute([$roomId]);
+        $roomUp = $pdo->prepare("UPDATE rooms SET status = 'finished' WHERE id = ?");
+        $roomUp->execute([$roomId]);
 
-    $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
-    $balStmt->execute([$telegramId]);
-    $updated = $balStmt->fetch(PDO::FETCH_ASSOC);
+        $pdo->commit();
 
-    echo json_encode([
-        'success' => true,
-        'new_balance' => $updated ? (float)$updated['balance'] : 0.00
-    ]);
+        $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+        $balStmt->execute([$telegramId]);
+        $updated = $balStmt->fetch(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'success' => true,
+            'new_balance' => $updated ? (float)$updated['balance'] : 0.00
+        ]);
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'error' => 'Win claim error: ' . $e->getMessage()]);
+    }
 }
 elseif ($action === 'request_withdrawal') {
     $telegramId = trim($_POST['telegram_id'] ?? '');
@@ -171,42 +187,51 @@ elseif ($action === 'request_withdrawal') {
     $method = $_POST['method'] ?? 'Telebirr';
     $account = $_POST['account'] ?? '';
 
-    $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ?");
-    $stmt->execute([$telegramId]);
-    $player = $stmt->fetch(PDO::FETCH_ASSOC);
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ?");
+        $stmt->execute([$telegramId]);
+        $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$player || $player['balance'] < $amount || $amount <= 0) {
-        echo json_encode(['success' => false, 'error' => 'Invalid balance or amount.']);
-        exit;
+        if (!$player || $player['balance'] < $amount || $amount <= 0) {
+            $pdo->rollBack();
+            echo json_encode(['success' => false, 'error' => 'Invalid balance or amount.']);
+            exit;
+        }
+
+        $newBalance = $player['balance'] - $amount;
+        $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
+        $update->execute([$newBalance, $telegramId]);
+
+        $log = $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')");
+        $log->execute([$telegramId, $amount, $method, $account]);
+
+        $pdo->commit();
+
+        $ADMIN_ID = "730967613";
+        $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
+        $adminMsg = "💸 <b>New Withdrawal Request (Future Bingo)!</b>\n\n" .
+                    "• <b>Player:</b> {$player['first_name']}\n" .
+                    "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
+                    "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
+                    "• <b>Method:</b> {$method}\n" .
+                    "• <b>Account/Phone:</b> <code>{$account}</code>";
+
+        @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?" . http_build_query([
+            'chat_id' => $ADMIN_ID,
+            'text' => $adminMsg,
+            'parse_mode' => 'HTML'
+        ]));
+
+        echo json_encode([
+            'success' => true,
+            'new_balance' => $newBalance,
+            'message' => 'Withdrawal request submitted! Admin has been notified.'
+        ]);
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'error' => 'Withdrawal error: ' . $e->getMessage()]);
     }
-
-    $newBalance = $player['balance'] - $amount;
-    $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
-    $update->execute([$newBalance, $telegramId]);
-
-    $log = $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')");
-    $log->execute([$telegramId, $amount, $method, $account]);
-
-    $ADMIN_ID = "730967613";
-    $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
-    $adminMsg = "💸 <b>New Withdrawal Request (Future Bingo)!</b>\n\n" .
-                "• <b>Player:</b> {$player['first_name']}\n" .
-                "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
-                "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
-                "• <b>Method:</b> {$method}\n" .
-                "• <b>Account/Phone:</b> <code>{$account}</code>";
-
-    @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?" . http_build_query([
-        'chat_id' => $ADMIN_ID,
-        'text' => $adminMsg,
-        'parse_mode' => 'HTML'
-    ]));
-
-    echo json_encode([
-        'success' => true,
-        'new_balance' => $newBalance,
-        'message' => 'Withdrawal request submitted! Admin has been notified.'
-    ]);
 }
 else {
     echo json_encode(['success' => false, 'error' => 'Invalid action']);
