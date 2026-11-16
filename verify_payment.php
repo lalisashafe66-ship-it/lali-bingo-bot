@@ -1,5 +1,4 @@
 <?php
-// verify_payment.php - Verifies local transaction reference and credits wallet
 header('Content-Type: application/json');
 
 $input = json_decode(file_get_contents('php://input'), true);
