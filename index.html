@@ -320,7 +320,7 @@
 
     <div class="d-grid gap-2">
       <button class="btn btn-success fw-bold py-2" onclick="startInstantDeposit()">
-        💳 Deposit via Chapa (Instant Auto-Pay)
+        💳 Deposit & Verify Transaction ID
       </button>
       <button class="btn btn-outline-warning fw-bold py-2" onclick="requestWithdrawal()">
         💸 Request Withdrawal
@@ -381,7 +381,7 @@
     let lobbyTimeLeft = 30;
 
     let gameTimerInterval = null;
-    let timeLeft = 60; // Set to 1 minute completion time
+    let timeLeft = 60;
     let drawInterval = null;
 
     function buildCartelaPickerGrid() {
@@ -516,27 +516,30 @@
     }
 
     function startInstantDeposit() {
-      const amountStr = prompt("Enter deposit amount in ETB (Minimum 10 ETB):", "100");
-      if (!amountStr) return;
-      const amount = parseFloat(amountStr);
+      const depositInfo = 
+        "💳 DEPOSIT FUNDS & AUTO-TOP-UP\n\n" +
+        "1. Transfer funds via Telebirr or CBE to:\n" +
+        "   • Telebirr: 0917461538 (Lalisa Shafe)\n" +
+        "   • CBE: 1000171689116 (Lalisa Shafe)\n\n" +
+        "2. Once you receive your confirmation SMS, copy your Transaction ID (e.g., BGH82K91LM or FT26320...) and paste it below.";
       
-      if (isNaN(amount) || amount < 10) {
-        alert("Please enter a valid amount (minimum 10 ETB).");
-        return;
-      }
+      alert(depositInfo);
+
+      const txRef = prompt("Enter your Bank / Telebirr Transaction ID:");
+      if (!txRef || !txRef.trim()) return;
 
       const formData = new FormData();
       formData.append('telegram_id', telegramId);
-      formData.append('amount', amount);
-      formData.append('first_name', playerName);
+      formData.append('tx_ref', txRef.trim());
 
-      fetch('deposit.php', { method: 'POST', body: formData })
+      fetch('verify_payment.php', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
-          if (data.success && data.checkout_url) {
-            window.open(data.checkout_url, '_blank');
+          if (data.success) {
+            updateBalanceUI(data.new_balance);
+            alert(`✅ ${data.message || 'Deposit verified successfully!'}`);
           } else {
-            alert(data.error || 'Failed to initialize instant deposit.');
+            alert(`❌ ${data.message || 'Transaction ID not found or already claimed. Make sure your SMS forwarder has received it!'}`);
           }
         })
         .catch(err => alert('Network error: ' + err.message));
@@ -642,7 +645,7 @@
       generateCard();
       renderBoard();
       
-      timeLeft = 60; // Set to 1 minute completion timer
+      timeLeft = 60;
       document.getElementById('game-timer').textContent = `⏱️ 01:00`;
       clearInterval(gameTimerInterval);
       
@@ -721,7 +724,6 @@
           .then(res => res.json())
           .then(data => {
             if (data.success) updateBalanceUI(data.new_balance);
-            // Display explicit Winner Name and Telegram ID
             alert(`🎉 BINGO WINNER!\n\n🏆 Winner Name: ${playerName}\n🆔 Telegram ID: ${telegramId}\n🎯 Cartela: #${currentRoom.player_number}\n💰 Prize: ${currentRoom.prize_pool.toFixed(2)} ETB added to balance!`);
             switchTab('game');
           });
