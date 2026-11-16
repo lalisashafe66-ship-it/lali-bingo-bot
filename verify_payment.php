@@ -1,5 +1,5 @@
 <?php
-// verify_payment.php - Verifies local transaction reference and credits wallet
+// verify_payment.php - Verifies local transaction reference and credits wallet with exact amount
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, GET');
@@ -39,31 +39,28 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Search for unclaimed transaction
+    // Search for unclaimed transaction logged by webhook.php
     $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ? AND status = 'unclaimed'");
     $stmt->execute([$txRef]);
     $tx = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // Fallback: If transaction was forwarded by SMS but not in db yet, auto-accept valid reference formats like DKG49EJKIE for 50 ETB
-    if (!$tx && strlen($txRef) >= 6) {
-        $amount = 50.00; // Default amount for manual SMS ref fallback
-        $insertTx = $pdo->prepare("INSERT OR IGNORE INTO transactions (telegram_id, tx_reference, amount, source, status) VALUES (?, ?, ?, 'claimed', 'Manual_SMS_Fallback')");
-        // Or simply insert as claimed so player gets credited immediately
-        $pdo->prepare("INSERT OR IGNORE INTO transactions (telegram_id, tx_reference, amount, source, status) VALUES (?, ?, ?, 'claimed', ?)")
-            ->execute([$telegramId, $txRef, $amount, 'Manual_Verification']);
-    } else if ($tx) {
-        $amount = (float)$tx['amount'];
-        $updateTx = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?");
-        $updateTx->execute([$telegramId, $tx['id']]);
-    } else {
+    if (!$tx) {
+        // If not found, do NOT guess 50 ETB. Require the SMS forwarder to sync first.
         echo json_encode([
             'success' => false, 
-            'message' => 'Transaction ID not found or already claimed.'
+            'message' => 'Transaction ID not found or waiting for SMS confirmation from your phone. Please wait a few seconds and try again!'
         ]);
         exit;
     }
 
-    // Ensure player exists and update balance
+    // Extract the exact amount parsed from the SMS by webhook.php (e.g., 100, 200, etc.)
+    $amount = (float)$tx['amount'];
+
+    // Mark transaction as claimed
+    $updateTx = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?");
+    $updateTx->execute([$telegramId, $tx['id']]);
+
+    // Ensure player exists and update balance with the exact amount
     $stmtPlayer = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmtPlayer->execute([$telegramId]);
     $player = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
