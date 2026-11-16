@@ -12,7 +12,6 @@ if ($providedSecret !== $SECRET_KEY) {
     exit;
 }
 
-// 2. Read incoming payload (supports JSON body from SMS Forwarder or standard POST/GET)
 $rawInput = file_get_contents('php://input');
 $data = json_decode($rawInput, true);
 
@@ -24,7 +23,6 @@ if (empty($smsText)) {
     exit;
 }
 
-// Filter out outgoing/debit messages so you never credit a withdrawal SMS!
 if (preg_match('/(debited|transferred|sent|paid|ወጪ|ተቀንሷል)/i', $smsText) && !preg_match('/(credited|received|ገቢ)/i', $smsText)) {
     echo json_encode(["status" => "ignored", "message" => "Outgoing transaction ignored"]);
     exit;
@@ -48,49 +46,35 @@ try {
     $amount = 0.0;
     $source = 'UNKNOWN';
 
-    // 3A. Parse Telebirr Credit SMS (English or Amharic)
+    // Parse Telebirr Credit SMS
     if (stripos($smsText, 'telebirr') !== false || $sender === '127' || stripos($smsText, 'transactioninfo.ethiotelecom.et') !== false) {
         $source = 'TELEBIRR';
-        
-        // Extract Amount: matches "ETB 50.00", "50.00 Birr", or "50 ETB"
         if (preg_match('/(?:ETB|Birr|ብር)\s*([0-9,]+(?:\.[0-9]+)?)|([0-9,]+(?:\.[0-9]+)?)\s*(?:ETB|Birr|ብር)/i', $smsText, $amtMatch)) {
             $rawAmt = !empty($amtMatch[1]) ? $amtMatch[1] : $amtMatch[2];
             $amount = (float)str_replace(',', '', $rawAmt);
         }
-
-        // Extract Transaction ID from receipt URL or text (e.g., BGH82K91LM)
         if (preg_match('/receipt\/([A-Z0-9]{8,15})/i', $smsText, $refMatch)) {
             $txRef = strtoupper($refMatch[1]);
         } elseif (preg_match('/(?:transaction number is|ቁጥርዎ|ID[:\s]*)\s*([A-Z0-9]{8,15})/i', $smsText, $refMatch)) {
             $txRef = strtoupper($refMatch[1]);
         }
     }
-    // 3B. Parse CBE Credit SMS
+    // Parse CBE Credit SMS
     elseif (stripos($smsText, 'CBE') !== false || stripos($smsText, 'credited') !== false || preg_match('/FT[A-Z0-9]{8,12}/', $smsText)) {
         $source = 'CBE';
-
-        // Extract Amount: matches "credited with ETB 100.00"
         if (preg_match('/credited\s+with\s+(?:ETB|Br)?\s*([0-9,]+(?:\.[0-9]+)?)/i', $smsText, $amtMatch)) {
             $amount = (float)str_replace(',', '', $amtMatch[1]);
         }
-
-        // Extract CBE FT Reference (e.g., FT26320ABCD1)
         if (preg_match('/(FT[A-Z0-9]{8,14})/i', $smsText, $refMatch)) {
             $txRef = strtoupper($refMatch[1]);
         }
     }
 
-    // 4. Save valid incoming transaction as 'unclaimed'
     if (!empty($txRef) && $amount >= 10) {
         $stmt = $pdo->prepare("INSERT OR IGNORE INTO transactions (tx_reference, amount, source, status) VALUES (?, ?, ?, 'unclaimed')");
         $stmt->execute([$txRef, $amount, $source]);
 
-        echo json_encode([
-            "status" => "success",
-            "source" => $source,
-            "tx_ref" => $txRef,
-            "amount" => $amount
-        ]);
+        echo json_encode(["status" => "success", "source" => $source, "tx_ref" => $txRef, "amount" => $amount]);
         exit;
     }
 
