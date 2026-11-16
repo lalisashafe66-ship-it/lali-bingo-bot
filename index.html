@@ -352,9 +352,25 @@
     const tg = window.Telegram.WebApp;
     tg.expand();
 
+    // Securely extract Telegram ID with multi-layer fallbacks & persistence
+    function getUserId() {
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user && window.Telegram.WebApp.initDataUnsafe.user.id) {
+            const id = window.Telegram.WebApp.initDataUnsafe.user.id.toString();
+            localStorage.setItem('future_bingo_tg_id', id);
+            return id;
+        }
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('telegram_id')) {
+            const id = urlParams.get('telegram_id');
+            localStorage.setItem('future_bingo_tg_id', id);
+            return id;
+        }
+        return localStorage.getItem('future_bingo_tg_id') || '730967613';
+    }
+
+    const telegramId = getUserId();
     const user = tg.initDataUnsafe?.user;
     const playerName = user ? user.first_name : 'Player';
-    const telegramId = user ? user.id.toString() : '730967613';
     
     document.getElementById('profile-name').textContent = playerName;
     document.getElementById('profile-id').textContent = telegramId || 'Guest';
