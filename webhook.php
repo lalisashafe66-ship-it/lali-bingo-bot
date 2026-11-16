@@ -12,7 +12,11 @@ if ($secret !== 'LaliBingoSecret2026') {
 
 $input = json_decode(file_get_contents('php://input'), true);
 $smsText = $input['message'] ?? $input['text'] ?? $_POST['message'] ?? $_POST['text'] ?? '';
-$sender = $input['sender'] ?? $_POST['sender'] ?? '';
+
+if (empty($smsText)) {
+    // Fallback if raw post body is sent
+    $smsText = file_get_contents('php://input');
+}
 
 if (empty($smsText)) {
     http_response_code(400);
@@ -39,17 +43,14 @@ try {
     // Check if this is an incoming credit SMS (Telebirr or Bank deposit)
     if (stripos($smsText, 'received') !== false || stripos($smsText, 'credited') !== false || stripos($smsText, 'ETB') !== false || stripos($smsText, 'Birr') !== false) {
         
-        // Extract Amount (Matches both "100.00 ETB", "100 ETB", or "Birr 100.00")
+        // Robust Amount Extractor: Finds numbers preceding or following ETB/Birr
         $amount = 0.0;
-        if (preg_match('/(?:[\d,]+\.?\d*)\s*(?:ETB|Birr)|(?:Birr|ETB)\s*([\d,]+\.?\d*)/i', $smsText, $matches)) {
-            // Find which group matched the number
-            $rawAmount = !empty($matches[1]) ? $matches[1] : $matches[0];
-            $amount = (float)str_replace([',', 'ETB', 'Birr', ' '], '', $rawAmount);
-        }
-
-        // Fallback amount search: look for any number with decimals if above regex misses
-        if ($amount <= 0 && preg_match('/\b(\d{2,6}\.\d{2})\b/', $smsText, $numMatches)) {
-            $amount = (float)$numMatches[1];
+        if (preg_match('/([0-9]{1,3}(?:,\d{3})*(?:\.\d+)?|[0-9]+(?:\.\d+)?)\s*(?:ETB|Birr)/i', $smsText, $m)) {
+            $amount = (float)str_replace(',', '', $m[1]);
+        } elseif (preg_match('/(?:Birr|ETB)\s*([0-9]{1,3}(?:,\d{3})*(?:\.\d+)?|[0-9]+(?:\.\d+)?)/i', $smsText, $m)) {
+            $amount = (float)str_replace(',', '', $m[1]);
+        } elseif (preg_match('/\b(\d{2,6}\.\d{2})\b/', $smsText, $m)) {
+            $amount = (float)$m[1];
         }
 
         // Extract Transaction Number (e.g. DKG49EJKIE or similar reference)
