@@ -1,8 +1,6 @@
 <?php
-// webhook.php - Securely parses Telebirr & CBE SMS from Android SMS Forwarder
 header('Content-Type: application/json');
 
-// 1. Security Check: Set SMS_WEBHOOK_SECRET in Render Environment Variables
 $SECRET_KEY = getenv('SMS_WEBHOOK_SECRET') ?: 'LaliBingoSecret2026';
 $providedSecret = $_GET['secret'] ?? $_SERVER['HTTP_X_WEBHOOK_SECRET'] ?? '';
 
@@ -46,7 +44,6 @@ try {
     $amount = 0.0;
     $source = 'UNKNOWN';
 
-    // Parse Telebirr Credit SMS
     if (stripos($smsText, 'telebirr') !== false || $sender === '127' || stripos($smsText, 'transactioninfo.ethiotelecom.et') !== false) {
         $source = 'TELEBIRR';
         if (preg_match('/(?:ETB|Birr|ብር)\s*([0-9,]+(?:\.[0-9]+)?)|([0-9,]+(?:\.[0-9]+)?)\s*(?:ETB|Birr|ብር)/i', $smsText, $amtMatch)) {
@@ -59,7 +56,6 @@ try {
             $txRef = strtoupper($refMatch[1]);
         }
     }
-    // Parse CBE Credit SMS
     elseif (stripos($smsText, 'CBE') !== false || stripos($smsText, 'credited') !== false || preg_match('/FT[A-Z0-9]{8,12}/', $smsText)) {
         $source = 'CBE';
         if (preg_match('/credited\s+with\s+(?:ETB|Br)?\s*([0-9,]+(?:\.[0-9]+)?)/i', $smsText, $amtMatch)) {
