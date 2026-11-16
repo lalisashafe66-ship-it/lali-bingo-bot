@@ -63,7 +63,7 @@ if ($action === 'get_balance') {
     $telegramId = trim($_GET['telegram_id'] ?? '');
     
     if (empty($telegramId) || $telegramId === 'undefined' || $telegramId === 'null') {
-        echo json_encode(['success' => false, 'balance' => 0.00]);
+        echo json_encode(['success' => false, 'balance' => 0.00, 'error' => 'Invalid Telegram ID']);
         exit;
     }
 
