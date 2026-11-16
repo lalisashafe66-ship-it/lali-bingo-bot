@@ -175,10 +175,9 @@ elseif ($action === 'request_withdrawal') {
     $log = $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')");
     $log->execute([$telegramId, $amount, $method, $account]);
 
-    // Admin Alert Notification
     $ADMIN_ID = "730967613";
     $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
-    $adminMsg = "💸 <b>New Withdrawal Request!</b>\n\n" .
+    $adminMsg = "💸 <b>New Withdrawal Request (Future Bingo)!</b>\n\n" .
                 "• <b>Player:</b> {$player['first_name']}\n" .
                 "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
                 "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
