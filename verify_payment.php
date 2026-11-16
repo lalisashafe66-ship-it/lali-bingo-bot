@@ -18,7 +18,6 @@ try {
     $pdo = new PDO("sqlite:" . $dbPath);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // Ensure tables exist
     $pdo->exec("CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id TEXT UNIQUE,
@@ -39,13 +38,11 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Search for unclaimed transaction logged by webhook.php
     $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ? AND status = 'unclaimed'");
     $stmt->execute([$txRef]);
     $tx = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$tx) {
-        // If not found, do NOT guess 50 ETB. Require the SMS forwarder to sync first.
         echo json_encode([
             'success' => false, 
             'message' => 'Transaction ID not found or waiting for SMS confirmation from your phone. Please wait a few seconds and try again!'
@@ -53,14 +50,11 @@ try {
         exit;
     }
 
-    // Extract the exact amount parsed from the SMS by webhook.php (e.g., 100, 200, etc.)
     $amount = (float)$tx['amount'];
 
-    // Mark transaction as claimed
     $updateTx = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?");
     $updateTx->execute([$telegramId, $tx['id']]);
 
-    // Ensure player exists and update balance with the exact amount
     $stmtPlayer = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmtPlayer->execute([$telegramId]);
     $player = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
@@ -78,7 +72,6 @@ try {
         $newBal = $updatedPlayer ? (float)$updatedPlayer['balance'] : $amount;
     }
 
-    // Send Telegram confirmation notification
     $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
     $msg = "🎉 <b>Automated Deposit Confirmed!</b>\n\n" .
            "<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\n" .
