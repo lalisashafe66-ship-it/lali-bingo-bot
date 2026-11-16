@@ -71,11 +71,9 @@ if ($action === 'get_balance') {
     if ($player) {
         $balance = (float)$player['balance'];
     } else {
-        // Safely initialize new players with 0.00 only if they don't exist yet
         $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, balance) VALUES (?, 'Player', 0.00)");
         $stmtIns->execute([$telegramId]);
         
-        // Re-query to guarantee we fetch the exact existing balance if a race condition occurred
         $stmt->execute([$telegramId]);
         $playerCheck = $stmt->fetch(PDO::FETCH_ASSOC);
         $balance = $playerCheck ? (float)$playerCheck['balance'] : 0.00;
@@ -123,7 +121,7 @@ elseif ($action === 'join_room') {
         $roomId = $room['id'];
     }
 
-    $logRoom = $pdo->prepare("INSERT OR REPLACE INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
+    $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, player_number) VALUES (?, ?, ?)");
     $logRoom->execute([$roomId, $telegramId, $playerNumber]);
 
     $countStmt = $pdo->prepare("SELECT COUNT(DISTINCT telegram_id) as total_players FROM room_players WHERE room_id = ?");
