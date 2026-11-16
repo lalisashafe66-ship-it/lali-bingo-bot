@@ -1,69 +1,55 @@
 <?php
+// deposit.php - Handles deposit requests and transaction code submission
 header('Content-Type: application/json');
 
-$telegramId = $_POST['telegram_id'] ?? '';
-$amount = (float)($_POST['amount'] ?? 0);
-$firstName = $_POST['first_name'] ?? 'Player';
+$input = json_decode(file_get_contents('php://input'), true);
+$telegramId = $_POST['telegram_id'] ?? $input['telegram_id'] ?? '';
+$amount = (float)($_POST['amount'] ?? $input['amount'] ?? 0);
+$txRef = trim($_POST['tx_ref'] ?? $input['tx_ref'] ?? '');
 
 if (!$telegramId || $amount < 10) {
     echo json_encode(['success' => false, 'error' => 'Invalid amount or player ID. Minimum deposit is 10 ETB.']);
     exit;
 }
 
-// 🔑 REPLACE THIS WITH YOUR LIVE OR TEST CHAPA SECRET KEY
-$chapaSecretKey = getenv('CHAPA_SECRET_KEY') ?: 'CHASECK_TEST-qWVM5FTl9ev2UlTfCN0sI9OGlAzUVw9g'; 
-$txRef = "future_bingo_" . uniqid();
+try {
+    $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-$callbackUrl = "https://lali-bingo-bot.onrender.com/verify_payment.php?telegram_id=" . urlencode($telegramId) . "&amount=" . $amount;
-$returnUrl = "https://lali-bingo-bot.onrender.com/index.html";
+    // Create transactions table if it doesn't exist
+    $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id TEXT,
+        tx_reference TEXT UNIQUE,
+        amount REAL,
+        status TEXT DEFAULT 'unclaimed',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
 
-$data = [
-    'amount' => $amount,
-    'currency' => 'ETB',
-    'email' => 'player_' . $telegramId . '@gmail.com',
-    'first_name' => $firstName,
-    'last_name' => 'Player',
-    'tx_ref' => $txRef,
-    'callback_url' => $callbackUrl,
-    'return_url' => $returnUrl,
-    'customization[title]' => 'Future Bingo Wallet Top-Up',
-    'customization[description]' => 'Deposit funds to Future Bingo wallet'
-];
+    if (!empty($txRef)) {
+        // Check if transaction code already exists
+        $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ?");
+        $stmt->execute([$txRef]);
+        if ($stmt->fetch()) {
+            echo json_encode(['success' => false, 'error' => 'This Transaction ID has already been used or submitted.']);
+            exit;
+        }
 
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, "https://api.chapa.co/v1/transaction/initialize");
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    "Authorization: Bearer " . $chapaSecretKey,
-    "Content-Type: application/json"
-]);
+        // Insert transaction as pending/unclaimed
+        $stmt = $pdo->prepare("INSERT INTO transactions (telegram_id, tx_reference, amount, status) VALUES (?, ?, ?, 'unclaimed')");
+        $stmt->execute([$telegramId, $txRef]);
 
-$response = curl_exec($ch);
-$err = curl_error($ch);
-curl_close($ch);
-
-if ($err) {
-    echo json_encode(['success' => false, 'error' => 'Gateway connection error: ' . $err]);
-    exit;
-}
-
-$result = json_decode($response, true);
-
-if (isset($result['status']) && $result['status'] === 'success') {
-    echo json_encode([
-        'success' => true,
-        'checkout_url' => $result['data']['checkout_url']
-    ]);
-} else {
-    $errorMsg = $result['message'] ?? 'Could not initialize Chapa payment.';
-    if (is_array($errorMsg)) {
-        $errorMsg = json_encode($errorMsg);
+        echo json_encode([
+            'success' => true,
+            'message' => 'Transaction reference submitted successfully! Tap Verify in your bot or app to credit your balance.'
+        ]);
+    } else {
+        echo json_encode([
+            'success' => true,
+            'instructions' => 'Transfer money to CBE: 1000171689116 or Telebirr: 0917461538, then submit your Transaction ID.'
+        ]);
     }
-    echo json_encode([
-        'success' => false,
-        'error' => $errorMsg
-    ]);
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
 ?>
