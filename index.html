@@ -19,20 +19,20 @@
       color: #ffffff;
       font-family: system-ui, -apple-system, sans-serif;
       user-select: none;
-      padding-bottom: 140px; 
+      padding-bottom: 110px; 
     }
     .card-custom {
       background-color: var(--card-bg);
       border: 1px solid #1f474d;
-      border-radius: 12px;
-      padding: 12px;
+      border-radius: 14px;
+      padding: 14px;
       margin-bottom: 10px;
     }
     .table-option {
       background-color: var(--card-bg);
       border: 2px solid #234d54;
-      border-radius: 10px;
-      padding: 10px 14px;
+      border-radius: 12px;
+      padding: 12px 14px;
       margin-bottom: 8px;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -45,36 +45,42 @@
     .table-option .text-muted, 
     .table-option small, 
     .table-option p {
-      color: #e2e8f0 !important;
+      color: #cbd5e1 !important;
     }
     .bottom-nav {
       position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
+      bottom: 10px;
+      left: 15px;
+      right: 15px;
       background-color: #081619;
-      border-top: 1px solid #1a3c42;
+      border: 1px solid #1a3c42;
+      border-radius: 30px;
       display: flex;
       justify-content: space-around;
-      padding: 10px 0;
+      padding: 8px 0;
       z-index: 1050;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     }
     .nav-item-custom {
       color: #8a9b9e;
       text-align: center;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       cursor: pointer;
       text-decoration: none;
+      padding: 4px 12px;
+      border-radius: 20px;
+      transition: 0.2s;
     }
     .nav-item-custom.active {
-      color: var(--accent-gold);
+      color: #000;
+      background-color: var(--accent-gold);
       font-weight: bold;
     }
     .cartela-picker-grid {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(8, 1fr);
       gap: 6px;
-      max-height: 190px;
+      max-height: 180px;
       overflow-y: auto;
       padding: 2px;
     }
@@ -84,7 +90,7 @@
       background-color: var(--cell-taken);
       border: 1px solid #28545c;
       color: #ffffff;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -96,7 +102,7 @@
       background-color: var(--accent-gold);
       color: #000000;
       border-color: #ffca2c;
-      transform: scale(1.08);
+      transform: scale(1.1);
       box-shadow: 0 0 10px rgba(255, 193, 7, 0.6);
     }
     .legend-dot {
@@ -108,7 +114,7 @@
     .bingo-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 5px;
+      gap: 4px;
       max-width: 320px;
       margin: 0 auto;
     }
@@ -117,9 +123,9 @@
       color: #000;
       font-weight: 800;
       text-align: center;
-      padding: 5px 0;
-      border-radius: 6px;
-      font-size: 0.9rem;
+      padding: 4px 0;
+      border-radius: 4px;
+      font-size: 0.85rem;
     }
     .bingo-cell {
       aspect-ratio: 1;
@@ -128,8 +134,8 @@
       justify-content: center;
       background: #1a3c42;
       border: 2px solid #28545c;
-      border-radius: 6px;
-      font-size: 0.95rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
       font-weight: 700;
     }
     .bingo-cell.marked {
@@ -140,15 +146,15 @@
     .bingo-cell.free {
       background: #0d6efd;
       border-color: #3d8bfd;
-      font-size: 0.65rem;
+      font-size: 0.6rem;
     }
     .called-ball {
-      width: 52px;
-      height: 52px;
+      width: 48px;
+      height: 48px;
       border-radius: 50%;
       background: radial-gradient(circle at 30% 30%, #ff4d4d, #b30000);
       color: white;
-      font-size: 1.2rem;
+      font-size: 1.1rem;
       font-weight: 800;
       display: flex;
       align-items: center;
@@ -156,49 +162,32 @@
       margin: 0 auto;
       box-shadow: 0 4px 12px rgba(255, 77, 77, 0.4);
     }
-    .pulse-circle {
-      width: 120px;
-      height: 120px;
-      border-radius: 50%;
-      background: radial-gradient(circle at 30% 30%, #ffc107, #d39e00);
-      color: #000;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      margin: 10px auto;
-      box-shadow: 0 0 20px rgba(255, 193, 7, 0.5);
-      animation: pulseAnim 1.5s infinite;
-    }
-    @keyframes pulseAnim {
-      0% { transform: scale(1); box-shadow: 0 0 15px rgba(255, 193, 7, 0.4); }
-      50% { transform: scale(1.06); box-shadow: 0 0 25px rgba(255, 193, 7, 0.8); }
-      100% { transform: scale(1); box-shadow: 0 0 15px rgba(255, 193, 7, 0.4); }
-    }
   </style>
 </head>
 <body class="p-3">
 
-  <div class="d-flex justify-content-between align-items-center mb-2">
+  <div class="d-flex justify-content-between align-items-center mb-3">
     <div class="d-flex align-items-center gap-2">
-      <span style="font-size: 1.2rem;">🔶</span>
+      <span style="font-size: 1.3rem;">🔶</span>
       <h5 class="fw-bold mb-0 text-warning">Future Bingo</h5>
     </div>
-    <div class="badge bg-warning text-dark p-2" style="font-size: 0.9rem;">
-      Balance: <strong id="balance-display">0.00 ETB</strong>
+    <div class="text-end">
+      <small class="text-muted d-block" style="font-size: 0.7rem;">Balance</small>
+      <span class="fw-bold text-warning fs-6" id="balance-display">0.00 ETB</span>
     </div>
   </div>
 
-  <div id="screen-game" class="container text-center">
-    <div class="text-start mb-2">
-      <h6 class="fw-bold text-light mb-1">Choose a Table Stake</h6>
-    </div>
-    <div id="table-options-list" class="mb-2">
+  <!-- GAME SETUP SCREEN -->
+  <div id="screen-game" class="container">
+    <h3 class="fw-bold text-light mb-1">Choose a table</h3>
+    <p class="text-muted small mb-3">Pick a stake, then choose up to 3 cartelas. The first cartela with a full line wins 80% of all stakes.</p>
+    
+    <div id="table-options-list" class="mb-3">
       <div class="table-option selected" onclick="selectTable(10, this)">
         <div class="d-flex justify-content-between align-items-center">
           <div>
-            <h6 class="fw-bold text-warning mb-1">10 ETB <small class="text-muted">per cartela</small></h6>
-            <p class="small text-muted mb-0">Stake 10 ETB | 75% for Single Winner</p>
+            <h5 class="fw-bold text-warning mb-1">10 <small class="text-muted fs-6">ETB per cartela</small></h5>
+            <p class="small mb-0">1 line to win. Winner takes 80% of all stakes</p>
           </div>
           <input type="radio" name="stake" checked class="form-check-input">
         </div>
@@ -207,8 +196,8 @@
       <div class="table-option" onclick="selectTable(20, this)">
         <div class="d-flex justify-content-between align-items-center">
           <div>
-            <h6 class="fw-bold text-warning mb-1">20 ETB <small class="text-muted">per cartela</small></h6>
-            <p class="small text-muted mb-0">Stake 20 ETB | 75% for Single Winner</p>
+            <h5 class="fw-bold text-warning mb-1">20 <small class="text-muted fs-6">ETB per cartela</small></h5>
+            <p class="small mb-0">1 line to win. Winner takes 80% of all stakes</p>
           </div>
           <input type="radio" name="stake" class="form-check-input">
         </div>
@@ -217,81 +206,97 @@
       <div class="table-option" onclick="selectTable(50, this)">
         <div class="d-flex justify-content-between align-items-center">
           <div>
-            <h6 class="fw-bold text-warning mb-1">50 ETB <small class="text-muted">per cartela</small></h6>
-            <p class="small text-muted mb-0">Stake 50 ETB | 75% for Single Winner</p>
+            <h5 class="fw-bold text-warning mb-1">50 <small class="text-muted fs-6">ETB per cartela</small></h5>
+            <p class="small mb-0">1 line to win. Winner takes 80% of all stakes</p>
           </div>
           <input type="radio" name="stake" class="form-check-input">
         </div>
       </div>
     </div>
 
-    <div class="card-custom text-start mb-3">
-      <div class="d-flex justify-content-between align-items-center mb-1">
+    <div class="card-custom mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
         <span class="small fw-bold text-warning">Tap to pick your Cartela (1 - 56):</span>
         <div class="small text-muted d-flex align-items-center gap-2">
           <span><span class="legend-dot bg-warning align-middle"></span> Yours</span>
           <span><span class="legend-dot align-middle" style="background:#1a444a;"></span> Taken</span>
         </div>
       </div>
-      <div id="cartela-grid-picker" class="cartela-picker-grid mb-1"></div>
-      <p class="text-warning text-center small fw-bold mb-0" id="selected-cartela-info">Selected Cartela: #1</p>
+      <div id="cartela-grid-picker" class="cartela-picker-grid mb-2"></div>
+      <p class="text-warning text-center small fw-bold mb-0" id="selected-cartela-info">Your cartelas (1/3). Tap a number again to remove it.</p>
     </div>
 
-    <div class="mb-4">
+    <div class="mb-3">
       <button class="btn btn-warning w-100 fw-bold py-3 fs-5 shadow" id="play-btn" onclick="joinSelectedTable()">
         Play for 10 ETB
       </button>
     </div>
   </div>
 
+  <!-- LOBBY WAITING SCREEN -->
   <div id="screen-lobby" class="container text-center d-none">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
-      <span class="badge bg-info text-dark fs-6 px-3 py-2" id="lobby-player-count">👥 Players: 1</span>
-    </div>
-
-    <div class="card-custom my-3 py-3">
-      <h5 class="text-light fw-bold mb-1">⏳ Room Starting Soon</h5>
-      
-      <div class="pulse-circle">
-        <span class="small fw-bold text-uppercase" style="font-size: 0.55rem;">Winner Prize (75%)</span>
-        <strong id="lobby-prize-pool" class="fs-5">7.50 ETB</strong>
-        <span id="lobby-timer" class="badge bg-dark text-warning mt-1" style="font-size: 0.85rem;">00:30</span>
-      </div>
-
-      <p class="text-muted small mt-2 mb-0">Single Winner gets 75% of pool • Stake <span id="lobby-stake-text">10</span> ETB</p>
+    <div class="card-custom my-4 py-4">
+      <h5 class="text-light fw-bold mb-2">⏳ Room Starting Soon</h5>
+      <div class="display-6 fw-bold text-warning my-2" id="lobby-prize-pool">0.00 ETB</div>
+      <p class="text-muted small">Estimated Prize Pool (80% of Stakes)</p>
+      <div class="badge bg-dark text-warning fs-5 px-4 py-2 mt-2" id="lobby-timer">00:30</div>
+      <p class="text-muted small mt-3 mb-0" id="lobby-player-count">👥 Players Joined: 1</p>
     </div>
   </div>
 
+  <!-- ACTIVE PLAYROOM SCREEN -->
   <div id="screen-playroom" class="container text-center d-none">
     <div class="d-flex justify-content-between align-items-center mb-2">
-      <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Tables</button>
-      <button id="sound-toggle" class="btn btn-outline-warning btn-sm" onclick="toggleSound()">🔊 Sound ON</button>
-      <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ 01:00</span>
+      <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Leave</button>
+      <div class="d-flex gap-2">
+        <button id="sound-toggle" class="btn btn-outline-warning btn-sm" onclick="toggleSound()">🔊 Sound</button>
+        <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ 01:00</span>
+      </div>
     </div>
 
+    <div class="card-custom mb-2 py-2">
+      <div class="d-flex justify-content-around align-items-center">
+        <div>
+          <span class="text-warning fw-bold fs-5" id="room-prize-display">0.00 ETB</span>
+          <small class="text-muted d-block" style="font-size: 0.65rem;">Prize pool</small>
+        </div>
+        <div id="current-ball" class="called-ball">--</div>
+        <div>
+          <span class="text-light fw-bold fs-5" id="called-count-display">0/75</span>
+          <small class="text-muted d-block" style="font-size: 0.65rem;">Called</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARTELA BOARD -->
     <div class="card-custom mb-2">
-      <small class="text-uppercase text-warning fw-bold" id="room-title-display">Future Table</small>
-      <div id="current-ball" class="called-ball mt-1">--</div>
-      <div id="history" class="mt-1 small text-muted">Recent: None</div>
+      <div class="d-flex justify-content-between mb-2">
+        <span class="small fw-bold text-warning" id="active-cartela-title">Cartela #1</span>
+        <span class="small text-muted">1 line to win</span>
+      </div>
+      <div class="bingo-grid mb-1">
+        <div class="bingo-header">B</div>
+        <div class="bingo-header">I</div>
+        <div class="bingo-header">N</div>
+        <div class="bingo-header">G</div>
+        <div class="bingo-header">O</div>
+      </div>
+      <div id="board" class="bingo-grid"></div>
     </div>
 
-    <div class="bingo-grid mb-1">
-      <div class="bingo-header">B</div>
-      <div class="bingo-header">I</div>
-      <div class="bingo-header">N</div>
-      <div class="bingo-header">G</div>
-      <div class="bingo-header">O</div>
+    <!-- MASTER 75 NUMBER BOARD -->
+    <div class="card-custom mb-3" style="max-height: 140px; overflow-y: auto;">
+      <div class="bingo-grid mb-1" style="grid-template-columns: repeat(15, 1fr); gap: 2px;" id="master-board"></div>
     </div>
-    <div id="board" class="bingo-grid mb-3"></div>
 
-    <div class="d-grid gap-2 col-11 mx-auto mb-5">
+    <div class="d-grid gap-2 col-11 mx-auto mb-4">
       <button id="bingo-btn" class="btn btn-warning btn-lg fw-bold shadow py-3 fs-4" onclick="claimBingo()">
         🎉 CLAIM BINGO!
       </button>
     </div>
   </div>
 
+  <!-- HISTORY SCREEN -->
   <div id="screen-history" class="container d-none">
     <h3 class="fw-bold text-light mb-3">Game History</h3>
     <div class="card-custom">
@@ -299,6 +304,7 @@
     </div>
   </div>
 
+  <!-- WALLET SCREEN -->
   <div id="screen-wallet" class="container d-none">
     <h3 class="fw-bold text-light mb-3">Wallet & Funds</h3>
     <div class="card-custom text-center mb-3">
@@ -316,6 +322,7 @@
     </div>
   </div>
 
+  <!-- PROFILE SCREEN -->
   <div id="screen-profile" class="container d-none">
     <h3 class="fw-bold text-light mb-3">Player Profile</h3>
     <div class="card-custom">
@@ -325,22 +332,19 @@
     </div>
   </div>
 
+  <!-- BOTTOM PILL NAVIGATION -->
   <div class="bottom-nav">
     <div class="nav-item-custom active" onclick="switchTab('game')" id="nav-game">
-      <div>🎲</div>
-      <div>Game</div>
+      <div>🎲 Game</div>
     </div>
     <div class="nav-item-custom" onclick="switchTab('history')" id="nav-history">
-      <div>📜</div>
-      <div>History</div>
+      <div>📜 History</div>
     </div>
     <div class="nav-item-custom" onclick="switchTab('wallet')" id="nav-wallet">
-      <div>💰</div>
-      <div>Wallet</div>
+      <div>💰 Wallet</div>
     </div>
     <div class="nav-item-custom" onclick="switchTab('profile')" id="nav-profile">
-      <div>👤</div>
-      <div>Profile</div>
+      <div>👤 Profile</div>
     </div>
   </div>
 
@@ -357,14 +361,14 @@
 
     let balance = 0.00;
     let selectedCardStake = 10;
-    let selectedCartelaNumber = 1;
+    let selectedCartelaNumbers = [1];
     let card = [];
     let marked = Array(25).fill(false);
     let calledNumbers = new Set();
     let currentRoom = null;
     
     let lobbyTimerInterval = null;
-    let lobbyTimeLeft = 30;
+    let lobbyTimeLeft = 20;
 
     let gameTimerInterval = null;
     let timeLeft = 60;
@@ -375,23 +379,33 @@
       gridContainer.innerHTML = '';
       for (let i = 1; i <= 56; i++) {
         const circle = document.createElement('div');
-        circle.className = 'cartela-circle' + (i === selectedCartelaNumber ? ' selected' : '');
+        circle.className = 'cartela-circle' + (selectedCartelaNumbers.includes(i) ? ' selected' : '');
         circle.textContent = i;
-        circle.onclick = () => selectCartelaNumber(i);
+        circle.onclick = () => toggleCartelaNumber(i);
         gridContainer.appendChild(circle);
       }
+      document.getElementById('selected-cartela-info').textContent = 
+        `Your cartelas (${selectedCartelaNumbers.length}/3). Tap a number again to remove it.`;
     }
 
-    function selectCartelaNumber(num) {
-      selectedCartelaNumber = num;
-      document.querySelectorAll('.cartela-circle').forEach(el => {
-        if (parseInt(el.textContent) === num) {
-          el.classList.add('selected');
+    function toggleCartelaNumber(num) {
+      const idx = selectedCartelaNumbers.indexOf(num);
+      if (idx > -1) {
+        if (selectedCartelaNumbers.length > 1) {
+          selectedCartelaNumbers.splice(idx, 1);
         } else {
-          el.classList.remove('selected');
+          alert("You must select at least 1 cartela.");
+          return;
         }
-      });
-      document.getElementById('selected-cartela-info').textContent = `Selected Cartela: #${num}`;
+      } else {
+        if (selectedCartelaNumbers.length < 3) {
+          selectedCartelaNumbers.push(num);
+        } else {
+          alert("You can select a maximum of 3 cartelas per round.");
+          return;
+        }
+      }
+      buildCartelaPickerGrid();
     }
 
     function selectTable(stake, element) {
@@ -402,7 +416,7 @@
       element.classList.add('selected');
       element.querySelector('input').checked = true;
       selectedCardStake = stake;
-      document.getElementById('play-btn').textContent = `Play for ${stake} ETB`;
+      document.getElementById('play-btn').textContent = `Play for ${stake * selectedCartelaNumbers.length} ETB`;
     }
 
     function switchTab(tab) {
@@ -450,7 +464,7 @@
     function toggleSound() {
       soundEnabled = !soundEnabled;
       const btn = document.getElementById('sound-toggle');
-      btn.textContent = soundEnabled ? '🔊 Sound ON' : '🔇 Muted';
+      btn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Muted';
     }
 
     function playTone(freq, type, duration, delay = 0) {
@@ -502,16 +516,7 @@
     }
 
     function startInstantDeposit() {
-      const depositInfo = 
-        "💳 DEPOSIT FUNDS & AUTO-TOP-UP\n\n" +
-        "1. Transfer funds via Telebirr or CBE to:\n" +
-        "   • Telebirr: 0917461538 (Lalisa Shafe)\n" +
-        "   • CBE: 1000171689116 (Lalisa Shafe)\n\n" +
-        "2. Once you receive your confirmation SMS, copy your Transaction ID (e.g., BGH82K91LM or FT26320...) and paste it below.";
-      
-      alert(depositInfo);
-
-      const txRef = prompt("Enter your Bank / Telebirr Transaction ID:");
+      const txRef = prompt("Enter your Telebirr or CBE Transaction ID / Receipt Reference:");
       if (!txRef || !txRef.trim()) return;
 
       const formData = new FormData();
@@ -525,7 +530,7 @@
             updateBalanceUI(data.new_balance);
             alert(`✅ ${data.message || 'Deposit verified successfully!'}`);
           } else {
-            alert(`❌ ${data.message || 'Transaction ID not found or already claimed. Make sure your SMS forwarder has received it!'}`);
+            alert(`❌ ${data.message || 'Transaction ID not found or already claimed.'}`);
           }
         })
         .catch(err => alert('Network error: ' + err.message));
@@ -533,9 +538,10 @@
 
     function joinSelectedTable() {
       initAudio();
-      if (balance < selectedCardStake) {
+      const totalFee = selectedCardStake * selectedCartelaNumbers.length;
+      if (balance < totalFee) {
         sounds.errorBuzz();
-        alert(`Insufficient balance! You need ${selectedCardStake} ETB. Please top up in the Wallet tab.`);
+        alert(`Insufficient balance! You need ${totalFee} ETB for ${selectedCartelaNumbers.length} cartela(s). Please top up in Wallet.`);
         switchTab('wallet');
         return;
       }
@@ -543,8 +549,8 @@
       const formData = new FormData();
       formData.append('action', 'join_room');
       formData.append('telegram_id', telegramId);
-      formData.append('fee', selectedCardStake);
-      formData.append('player_number', selectedCartelaNumber);
+      formData.append('fee', totalFee);
+      formData.append('player_number', selectedCartelaNumbers[0]);
 
       fetch('api.php', { method: 'POST', body: formData })
         .then(res => res.json())
@@ -556,20 +562,18 @@
           }
           updateBalanceUI(data.new_balance);
 
-          const totalPlayersCount = data.total_players || 1;
-          const totalPool = selectedCardStake * totalPlayersCount;
-          const winnerPrize = totalPool * 0.75;
+          const totalPool = totalFee * (data.total_players || 1);
+          const winnerPrize = totalPool * 0.80;
 
           currentRoom = { 
             room_id: data.room_id, 
-            entry_fee: selectedCardStake, 
+            entry_fee: totalFee, 
             prize_pool: winnerPrize, 
-            player_number: selectedCartelaNumber 
+            player_number: selectedCartelaNumbers[0] 
           };
           
-          document.getElementById('lobby-player-count').textContent = `👥 Players: ${totalPlayersCount}`;
+          document.getElementById('lobby-player-count').textContent = `👥 Players Joined: ${data.total_players || 1}`;
           document.getElementById('lobby-prize-pool').textContent = `${winnerPrize.toFixed(2)} ETB`;
-          document.getElementById('lobby-stake-text').textContent = selectedCardStake;
           
           switchTab('lobby');
           startLobbyCountdown();
@@ -578,8 +582,8 @@
     }
 
     function startLobbyCountdown() {
-      lobbyTimeLeft = 30;
-      document.getElementById('lobby-timer').textContent = `00:30`;
+      lobbyTimeLeft = 20;
+      document.getElementById('lobby-timer').textContent = `00:20`;
       clearInterval(lobbyTimerInterval);
 
       lobbyTimerInterval = setInterval(() => {
@@ -590,7 +594,8 @@
 
         if (lobbyTimeLeft <= 0) {
           clearInterval(lobbyTimerInterval);
-          document.getElementById('room-title-display').textContent = `Table (${selectedCardStake} ETB) | Cartela #${currentRoom.player_number}`;
+          document.getElementById('active-cartela-title').textContent = `Cartela #${currentRoom.player_number}`;
+          document.getElementById('room-prize-display').textContent = `${currentRoom.prize_pool.toFixed(2)} ETB`;
           switchTab('playroom');
           startNewGame();
         }
@@ -626,10 +631,24 @@
       });
     }
 
+    function buildMasterBoard() {
+      const master = document.getElementById('master-board');
+      master.innerHTML = '';
+      for(let i=1; i<=75; i++) {
+        const mCell = document.createElement('div');
+        mCell.className = 'bingo-cell';
+        mCell.style.fontSize = '0.65rem';
+        mCell.id = `master-${i}`;
+        mCell.textContent = i;
+        master.appendChild(mCell);
+      }
+    }
+
     function startNewGame() {
       calledNumbers.clear();
       generateCard();
       renderBoard();
+      buildMasterBoard();
       
       timeLeft = 60;
       document.getElementById('game-timer').textContent = `⏱️ 01:00`;
@@ -646,7 +665,7 @@
           clearInterval(drawInterval);
           if ('speechSynthesis' in window) window.speechSynthesis.cancel();
           sounds.errorBuzz();
-          alert('⏰ Time is up! Round ended with no winner.');
+          alert('⏰ Round ended with no winner.');
           switchTab('game');
         }
       }, 1000);
@@ -661,7 +680,11 @@
         
         const letter = n <= 15 ? 'B' : n <= 30 ? 'I' : n <= 45 ? 'N' : n <= 60 ? 'G' : 'O';
         document.getElementById('current-ball').textContent = `${letter}-${n}`;
+        document.getElementById('called-count-display').textContent = `${calledNumbers.size}/75`;
         
+        const mNode = document.getElementById(`master-${n}`);
+        if(mNode) mNode.classList.add('marked');
+
         sounds.ballPop();
         announceBall(letter, n);
         
@@ -673,12 +696,6 @@
           }
         });
         renderBoard();
-        
-        const recent = Array.from(calledNumbers).slice(-5).reverse().map(num => {
-          const l = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O';
-          return `${l}${num}`;
-        });
-        document.getElementById('history').textContent = `Recent: ${recent.join(', ')}`;
       }, 2500);
     }
 
@@ -710,13 +727,13 @@
           .then(res => res.json())
           .then(data => {
             if (data.success) updateBalanceUI(data.new_balance);
-            alert(`🎉 BINGO WINNER!\n\n🏆 Winner Name: ${playerName}\n🆔 Telegram ID: ${telegramId}\n🎯 Cartela: #${currentRoom.player_number}\n💰 Prize: ${currentRoom.prize_pool.toFixed(2)} ETB added to balance!`);
+            alert(`🎉 BINGO WINNER!\n\n🏆 Winner: ${playerName}\n💰 Prize: ${currentRoom.prize_pool.toFixed(2)} ETB added to balance!`);
             switchTab('game');
           });
       } else {
         sounds.errorBuzz();
         tg.HapticFeedback?.notificationOccurred('error');
-        alert('❌ Not a valid Bingo yet! Keep watching the auto-dauber.');
+        alert('❌ Not a valid Bingo line yet!');
       }
     }
 
