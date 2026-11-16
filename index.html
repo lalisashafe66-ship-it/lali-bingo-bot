@@ -531,6 +531,10 @@
         .catch(() => {});
     }
 
+    // Auto-sync balance every 5 seconds so deposits and game payouts update instantly
+    setInterval(syncBalance, 5000);
+    window.addEventListener("focus", syncBalance);
+
     function startInstantDeposit() {
       const txRef = prompt("Enter your Telebirr or CBE Transaction ID / Receipt Reference:");
       if (!txRef || !txRef.trim()) return;
