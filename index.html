@@ -287,7 +287,7 @@
     <!-- CARTELA BOARD -->
     <div class="card-custom mb-2">
       <div class="d-flex justify-content-between mb-2">
-        <span class="small fw-bold text-warning" id="active-cartela-title">Daros Bingo #1</span>
+        <span class="small fw-bold text-warning" id="active-cartela-title">Future Bingo #1</span>
         <span class="small text-muted">1 line to win</span>
       </div>
       <div class="bingo-grid mb-1">
@@ -371,16 +371,16 @@
     function getUserId() {
         if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user && window.Telegram.WebApp.initDataUnsafe.user.id) {
             const id = window.Telegram.WebApp.initDataUnsafe.user.id.toString();
-            localStorage.setItem('daros_bingo_tg_id', id);
+            localStorage.setItem('Future_bingo_tg_id', id);
             return id;
         }
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('telegram_id')) {
             const id = urlParams.get('telegram_id');
-            localStorage.setItem('daros_bingo_tg_id', id);
+            localStorage.setItem('Future_bingo_tg_id', id);
             return id;
         }
-        return localStorage.getItem('daros_bingo_tg_id') || '730967613';
+        return localStorage.getItem('Future_bingo_tg_id') || '730967613';
     }
 
     const telegramId = getUserId();
@@ -634,7 +634,7 @@
 
         if (lobbyTimeLeft <= 0) {
           clearInterval(lobbyTimerInterval);
-          document.getElementById('active-cartela-title').textContent = `Daros Bingo #${currentRoom.player_number}`;
+          document.getElementById('active-cartela-title').textContent = `Future Bingo #${currentRoom.player_number}`;
           document.getElementById('room-prize-display').textContent = `${currentRoom.prize_pool.toFixed(2)} ETB`;
           document.getElementById('cartela-count-display').textContent = selectedCartelaNumbers.length;
           switchTab('playroom');
