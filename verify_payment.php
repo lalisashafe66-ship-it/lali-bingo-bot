@@ -18,6 +18,7 @@ try {
     $pdo = new PDO("sqlite:" . $dbPath);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
+    // Ensure tables exist
     $pdo->exec("CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id TEXT UNIQUE,
@@ -38,6 +39,7 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
+    // Query for the transaction
     $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ? AND status = 'unclaimed'");
     $stmt->execute([$txRef]);
     $tx = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -52,26 +54,30 @@ try {
 
     $amount = (float)$tx['amount'];
 
+    // Mark transaction as claimed
     $updateTx = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?");
     $updateTx->execute([$telegramId, $tx['id']]);
 
+    // Ensure player row exists using INSERT OR IGNORE / UPSERT pattern
     $stmtPlayer = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmtPlayer->execute([$telegramId]);
     $player = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
 
     if (!$player) {
-        $insPlayer = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', ?)");
-        $insPlayer->execute([$telegramId, $amount]);
-        $newBal = $amount;
-    } else {
-        $updateBalance = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
-        $updateBalance->execute([$amount, $telegramId]);
-
-        $stmtPlayer->execute([$telegramId]);
-        $updatedPlayer = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
-        $newBal = $updatedPlayer ? (float)$updatedPlayer['balance'] : $amount;
+        $insPlayer = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', 0.00)");
+        $insPlayer->execute([$telegramId]);
     }
 
+    // Safely update player balance
+    $updateBalance = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
+    $updateBalance->execute([$amount, $telegramId]);
+
+    // Fetch final updated balance
+    $stmtPlayer->execute([$telegramId]);
+    $updatedPlayer = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
+    $newBal = $updatedPlayer ? (float)$updatedPlayer['balance'] : $amount;
+
+    // Send Telegram Notification
     $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
     $msg = "🎉 <b>Automated Deposit Confirmed!</b>\n\n" .
            "<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\n" .
