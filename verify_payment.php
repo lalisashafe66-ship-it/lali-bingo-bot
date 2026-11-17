@@ -2,7 +2,14 @@
 // verify_payment.php - Verifies local transaction reference and credits wallet with exact amount
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, GET');
+header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+
+// Handle browser preflight OPTIONS request
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
 
 $input = json_decode(file_get_contents('php://input'), true);
 $telegramId = trim($_POST['telegram_id'] ?? $_GET['telegram_id'] ?? $input['telegram_id'] ?? '');
@@ -58,7 +65,7 @@ try {
     $updateTx = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?");
     $updateTx->execute([$telegramId, $tx['id']]);
 
-    // Ensure player row exists using INSERT OR IGNORE / UPSERT pattern
+    // Ensure player row exists using INSERT OR IGNORE pattern
     $stmtPlayer = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmtPlayer->execute([$telegramId]);
     $player = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
