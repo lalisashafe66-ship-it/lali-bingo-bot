@@ -2,7 +2,7 @@
 // webhook.php - Receives incoming SMS notifications from Android SMS Forwarder
 header('Content-Type: application/json');
 
-// Read JSON payload if sent as raw JSON
+// Read raw JSON payload if sent
 $rawInput = file_get_contents('php://input');
 $input = json_decode($rawInput, true) ?? [];
 
@@ -19,7 +19,7 @@ if (trim($secret) !== 'LaliBingoSecret2026') {
     exit;
 }
 
-// Extract SMS message body from whichever key the Android app sends
+// Extract SMS message body from whichever key the Android app uses
 $smsText = $input['message'] 
     ?? $input['text'] 
     ?? $input['content'] 
@@ -54,14 +54,16 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Process only deposit/transfer messages containing currency or credit keywords
+    // Process messages related to deposits, receipts, transfers, or currency values
     if (
         stripos($smsText, 'received') !== false || 
         stripos($smsText, 'credited') !== false || 
+        stripos($smsText, 'transferred') !== false || 
+        stripos($smsText, 'deposited') !== false || 
         stripos($smsText, 'ETB') !== false || 
         stripos($smsText, 'Birr') !== false
     ) {
-        // 1. Extract exact amount
+        // 1. Extract exact amount (ETB / Birr)
         $amount = 0.0;
         if (preg_match('/([0-9]{1,3}(?:,\d{3})*(?:\.\d+)?|[0-9]+(?:\.\d+)?)\s*(?:ETB|Birr)/i', $smsText, $m)) {
             $amount = (float)str_replace(',', '', $m[1]);
@@ -71,48 +73,41 @@ try {
             $amount = (float)$m[1];
         }
 
-        // 2. Extract Transaction Reference ID
+        // 2. Extract Transaction Reference ID (supporting Telebirr and bank-to-wallet transfer formats)
         $txRef = '';
-        if (preg_match('/(?:transaction number is|reference number is|Ref No[:\s]*|transaction ID[:\s]*)([A-Z0-9]+)/i', $smsText, $refMatches)) {
+        if (preg_match('/(?:transaction number is|reference number is|Ref No[:\s]*|transaction ID[:\s]*|Txn ID[:\s]*|Reference[:\s]*)([A-Z0-9]+)/i', $smsText, $refMatches)) {
             $txRef = trim($refMatches[1]);
         } else {
-            $words = explode(' ', $smsText);
-            foreach ($words as $i => $w) {
-                if ((strtolower($w) === 'is' || strtolower($w) === 'number') && isset($words[$i + 1])) {
-                    $cleanCode = preg_replace('/[^A-Z0-9]/', '', $words[$i + 1]);
-                    if (strlen($cleanCode) >= 6) {
-                        $txRef = $cleanCode;
-                        break;
+            // Fallback: extract the longest alphanumeric token which represents the transaction reference
+            preg_match_all('/\b[A-Z0-9]{8,14}\b/', $smsText, $allTokens);
+            if (!empty($allTokens[0])) {
+                $longestToken = '';
+                foreach ($allTokens[0] as $token) {
+                    if (strlen($token) > strlen($longestToken)) {
+                        $longestToken = $token;
                     }
                 }
+                $txRef = $longestToken;
             }
         }
 
-        // Fallback: look for standard 8-12 character alphanumeric Telebirr/CBE reference tokens
-        if (empty($txRef)) {
-            preg_match_all('/\b[A-Z0-9]{8,12}\b/', $smsText, $allTokens);
-            if (!empty($allTokens[0])) {
-                $txRef = end($allTokens[0]);
-            }
-        }
-
-        // 3. Save or safely update the transaction in SQLite without overwriting telegram_id
+        // 3. Save or update transaction record in SQLite
         if ($amount > 0 && !empty($txRef)) {
             $checkStmt = $pdo->prepare("SELECT id, telegram_id FROM transactions WHERE tx_reference = ?");
             $checkStmt->execute([$txRef]);
             $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
             if ($existing) {
-                $updateStmt = $pdo->prepare("UPDATE transactions SET amount = ?, source = 'Telebirr_SMS' WHERE tx_reference = ?");
+                $updateStmt = $pdo->prepare("UPDATE transactions SET amount = ?, source = 'Bank_Telebirr_SMS' WHERE tx_reference = ?");
                 $updateStmt->execute([$amount, $txRef]);
             } else {
-                $insertStmt = $pdo->prepare("INSERT INTO transactions (tx_reference, amount, source, status) VALUES (?, ?, 'Telebirr_SMS', 'unclaimed')");
+                $insertStmt = $pdo->prepare("INSERT INTO transactions (tx_reference, amount, source, status) VALUES (?, ?, 'Bank_Telebirr_SMS', 'unclaimed')");
                 $insertStmt->execute([$txRef, $amount]);
             }
 
             echo json_encode([
                 'success' => true,
-                'message' => 'Transaction recorded',
+                'message' => 'Transaction recorded successfully',
                 'tx_reference' => $txRef,
                 'amount' => $amount
             ]);
