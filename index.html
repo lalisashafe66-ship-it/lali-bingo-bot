@@ -1,228 +1,795 @@
-<?php
-// Enable error logging for debugging
-ini_set('display_errors', 0);
-error_reporting(E_ALL);
-
-$content = file_get_contents("php://input");
-$update = json_decode($content, true);
-
-if (!$update) {
-    exit;
-}
-
-$chatId = $update['message']['chat']['id'] ?? $update['callback_query']['message']['chat']['id'] ?? null;
-$text = trim($update['message']['text'] ?? '');
-$contact = $update['message']['contact'] ?? null;
-$firstName = $update['message']['from']['first_name'] ?? $update['callback_query']['from']['first_name'] ?? 'Player';
-$telegramId = (string)($update['message']['from']['id'] ?? $update['callback_query']['from']['id'] ?? '');
-
-$token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
-$ADMIN_ID = "730967613"; 
-
-function sendMessage($chatId, $message, $keyboard = null) {
-    global $token;
-    $url = "https://api.telegram.org/bot$token/sendMessage";
-    $data = [
-        'chat_id' => $chatId,
-        'text' => $message,
-        'parse_mode' => 'HTML'
-    ];
-    if ($keyboard) {
-        $data['reply_markup'] = json_encode($keyboard);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Future Bingo</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0B1E22;
+      --card-bg: #132F33;
+      --accent-gold: #FFC107;
+      --accent-green: #198754;
+      --cell-taken: #1a444a;
     }
-    @file_get_contents($url . '?' . http_build_query($data));
-}
+    body {
+      background-color: var(--bg-dark);
+      color: #ffffff;
+      font-family: system-ui, -apple-system, sans-serif;
+      user-select: none;
+      padding-bottom: 110px; 
+    }
+    .card-custom {
+      background-color: var(--card-bg);
+      border: 1px solid #1f474d;
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .table-option {
+      background-color: var(--card-bg);
+      border: 2px solid #234d54;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: left;
+    }
+    .table-option.selected {
+      border-color: var(--accent-gold);
+      background-color: #173b40;
+    }
+    .table-option .text-muted, 
+    .table-option small, 
+    .table-option p {
+      color: #cbd5e1 !important;
+    }
+    .bottom-nav {
+      position: fixed;
+      bottom: 10px;
+      left: 15px;
+      right: 15px;
+      background-color: #081619;
+      border: 1px solid #1a3c42;
+      border-radius: 30px;
+      display: flex;
+      justify-content: space-around;
+      padding: 8px 0;
+      z-index: 1050;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .nav-item-custom {
+      color: #8a9b9e;
+      text-align: center;
+      font-size: 0.75rem;
+      cursor: pointer;
+      text-decoration: none;
+      padding: 4px 12px;
+      border-radius: 20px;
+      transition: 0.2s;
+    }
+    .nav-item-custom.active {
+      color: #000;
+      background-color: var(--accent-gold);
+      font-weight: bold;
+    }
+    .cartela-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 6px;
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 2px;
+    }
+    .cartela-circle {
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background-color: var(--cell-taken);
+      border: 1px solid #28545c;
+      color: #ffffff;
+      font-size: 0.75rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .cartela-circle.selected {
+      background-color: var(--accent-gold);
+      color: #000000;
+      border-color: #ffca2c;
+      transform: scale(1.1);
+      box-shadow: 0 0 10px rgba(255, 193, 7, 0.6);
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .bingo-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      max-width: 320px;
+      margin: 0 auto;
+    }
+    .bingo-header {
+      background: var(--accent-gold);
+      color: #000;
+      font-weight: 800;
+      text-align: center;
+      padding: 4px 0;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+    .bingo-cell {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1a3c42;
+      border: 2px solid #28545c;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .bingo-cell.marked {
+      background: var(--accent-green);
+      border-color: #20c997;
+      color: #fff;
+    }
+    .bingo-cell.free {
+      background: #0d6efd;
+      border-color: #3d8bfd;
+      font-size: 0.6rem;
+    }
+    .called-ball {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #ff4d4d, #b30000);
+      color: white;
+      font-size: 1.1rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto;
+      box-shadow: 0 4px 12px rgba(255, 77, 77, 0.4);
+    }
+  </style>
+</head>
+<body class="p-3">
 
-try {
-    $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex align-items-center gap-2">
+      <span style="font-size: 1.3rem;">🔶</span>
+      <h5 class="fw-bold mb-0 text-warning">Future Bingo</h5>
+    </div>
+    <div class="text-end">
+      <small class="text-muted d-block" style="font-size: 0.7rem;">Balance</small>
+      <span class="fw-bold text-warning fs-6" id="balance-display">0.00 ETB</span>
+    </div>
+  </div>
+
+  <!-- GAME SETUP SCREEN -->
+  <div id="screen-game" class="container">
+    <h3 class="fw-bold text-light mb-1">Choose a table</h3>
+    <p class="text-muted small mb-3">Pick a stake, then choose up to 3 cartelas. The first cartela with a full line wins 80% of all stakes.</p>
     
-    $pdo->exec("CREATE TABLE IF NOT EXISTS players (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT UNIQUE,
-        first_name TEXT,
-        phone TEXT,
-        balance REAL DEFAULT 0.00,
-        referred_by TEXT DEFAULT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
+    <div id="table-options-list" class="mb-3">
+      <div class="table-option selected" onclick="selectTable(10, this)">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="fw-bold text-warning mb-1">10 <small class="text-muted fs-6">ETB per cartela</small></h5>
+            <p class="small mb-0">1 line to win. Winner takes 80% of all stakes</p>
+          </div>
+          <input type="radio" name="stake" checked class="form-check-input">
+        </div>
+      </div>
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT,
-        tx_reference TEXT UNIQUE,
-        amount REAL,
-        source TEXT,
-        status TEXT DEFAULT 'unclaimed',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
-} catch (PDOException $e) {
-    exit;
-}
+      <div class="table-option" onclick="selectTable(20, this)">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="fw-bold text-warning mb-1">20 <small class="text-muted fs-6">ETB per cartela</small></h5>
+            <p class="small mb-0">1 line to win. Winner takes 80% of all stakes</p>
+          </div>
+          <input type="radio" name="stake" class="form-check-input">
+        </div>
+      </div>
 
-if ($chatId) {
-    $mainMenu = [
-        'keyboard' => [
-            [['text' => '🎮 Play Bingo'], ['text' => '💰 Balance']],
-            [['text' => '💳 Deposit'], ['text' => '💸 Withdraw']],
-            [['text' => '📤 Invite Friends'], ['text' => 'ℹ️ Instruction']],
-            [['text' => '📞 Support']]
-        ],
-        'resize_keyboard' => true
-    ];
+      <div class="table-option" onclick="selectTable(50, this)">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="fw-bold text-warning mb-1">50 <small class="text-muted fs-6">ETB per cartela</small></h5>
+            <p class="small mb-0">1 line to win. Winner takes 80% of all stakes</p>
+          </div>
+          <input type="radio" name="stake" class="form-check-input">
+        </div>
+      </div>
+    </div>
 
-    if ($text === '/myid') {
-        sendMessage($chatId, "🆔 Your Telegram ID is: <code>{$telegramId}</code>");
-    }
-    elseif ($text === '/users') {
-        if ($telegramId !== $ADMIN_ID) {
-            sendMessage($chatId, "⛔ Unauthorized.");
-            exit;
+    <div class="card-custom mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="small fw-bold text-warning">Tap to pick your Cartela (1 - 56):</span>
+        <div class="small text-muted d-flex align-items-center gap-2">
+          <span><span class="legend-dot bg-warning align-middle"></span> Yours</span>
+          <span><span class="legend-dot align-middle" style="background:#1a444a;"></span> Taken</span>
+        </div>
+      </div>
+      <div id="cartela-grid-picker" class="cartela-picker-grid mb-2"></div>
+      <p class="text-warning text-center small fw-bold mb-0" id="selected-cartela-info">Your cartelas (1/3). Tap a number again to remove it.</p>
+    </div>
+
+    <div class="mb-3">
+      <button class="btn btn-warning w-100 fw-bold py-3 fs-5 shadow" id="play-btn" onclick="joinSelectedTable()">
+        Play for 10 ETB
+      </button>
+    </div>
+  </div>
+
+  <!-- LOBBY WAITING SCREEN -->
+  <div id="screen-lobby" class="container text-center d-none">
+    <div class="card-custom my-4 py-4">
+      <h5 class="text-light fw-bold mb-2">⏳ Room Starting Soon</h5>
+      <div class="display-6 fw-bold text-warning my-2" id="lobby-prize-pool">0.00 ETB</div>
+      <p class="text-muted small">Estimated Prize Pool (80% of Stakes)</p>
+      <div class="badge bg-dark text-warning fs-5 px-4 py-2 mt-2" id="lobby-timer">00:30</div>
+      <p class="text-muted small mt-3 mb-0" id="lobby-player-count">👥 Players Joined: 1</p>
+    </div>
+  </div>
+
+  <!-- ACTIVE PLAYROOM SCREEN -->
+  <div id="screen-playroom" class="container text-center d-none">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Leave</button>
+      <div class="d-flex gap-2">
+        <button id="sound-toggle" class="btn btn-outline-warning btn-sm" onclick="toggleSound()">🔊 Sound</button>
+        <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ 01:00</span>
+      </div>
+    </div>
+
+    <div class="card-custom mb-2 py-2">
+      <div class="d-flex justify-content-around align-items-center">
+        <div>
+          <span class="text-warning fw-bold fs-5" id="room-prize-display">0.00 ETB</span>
+          <small class="text-muted d-block" style="font-size: 0.65rem;">Prize pool</small>
+        </div>
+        <div id="current-ball" class="called-ball">--</div>
+        <div>
+          <span class="text-light fw-bold fs-5" id="called-count-display">0/75</span>
+          <small class="text-muted d-block" style="font-size: 0.65rem;">Called</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARTELA BOARD -->
+    <div class="card-custom mb-2">
+      <div class="d-flex justify-content-between mb-2">
+        <span class="small fw-bold text-warning" id="active-cartela-title">Cartela #1</span>
+        <span class="small text-muted">1 line to win</span>
+      </div>
+      <div class="bingo-grid mb-1">
+        <div class="bingo-header">B</div>
+        <div class="bingo-header">I</div>
+        <div class="bingo-header">N</div>
+        <div class="bingo-header">G</div>
+        <div class="bingo-header">O</div>
+      </div>
+      <div id="board" class="bingo-grid"></div>
+    </div>
+
+    <!-- MASTER 75 NUMBER BOARD -->
+    <div class="card-custom mb-3" style="max-height: 140px; overflow-y: auto;">
+      <div class="bingo-grid mb-1" style="grid-template-columns: repeat(15, 1fr); gap: 2px;" id="master-board"></div>
+    </div>
+
+    <div class="d-grid gap-2 col-11 mx-auto mb-4">
+      <button id="bingo-btn" class="btn btn-warning btn-lg fw-bold shadow py-3 fs-4" onclick="claimBingo()">
+        🎉 CLAIM BINGO!
+      </button>
+    </div>
+  </div>
+
+  <!-- HISTORY SCREEN -->
+  <div id="screen-history" class="container d-none">
+    <h3 class="fw-bold text-light mb-3">Game History</h3>
+    <div class="card-custom">
+      <p class="text-muted small text-center my-3">No recent games recorded yet.</p>
+    </div>
+  </div>
+
+  <!-- WALLET SCREEN -->
+  <div id="screen-wallet" class="container d-none">
+    <h3 class="fw-bold text-light mb-3">Wallet & Funds</h3>
+    <div class="card-custom text-center mb-3">
+      <p class="text-muted mb-1">Available Balance</p>
+      <h2 class="text-warning fw-bold" id="wallet-balance">0.00 ETB</h2>
+    </div>
+
+    <div class="d-grid gap-2">
+      <button class="btn btn-success fw-bold py-2" onclick="startInstantDeposit()">
+        💳 Deposit & Verify Transaction ID
+      </button>
+      <button class="btn btn-outline-warning fw-bold py-2" onclick="requestWithdrawal()">
+        💸 Request Withdrawal
+      </button>
+    </div>
+  </div>
+
+  <!-- PROFILE SCREEN -->
+  <div id="screen-profile" class="container d-none">
+    <h3 class="fw-bold text-light mb-3">Player Profile</h3>
+    <div class="card-custom">
+      <p class="mb-2"><strong>Name:</strong> <span id="profile-name">Player</span></p>
+      <p class="mb-2"><strong>Telegram ID:</strong> <span id="profile-id">--</span></p>
+      <p class="mb-0"><strong>Status:</strong> <span class="badge bg-success">Verified Active</span></p>
+    </div>
+  </div>
+
+  <!-- BOTTOM PILL NAVIGATION -->
+  <div class="bottom-nav">
+    <div class="nav-item-custom active" onclick="switchTab('game')" id="nav-game">
+      <div>🎲 Game</div>
+    </div>
+    <div class="nav-item-custom" onclick="switchTab('history')" id="nav-history">
+      <div>📜 History</div>
+    </div>
+    <div class="nav-item-custom" onclick="switchTab('wallet')" id="nav-wallet">
+      <div>💰 Wallet</div>
+    </div>
+    <div class="nav-item-custom" onclick="switchTab('profile')" id="nav-profile">
+      <div>👤 Profile</div>
+    </div>
+  </div>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+
+    function getUserId() {
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user && window.Telegram.WebApp.initDataUnsafe.user.id) {
+            const id = window.Telegram.WebApp.initDataUnsafe.user.id.toString();
+            localStorage.setItem('future_bingo_tg_id', id);
+            return id;
         }
-        $stmt = $pdo->query("SELECT telegram_id, first_name, phone, balance FROM players ORDER BY id DESC LIMIT 20");
-        $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        if (!$users) {
-            sendMessage($chatId, "No registered players yet.");
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('telegram_id')) {
+            const id = urlParams.get('telegram_id');
+            localStorage.setItem('future_bingo_tg_id', id);
+            return id;
+        }
+        return localStorage.getItem('future_bingo_tg_id') || '730967613';
+    }
+
+    const telegramId = getUserId();
+    const user = tg.initDataUnsafe?.user;
+    const playerName = user ? user.first_name : 'Player';
+    
+    document.getElementById('profile-name').textContent = playerName;
+    document.getElementById('profile-id').textContent = telegramId || 'Guest';
+
+    let balance = 0.00;
+    let selectedCardStake = 10;
+    let selectedCartelaNumbers = [1];
+    let card = [];
+    let marked = Array(25).fill(false);
+    let calledNumbers = new Set();
+    let currentRoom = null;
+    
+    let lobbyTimerInterval = null;
+    let lobbyTimeLeft = 20;
+
+    let gameTimerInterval = null;
+    let timeLeft = 60;
+    let drawInterval = null;
+
+    function buildCartelaPickerGrid() {
+      const gridContainer = document.getElementById('cartela-grid-picker');
+      gridContainer.innerHTML = '';
+      for (let i = 1; i <= 56; i++) {
+        const circle = document.createElement('div');
+        circle.className = 'cartela-circle' + (selectedCartelaNumbers.includes(i) ? ' selected' : '');
+        circle.textContent = i;
+        circle.onclick = () => toggleCartelaNumber(i);
+        gridContainer.appendChild(circle);
+      }
+      document.getElementById('selected-cartela-info').textContent = 
+        `Your cartelas (${selectedCartelaNumbers.length}/3). Tap a number again to remove it.`;
+    }
+
+    function toggleCartelaNumber(num) {
+      const idx = selectedCartelaNumbers.indexOf(num);
+      if (idx > -1) {
+        if (selectedCartelaNumbers.length > 1) {
+          selectedCartelaNumbers.splice(idx, 1);
         } else {
-            $msg = "👥 <b>Registered Players (Last 20):</b>\n\n";
-            foreach ($users as $u) {
-                $msg .= "• <b>{$u['first_name']}</b> | ID: <code>{$u['telegram_id']}</code> | Tel: {$u['phone']} | Bal: <b>{$u['balance']} ETB</b>\n";
-            }
-            sendMessage($chatId, $msg);
+          alert("You must select at least 1 cartela.");
+          return;
         }
+      } else {
+        if (selectedCartelaNumbers.length < 3) {
+          selectedCartelaNumbers.push(num);
+        } else {
+          alert("You can select a maximum of 3 cartelas per round.");
+          return;
+        }
+      }
+      buildCartelaPickerGrid();
     }
-    elseif (stripos($text, '/add') === 0) {
-        if ($telegramId !== $ADMIN_ID) {
-            sendMessage($chatId, "⛔ Unauthorized.");
-            exit;
+
+    function selectTable(stake, element) {
+      document.querySelectorAll('.table-option').forEach(el => {
+        el.classList.remove('selected');
+        el.querySelector('input').checked = false;
+      });
+      element.classList.add('selected');
+      element.querySelector('input').checked = true;
+      selectedCardStake = stake;
+      document.getElementById('play-btn').textContent = `Play for ${stake * selectedCartelaNumbers.length} ETB`;
+    }
+
+    function switchTab(tab) {
+      if (tab === 'game') {
+        clearInterval(drawInterval);
+        clearInterval(gameTimerInterval);
+        clearInterval(lobbyTimerInterval);
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      }
+
+      ['game', 'lobby', 'playroom', 'history', 'wallet', 'profile'].forEach(s => {
+        document.getElementById(`screen-${s}`).classList.add('d-none');
+      });
+      document.querySelectorAll('.bottom-nav .nav-item-custom').forEach(n => n.classList.remove('active'));
+
+      if (tab === 'game') {
+        document.getElementById('screen-game').classList.remove('d-none');
+        document.getElementById('nav-game').classList.add('active');
+        buildCartelaPickerGrid();
+      } else if (tab === 'lobby') {
+        document.getElementById('screen-lobby').classList.remove('d-none');
+      } else if (tab === 'playroom') {
+        document.getElementById('screen-playroom').classList.remove('d-none');
+      } else if (tab === 'history') {
+        document.getElementById('screen-history').classList.remove('d-none');
+        document.getElementById('nav-history').classList.add('active');
+      } else if (tab === 'wallet') {
+        document.getElementById('screen-wallet').classList.remove('d-none');
+        document.getElementById('nav-wallet').classList.add('active');
+      } else if (tab === 'profile') {
+        document.getElementById('screen-profile').classList.remove('d-none');
+        document.getElementById('nav-profile').classList.add('active');
+      }
+      syncBalance();
+    }
+
+    let soundEnabled = true;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function toggleSound() {
+      soundEnabled = !soundEnabled;
+      const btn = document.getElementById('sound-toggle');
+      btn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Muted';
+    }
+
+    function playTone(freq, type, duration, delay = 0) {
+      if (!soundEnabled) return;
+      initAudio();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(audioCtx.currentTime + delay);
+      osc.stop(audioCtx.currentTime + delay + duration);
+    }
+
+    const sounds = {
+      ballPop: () => { playTone(520, 'sine', 0.12, 0); playTone(780, 'sine', 0.15, 0.06); },
+      daubMatch: () => { playTone(659.25, 'triangle', 0.12, 0); playTone(880, 'triangle', 0.25, 0.08); },
+      winFanfare: () => { [523.25, 659.25, 783.99, 1046.50].forEach((n, i) => playTone(n, 'triangle', 0.35, i * 0.12)); },
+      errorBuzz: () => { playTone(180, 'sawtooth', 0.2, 0); playTone(140, 'sawtooth', 0.25, 0.15); }
+    };
+
+    function announceBall(letter, number) {
+      if (!soundEnabled || !('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const ut = new SpeechSynthesisUtterance(`${letter} ${number}`);
+      ut.rate = 1.05; ut.pitch = 1.1;
+      window.speechSynthesis.speak(ut);
+    }
+
+    function updateBalanceUI(newBal) {
+      balance = parseFloat(newBal) || 0.00;
+      document.getElementById('balance-display').textContent = `${balance.toFixed(2)} ETB`;
+      document.getElementById('wallet-balance').textContent = `${balance.toFixed(2)} ETB`;
+    }
+
+    function syncBalance() {
+      if (!telegramId) { updateBalanceUI(0.00); return; }
+      fetch(`api.php?action=get_balance&telegram_id=${encodeURIComponent(telegramId)}`)
+        .then(res => res.json())
+        .then(data => { 
+          if (data.success && data.balance !== undefined) {
+            updateBalanceUI(data.balance); 
+          }
+        })
+        .catch(() => {});
+    }
+
+    setInterval(syncBalance, 5000);
+    window.addEventListener("focus", syncBalance);
+
+    function startInstantDeposit() {
+      const txRef = prompt("Enter your Telebirr or CBE Transaction ID / Receipt Reference:");
+      if (!txRef || !txRef.trim()) return;
+
+      const formData = new FormData();
+      formData.append('telegram_id', telegramId);
+      formData.append('tx_ref', txRef.trim());
+
+      fetch('https://lali-bingo-bot.onrender.com/verify_payment.php', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            updateBalanceUI(data.new_balance);
+            alert(`✅ ${data.message || 'Deposit verified successfully!'}`);
+          } else {
+            alert(`❌ ${data.message || 'Transaction ID not found or already claimed.'}`);
+          }
+        })
+        .catch(err => alert('network error: ' + err.message));
+    }
+
+    function joinSelectedTable() {
+      initAudio();
+      const totalFee = selectedCardStake * selectedCartelaNumbers.length;
+      if (balance < totalFee) {
+        sounds.errorBuzz();
+        alert(`Insufficient balance! You need ${totalFee} ETB for ${selectedCartelaNumbers.length} cartela(s). Please top up in Wallet.`);
+        switchTab('wallet');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('action', 'join_room');
+      formData.append('telegram_id', telegramId);
+      formData.append('fee', totalFee);
+      formData.append('player_number', selectedCartelaNumbers[0]);
+
+      fetch('api.php', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+          if (!data.success) {
+            sounds.errorBuzz();
+            alert(data.error || 'Could not join table.');
+            return;
+          }
+          updateBalanceUI(data.new_balance);
+
+          const totalPool = totalFee * (data.total_players || 1);
+          const winnerPrize = totalPool * 0.80;
+
+          currentRoom = { 
+            room_id: data.room_id, 
+            entry_fee: totalFee, 
+            prize_pool: winnerPrize, 
+            player_number: selectedCartelaNumbers[0] 
+          };
+          
+          document.getElementById('lobby-player-count').textContent = `👥 Players Joined: ${data.total_players || 1}`;
+          document.getElementById('lobby-prize-pool').textContent = `${winnerPrize.toFixed(2)} ETB`;
+          
+          switchTab('lobby');
+          startLobbyCountdown();
+        })
+        .catch(() => alert('Network error while joining table.'));
+    }
+
+    function startLobbyCountdown() {
+      lobbyTimeLeft = 20;
+      document.getElementById('lobby-timer').textContent = `00:20`;
+      clearInterval(lobbyTimerInterval);
+
+      lobbyTimerInterval = setInterval(() => {
+        lobbyTimeLeft--;
+        let mins = Math.floor(lobbyTimeLeft / 60);
+        let secs = lobbyTimeLeft % 60;
+        document.getElementById('lobby-timer').textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+        if (lobbyTimeLeft <= 0) {
+          clearInterval(lobbyTimerInterval);
+          document.getElementById('active-cartela-title').textContent = `Cartela #${currentRoom.player_number}`;
+          document.getElementById('room-prize-display').textContent = `${currentRoom.prize_pool.toFixed(2)} ETB`;
+          switchTab('playroom');
+          startNewGame();
         }
-        $parts = preg_split('/\s+/', trim($text));
+      }, 1000);
+    }
+
+    function generateCard() {
+      const getCols = (min, max) => {
+        const nums = [];
+        while(nums.length < 5) {
+          const n = Math.floor(Math.random() * (max - min + 1)) + min;
+          if(!nums.includes(n)) nums.push(n);
+        }
+        return nums;
+      };
+      const cols = [getCols(1,15), getCols(16,30), getCols(31,45), getCols(46,60), getCols(61,75)];
+      card = [];
+      for(let r=0; r<5; r++) {
+        for(let c=0; c<5; c++) card.push(cols[c][r]);
+      }
+      marked = Array(25).fill(false);
+      marked[12] = true;
+    }
+
+    function renderBoard() {
+      const board = document.getElementById('board');
+      board.innerHTML = '';
+      card.forEach((num, idx) => {
+        const cell = document.createElement('div');
+        cell.className = 'bingo-cell' + (idx === 12 ? ' free marked' : (marked[idx] ? ' marked' : ''));
+        cell.textContent = idx === 12 ? 'FREE' : num;
+        board.appendChild(cell);
+      });
+    }
+
+    function buildMasterBoard() {
+      const master = document.getElementById('master-board');
+      master.innerHTML = '';
+      for(let i=1; i<=75; i++) {
+        const mCell = document.createElement('div');
+        mCell.className = 'bingo-cell';
+        mCell.style.fontSize = '0.65rem';
+        mCell.id = `master-${i}`;
+        mCell.textContent = i;
+        master.appendChild(mCell);
+      }
+    }
+
+    function startNewGame() {
+      calledNumbers.clear();
+      generateCard();
+      renderBoard();
+      buildMasterBoard();
+      
+      timeLeft = 60;
+      document.getElementById('game-timer').textContent = `⏱️ 01:00`;
+      clearInterval(gameTimerInterval);
+      
+      gameTimerInterval = setInterval(() => {
+        timeLeft--;
+        let mins = Math.floor(timeLeft / 60);
+        let secs = timeLeft % 60;
+        document.getElementById('game-timer').textContent = `⏱️ ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         
-        if (count($parts) >= 3 && is_numeric($parts[2])) {
-            $targetId = trim($parts[1]);
-            $amount = (float)$parts[2];
-
-            $stmt = $pdo->prepare("SELECT first_name, balance FROM players WHERE telegram_id = ?");
-            $stmt->execute([$targetId]);
-            $targetPlayer = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($targetPlayer) {
-                $newBal = $targetPlayer['balance'] + $amount;
-                $upd = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
-                $upd->execute([$newBal, $targetId]);
-
-                sendMessage($chatId, "✅ Credited <b>{$amount} ETB</b> to <b>{$targetPlayer['first_name']}</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$newBal} ETB</b>");
-                sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\nCurrent Balance: <b>{$newBal} ETB</b>");
-            } else {
-                $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', ?)");
-                $ins->execute([$targetId, $amount]);
-
-                sendMessage($chatId, "✅ Player created and credited <b>{$amount} ETB</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$amount} ETB</b>");
-                sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\nCurrent Balance: <b>{$amount} ETB</b>");
-            }
-        } else {
-            sendMessage($chatId, "⚠️ Usage format: <code>/add TELEGRAM_ID AMOUNT</code>\nExample: <code>/add 730967613 200</code>");
+        if (timeLeft <= 0) {
+          clearInterval(gameTimerInterval);
+          clearInterval(drawInterval);
+          if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+          sounds.errorBuzz();
+          alert('⏰ Round ended with no winner.');
+          switchTab('game');
         }
-    }
-    elseif (stripos($text, '/verify') === 0) {
-        $parts = preg_split('/\s+/', trim($text));
-        if (count($parts) >= 2) {
-            $txRef = trim($parts[1]);
-            
-            $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ? AND status = 'unclaimed'");
-            $stmt->execute([$txRef]);
-            $tx = $stmt->fetch(PDO::FETCH_ASSOC);
+      }, 1000);
 
-            if ($tx) {
-                $amount = (float)$tx['amount'];
-                $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?")->execute([$telegramId, $tx['id']]);
-                $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?")->execute([$amount, $telegramId]);
+      let pool = Array.from({length: 75}, (_, i) => i + 1).sort(() => Math.random() - 0.5);
+      clearInterval(drawInterval);
+      
+      drawInterval = setInterval(() => {
+        if(pool.length === 0) { clearInterval(drawInterval); return; }
+        const n = pool.pop();
+        calledNumbers.add(n);
+        
+        const letter = n <= 15 ? 'B' : n <= 30 ? 'I' : n <= 45 ? 'N' : n <= 60 ? 'G' : 'O';
+        document.getElementById('current-ball').textContent = `${letter}-${n}`;
+        document.getElementById('called-count-display').textContent = `${calledNumbers.size}/75`;
+        
+        const mNode = document.getElementById(`master-${n}`);
+        if(mNode) mNode.classList.add('marked');
 
-                $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
-                $stmt->execute([$telegramId]);
-                $newBal = $stmt->fetch(PDO::FETCH_ASSOC)['balance'];
+        sounds.ballPop();
+        announceBall(letter, n);
+        
+        card.forEach((num, idx) => {
+          if (num === n) {
+            marked[idx] = true;
+            sounds.daubMatch();
+            tg.HapticFeedback?.impactOccurred('light');
+          }
+        });
+        renderBoard();
+      }, 2500);
+    }
 
-                sendMessage($chatId, "✅ <b>Deposit Successful!</b>\n\n<b>{$amount} ETB</b> has been credited to your wallet.\nNew Balance: <b>{$newBal} ETB</b>", $mainMenu);
-            } else {
-                sendMessage($chatId, "❌ Transaction ID not found, already claimed, or waiting for SMS verification.");
-            }
-        } else {
-            sendMessage($chatId, "⚠️ Usage: <code>/verify TRANSACTION_ID</code>\nExample: <code>/verify BGH82K91LM</code>");
-        }
+    function checkWin() {
+      const lines = [
+        [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
+        [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
+        [0,6,12,18,24], [4,8,12,16,20]
+      ];
+      return lines.some(line => line.every(idx => marked[idx]));
     }
-    elseif ($text === '/start' || stripos($text, 'start') !== false) {
-        $parts = preg_split('/\s+/', trim($text));
-        $referrerId = ($parts && count($parts) > 1) ? trim($parts[1]) : null;
 
-        $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = ?");
-        $stmt->execute([$telegramId]);
-        $player = $stmt->fetch(PDO::FETCH_ASSOC);
+    function claimBingo() {
+      if (checkWin()) {
+        clearInterval(drawInterval);
+        clearInterval(gameTimerInterval);
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        sounds.winFanfare();
+        tg.HapticFeedback?.notificationOccurred('success');
+        
+        const formData = new FormData();
+        formData.append('action', 'claim_win');
+        formData.append('telegram_id', telegramId);
+        formData.append('prize', currentRoom.prize_pool);
+        formData.append('room_id', currentRoom.room_id);
+        formData.append('winner_name', playerName);
 
-        if (!$player) {
-            $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance, referred_by) VALUES (?, ?, 'WebUser', 0.00, ?)");
-            $ins->execute([$telegramId, $firstName, $referrerId]);
+        fetch('api.php', { method: 'POST', body: formData })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) updateBalanceUI(data.new_balance);
+            alert(`🎉 BINGO WINNER!\n\n🏆 Winner: ${playerName}\n💰 Prize: ${currentRoom.prize_pool.toFixed(2)} ETB added to balance!`);
+            switchTab('game');
+          });
+      } else {
+        sounds.errorBuzz();
+        tg.HapticFeedback?.notificationOccurred('error');
+        alert('❌ Not a valid Bingo line yet!');
+      }
+    }
 
-            if ($referrerId && $referrerId !== $telegramId) {
-                $bonusAmount = 5.00;
-                $updRef = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
-                $updRef->execute([$bonusAmount, $referrerId]);
+    function requestWithdrawal() {
+      const amount = prompt(`Enter amount to withdraw (Available: ${balance.toFixed(2)} ETB):`, "50");
+      if (!amount) return;
+      const amtNum = parseFloat(amount);
+      if (isNaN(amtNum) || amtNum <= 0 || amtNum > balance) {
+        alert("Invalid amount or insufficient balance.");
+        return;
+      }
+      const method = prompt("Choose payout method:\n1. Telebirr\n2. CBE", "Telebirr");
+      if (!method) return;
+      const account = prompt(`Enter your ${method} Phone/Account number:`, "");
+      if (!account) return;
 
-                sendMessage($referrerId, "🎉 <b>Referral Bonus!</b>\nA new friend joined using your link. <b>{$bonusAmount} ETB</b> has been added to your balance!");
-            }
+      const formData = new FormData();
+      formData.append('action', 'request_withdrawal');
+      formData.append('telegram_id', telegramId);
+      formData.append('amount', amtNum);
+      formData.append('method', method);
+      formData.append('account', account);
 
-            sendMessage($chatId, "👋 Welcome to <b>Future Bingo</b>, <b>{$firstName}</b>!\nYour profile is registered. Choose an option from the menu below:", $mainMenu);
-        } else {
-            sendMessage($chatId, "👋 Welcome back to <b>Future Bingo</b>, <b>{$firstName}</b>!\nChoose an option from the menu below:", $mainMenu);
-        }
+      fetch('api.php', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            updateBalanceUI(data.new_balance);
+            alert(`✅ ${data.message || 'Withdrawal requested successfully!'}`);
+          } else {
+            alert(data.error || 'Withdrawal failed.');
+          }
+        })
+        .catch(() => alert('Network error.'));
     }
-    elseif ($contact) {
-        $phone = $contact['phone_number'];
-        $stmt = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, ?, 0.00) ON CONFLICT(telegram_id) DO UPDATE SET phone = excluded.phone");
-        $stmt->execute([$telegramId, $firstName, $phone]);
 
-        sendMessage($chatId, "✅ <b>Registered successfully!</b>\nYour wallet balance is <b>0.00 ETB</b>.", $mainMenu);
-    }
-    elseif (stripos($text, 'Play Bingo') !== false) {
-        $webAppKeyboard = [
-            'inline_keyboard' => [
-                [['text' => '🚀 Launch Future Bingo App', 'web_app' => ['url' => 'https://lali-bingo-bot.onrender.com/index.html']]]
-            ]
-        ];
-        sendMessage($chatId, "Tap the button below to open your Future Bingo game app and choose a table:", $webAppKeyboard);
-    }
-    elseif (stripos($text, 'Balance') !== false) {
-        $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
-        $stmt->execute([$telegramId]);
-        $player = $stmt->fetch(PDO::FETCH_ASSOC);
-        $bal = number_format((float)($player['balance'] ?? 0.00), 2);
-        sendMessage($chatId, "💰 Your current balance is: <b>{$bal} ETB</b>", $mainMenu);
-    }
-    elseif (stripos($text, 'Deposit') !== false) {
-        $depositText = "💳 <b>Deposit Funds & Top-Up</b>\n\n" .
-                       "1. Transfer funds to our accounts below:\n" .
-                       "🏦 <b>CBE:</b> <code>1000171689116</code> (Lalisa Shafe Nagari)\n" .
-                       "📱 <b>Telebirr:</b> <code>0917461538</code> (Lalisa Shafe Nagari)\n\n" .
-                       "2. Once you receive your confirmation SMS, reply right here in the chat with your <b>Transaction ID</b> using the command:\n" .
-                       "<code>/verify TRANSACTION_ID</code>\n\n" .
-                       "<i>Example:</i> <code>/verify BGH82K91LM</code>";
-        sendMessage($chatId, $depositText, $mainMenu);
-    }
-    elseif (stripos($text, 'Withdraw') !== false) {
-        $withdrawText = "💸 <b>Withdraw Funds</b>\n\n" .
-                        "1. Open the <b>🎮 Play Bingo</b> WebApp.\n" .
-                        "2. Go to the <b>💰 Wallet</b> tab.\n" .
-                        "3. Tap <b>💸 Request Withdrawal</b>.";
-        sendMessage($chatId, $withdrawText, $mainMenu);
-    }
-    elseif (stripos($text, 'Invite Friends') !== false) {
-        $botUsername = "Lali_Bingo_bot";
-        sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/{$botUsername}?start={$telegramId}", $mainMenu);
-    }
-    elseif (stripos($text, 'Instruction') !== false) {
-        sendMessage($chatId, "📖 <b>How to Play Future Bingo:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, or 50 ETB) and your Cartela number (1-56).\n3. Complete a line and tap <b>CLAIM BINGO</b> to win!", $mainMenu);
-    }
-    elseif (stripos($text, 'Support') !== false) {
-        sendMessage($chatId, "📞 Contact our support team: @Future_Support", $mainMenu);
-    }
-}
-?>
+    buildCartelaPickerGrid();
+    syncBalance();
+  </script>
+</body>
+</html>
