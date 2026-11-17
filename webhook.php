@@ -72,8 +72,20 @@ try {
         }
 
         if ($amount > 0 && !empty($txRef)) {
-            $stmt = $pdo->prepare("INSERT OR REPLACE INTO transactions (tx_reference, amount, source, status) VALUES (?, ?, 'Telebirr_SMS', 'unclaimed')");
-            $stmt->execute([$txRef, $amount]);
+            // Check if transaction reference already exists in DB
+            $checkStmt = $pdo->prepare("SELECT id, telegram_id FROM transactions WHERE tx_reference = ?");
+            $checkStmt->execute([$txRef]);
+            $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($existing) {
+                // Update amount without overwriting an existing telegram_id link
+                $updateStmt = $pdo->prepare("UPDATE transactions SET amount = ?, source = 'Telebirr_SMS' WHERE tx_reference = ?");
+                $updateStmt->execute([$amount, $txRef]);
+            } else {
+                // Insert brand new unclaimed transaction record
+                $insertStmt = $pdo->prepare("INSERT INTO transactions (tx_reference, amount, source, status) VALUES (?, ?, 'Telebirr_SMS', 'unclaimed')");
+                $insertStmt->execute([$txRef, $amount]);
+            }
         }
     }
 
