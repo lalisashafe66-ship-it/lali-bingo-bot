@@ -15,7 +15,6 @@ $text = trim($update['message']['text'] ?? '');
 $contact = $update['message']['contact'] ?? null;
 $firstName = $update['message']['from']['first_name'] ?? $update['callback_query']['from']['first_name'] ?? 'Player';
 $telegramId = (string)($update['message']['from']['id'] ?? $update['callback_query']['from']['id'] ?? '');
-$callbackData = $update['callback_query']['data'] ?? null;
 
 $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
@@ -216,8 +215,7 @@ if ($chatId) {
         sendMessage($chatId, $withdrawText, $mainMenu);
     }
     elseif (stripos($text, 'Invite Friends') !== false) {
-        // Use your bot's real username here
-        $botUsername = "Lali_Bingo_bot"; 
+        $botUsername = "Lali_Bingo_bot";
         sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/{$botUsername}?start={$telegramId}", $mainMenu);
     }
     elseif (stripos($text, 'Instruction') !== false) {
