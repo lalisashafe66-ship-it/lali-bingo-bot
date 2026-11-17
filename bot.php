@@ -20,9 +20,6 @@ $callbackData = $update['callback_query']['data'] ?? null;
 $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
 $ADMIN_ID = "730967613"; 
 
-// 📢 OFFICIAL TELEGRAM CHANNEL USERNAME
-$REQUIRED_CHANNEL = "@Future_Bingo"; 
-
 function sendMessage($chatId, $message, $keyboard = null) {
     global $token;
     $url = "https://api.telegram.org/bot$token/sendMessage";
@@ -35,22 +32,6 @@ function sendMessage($chatId, $message, $keyboard = null) {
         $data['reply_markup'] = json_encode($keyboard);
     }
     @file_get_contents($url . '?' . http_build_query($data));
-}
-
-function checkChannelMembership($userId) {
-    global $token, $REQUIRED_CHANNEL;
-    $url = "https://api.telegram.org/bot$token/getChatMember?chat_id=" . urlencode($REQUIRED_CHANNEL) . "&user_id=" . $userId;
-    $response = @file_get_contents($url);
-    if (!$response) return true;
-    
-    $res = json_decode($response, true);
-    if (isset($res['ok']) && $res['ok'] === true) {
-        $status = $res['result']['status'] ?? '';
-        if (in_array($status, ['creator', 'administrator', 'member'])) {
-            return true;
-        }
-    }
-    return false;
 }
 
 try {
@@ -81,34 +62,6 @@ try {
 }
 
 if ($chatId) {
-    if ($callbackData === 'check_join') {
-        if (checkChannelMembership($telegramId)) {
-            sendMessage($chatId, "🎉 <b>Thank you for joining Future Bingo!</b>\nChoose an option from your menu below:", [
-                'keyboard' => [
-                    [['text' => '🎮 Play Bingo'], ['text' => '💰 Balance']],
-                    [['text' => '💳 Deposit'], ['text' => '💸 Withdraw']],
-                    [['text' => '📤 Invite Friends'], ['text' => 'ℹ️ Instruction']],
-                    [['text' => '📞 Support']]
-                ],
-                'resize_keyboard' => true
-            ]);
-        } else {
-            sendMessage($chatId, "⚠️ We couldn't verify your membership yet. Please make sure you join <b>{$REQUIRED_CHANNEL}</b> and try again.");
-        }
-        exit;
-    }
-
-    if (!checkChannelMembership($telegramId)) {
-        $joinKeyboard = [
-            'inline_keyboard' => [
-                [['text' => '📢 Join Our Channel', 'url' => 'https://t.me/Future_Bingo']],
-                [['text' => '✅ I Have Joined', 'callback_data' => 'check_join']]
-            ]
-        ];
-        sendMessage($chatId, "🚀 <b>Welcome to Future Bingo!</b>\n\nTo use this bot and play games, you must first join our official channel: <b>{$REQUIRED_CHANNEL}</b>.\n\nAfter joining, tap <b>✅ I Have Joined</b> below!", $joinKeyboard);
-        exit;
-    }
-
     $mainMenu = [
         'keyboard' => [
             [['text' => '🎮 Play Bingo'], ['text' => '💰 Balance']],
@@ -263,7 +216,9 @@ if ($chatId) {
         sendMessage($chatId, $withdrawText, $mainMenu);
     }
     elseif (stripos($text, 'Invite Friends') !== false) {
-        sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/Future_Bingo_bot?start={$telegramId}", $mainMenu);
+        // Use your bot's real username here
+        $botUsername = "Lali_Bingo_bot"; 
+        sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/{$botUsername}?start={$telegramId}", $mainMenu);
     }
     elseif (stripos($text, 'Instruction') !== false) {
         sendMessage($chatId, "📖 <b>How to Play Future Bingo:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, or 50 ETB) and your Cartela number (1-56).\n3. Complete a line and tap <b>CLAIM BINGO</b> to win!", $mainMenu);
