@@ -543,7 +543,8 @@
       formData.append('telegram_id', telegramId);
       formData.append('tx_ref', txRef.trim());
 
-      fetch('verify_payment.php', { method: 'POST', body: formData })
+      // Updated absolute URL to fix fetch network errors in WebApp
+      fetch('https://lali-bingo-bot.onrender.com/verify_payment.php', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
           if (data.success) {
@@ -553,7 +554,7 @@
             alert(`❌ ${data.message || 'Transaction ID not found or already claimed.'}`);
           }
         })
-        .catch(err => alert('Network error: ' + err.message));
+        .catch(err => alert('network error: ' + err.message));
     }
 
     function joinSelectedTable() {
