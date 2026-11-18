@@ -69,12 +69,6 @@ if ($action === 'get_balance') {
         exit;
     }
 
-    // PERMANENT OVERRIDE: Lock balance for your Telegram ID so it never resets to 0.00
-    if ($telegramId === '730967613') {
-        echo json_encode(['success' => true, 'balance' => 50.00]);
-        exit;
-    }
-
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -82,12 +76,12 @@ if ($action === 'get_balance') {
     if ($player) {
         $balance = (float)$player['balance'];
     } else {
-        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', 0.00)");
-        $stmtIns->execute([$telegramId]);
+        // Automatically initialize your account with 50 ETB on first load
+        $initialBal = ($telegramId === '730967613') ? 50.00 : 0.00;
+        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'LÀLISHAA', 'WebUser', ?)");
+        $stmtIns->execute([$telegramId, $initialBal]);
         
-        $stmt->execute([$telegramId]);
-        $playerCheck = $stmt->fetch(PDO::FETCH_ASSOC);
-        $balance = $playerCheck ? (float)$playerCheck['balance'] : 0.00;
+        $balance = $initialBal;
     }
     
     echo json_encode(['success' => true, 'balance' => $balance]);
@@ -102,14 +96,14 @@ elseif ($action === 'join_room') {
         exit;
     }
 
-    // Bypass check for override account during game play deductions if needed, or let it deduct normally from db
+    // Use transaction to ensure balance is never miscalculated during simultaneous plays
     $pdo->beginTransaction();
     try {
         $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $currentBalance = ($telegramId === '730967613') ? 50.00 : ($player ? (float)$player['balance'] : 0.00);
+        $currentBalance = $player ? (float)$player['balance'] : (($telegramId === '730967613') ? 50.00 : 0.00);
 
         if ($currentBalance < $fee) {
             $pdo->rollBack();
@@ -118,10 +112,10 @@ elseif ($action === 'join_room') {
         }
 
         $newBalance = $currentBalance - $fee;
-        
-        // Ensure player exists in DB before updating
+
+        // Ensure player row exists before updating
         $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'LÀLISHAA', 'WebUser', ?)");
-        $stmtIns->execute([$telegramId, $newBalance]);
+        $stmtIns->execute([$telegramId, $currentBalance]);
 
         $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
         $update->execute([$newBalance, $telegramId]);
@@ -207,7 +201,7 @@ elseif ($action === 'request_withdrawal') {
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $currentBal = ($telegramId === '730967613') ? 50.00 : ($player ? (float)$player['balance'] : 0.00);
+        $currentBal = $player ? (float)$player['balance'] : (($telegramId === '730967613') ? 50.00 : 0.00);
 
         if ($currentBal < $amount || $amount <= 0) {
             $pdo->rollBack();
@@ -218,7 +212,7 @@ elseif ($action === 'request_withdrawal') {
         $newBalance = $currentBal - $amount;
         
         $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'LÀLISHAA', 'WebUser', ?)");
-        $stmtIns->execute([$telegramId, $newBalance]);
+        $stmtIns->execute([$telegramId, $currentBal]);
 
         $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
         $update->execute([$newBalance, $telegramId]);
