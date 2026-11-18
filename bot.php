@@ -185,7 +185,7 @@ if ($chatId) {
     elseif (stripos($text, 'Play Bingo') !== false) {
         $webAppKeyboard = [
             'inline_keyboard' => [
-                [['text' => '🚀 Launch Future Bingo App', 'web_app' => ['url' => 'https://lali-bingo-bot.onrender.com/index.html']]]
+                [['text' => '🚀 Launch Future Bingo App', 'web_app' => ['url' => 'https://lali-bingo-bot.onrender.com/index.php']]]
             ]
         ];
         sendMessage($chatId, "Tap the button below to open your Future Bingo game app and choose a table:", $webAppKeyboard);
