@@ -19,27 +19,29 @@
       color: #ffffff;
       font-family: system-ui, -apple-system, sans-serif;
       user-select: none;
-      padding-bottom: 110px; 
+      padding-top: 8px;
+      padding-bottom: 85px; /* Tighter bottom space for fixed nav */
+      overflow-x: hidden;
     }
     .top-strip {
       background: linear-gradient(90deg, #ffc107, #ff9800, #00bcd4, #e91e63, #ffc107);
-      height: 6px;
+      height: 4px;
       width: 100%;
-      margin-bottom: 15px;
+      margin-bottom: 10px;
     }
     .card-custom {
       background-color: var(--card-bg);
       border: 1px solid #1f474d;
-      border-radius: 16px;
-      padding: 16px;
-      margin-bottom: 12px;
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
     }
     .table-option {
       background-color: var(--card-bg);
       border: 2px solid #234d54;
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 10px;
+      border-radius: 10px;
+      padding: 8px 12px;
+      margin-bottom: 6px;
       cursor: pointer;
       transition: all 0.2s ease;
       text-align: left;
@@ -52,44 +54,45 @@
     .table-option small, 
     .table-option p {
       color: #cbd5e1 !important;
+      font-size: 0.75rem;
     }
     .bottom-nav {
       position: fixed;
-      bottom: 12px;
-      left: 15px;
-      right: 15px;
+      bottom: 8px;
+      left: 10px;
+      right: 10px;
       background-color: #0c2d31;
       border: 1px solid #1d4e56;
-      border-radius: 35px;
+      border-radius: 30px;
       display: flex;
       justify-content: space-around;
-      padding: 10px 5px;
+      padding: 6px 4px;
       z-index: 1050;
-      box-shadow: 0 6px 25px rgba(0,0,0,0.6);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
     }
     .nav-item-custom {
       color: #8a9b9e;
       text-align: center;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       cursor: pointer;
       text-decoration: none;
-      padding: 8px 18px;
-      border-radius: 25px;
+      padding: 6px 14px;
+      border-radius: 20px;
       transition: 0.2s;
     }
     .nav-item-custom.active {
       color: #000;
       background-color: var(--accent-gold);
       font-weight: 800;
-      box-shadow: 0 0 12px rgba(255, 193, 7, 0.4);
+      box-shadow: 0 0 10px rgba(255, 193, 7, 0.4);
     }
     .cartela-picker-grid {
       display: grid;
       grid-template-columns: repeat(8, 1fr);
-      gap: 6px;
-      max-height: 240px;
+      gap: 4px;
+      max-height: 150px; /* Compact height so it doesn't push buttons off screen */
       overflow-y: auto;
-      padding: 4px;
+      padding: 2px;
     }
     .cartela-circle {
       aspect-ratio: 1;
@@ -97,7 +100,7 @@
       background-color: #153c42;
       border: 1px solid #28545c;
       color: #ffffff;
-      font-size: 0.65rem;
+      font-size: 0.6rem;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -110,19 +113,19 @@
       color: #000000;
       border-color: #ffca2c;
       transform: scale(1.1);
-      box-shadow: 0 0 10px rgba(255, 193, 7, 0.6);
+      box-shadow: 0 0 8px rgba(255, 193, 7, 0.6);
     }
     .legend-dot {
-      width: 10px;
-      height: 10px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
       display: inline-block;
     }
     .bingo-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 5px;
-      max-width: 330px;
+      gap: 4px;
+      max-width: 280px;
       margin: 0 auto;
     }
     .bingo-header {
@@ -130,9 +133,9 @@
       color: #000;
       font-weight: 800;
       text-align: center;
-      padding: 6px 0;
-      border-radius: 6px;
-      font-size: 0.9rem;
+      padding: 4px 0;
+      border-radius: 4px;
+      font-size: 0.8rem;
     }
     .bingo-cell {
       aspect-ratio: 1;
@@ -140,9 +143,9 @@
       align-items: center;
       justify-content: center;
       background: #163d42;
-      border: 2px solid #265961;
-      border-radius: 6px;
-      font-size: 0.9rem;
+      border: 1px solid #265961;
+      border-radius: 4px;
+      font-size: 0.8rem;
       font-weight: 700;
     }
     .bingo-cell.marked {
@@ -153,32 +156,32 @@
     .bingo-cell.free {
       background: #0d6efd;
       border-color: #3d8bfd;
-      font-size: 0.65rem;
+      font-size: 0.6rem;
     }
     .wheel-container {
-      width: 140px;
-      height: 140px;
+      width: 100px;
+      height: 100px;
       border-radius: 50%;
       background: radial-gradient(circle, #153c42 60%, #0c2d31 100%);
-      border: 6px solid #ffc107;
+      border: 4px solid #ffc107;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      margin: 0 auto 12px auto;
-      box-shadow: 0 0 20px rgba(255,193,7,0.3);
+      margin: 0 auto 8px auto;
+      box-shadow: 0 0 15px rgba(255,193,7,0.3);
     }
   </style>
 </head>
-<body class="p-3">
+<body class="px-2">
 
-  <div class="d-flex justify-content-between align-items-center mb-2">
+  <div class="d-flex justify-content-between align-items-center mb-1">
     <div class="d-flex align-items-center gap-2">
-      <span style="font-size: 1.4rem;">🔶</span>
-      <h5 class="fw-bold mb-0 text-white">Future Bingo</h5>
+      <span style="font-size: 1.2rem;">🔶</span>
+      <h6 class="fw-bold mb-0 text-white">Future Bingo</h6>
     </div>
     <div class="text-end">
-      <small class="text-muted d-block" style="font-size: 0.7rem;">Balance</small>
+      <small class="text-muted d-block" style="font-size: 0.65rem;">Balance</small>
       <span class="fw-bold text-warning fs-6" id="balance-display">0.00 ETB</span>
     </div>
   </div>
@@ -186,109 +189,109 @@
   <div class="top-strip"></div>
 
   <!-- GAME SETUP SCREEN -->
-  <div id="screen-game" class="container">
-    <h3 class="fw-bold text-white mb-1">Choose a table</h3>
-    <p class="text-muted small mb-3">Pick a stake, then choose up to 3 cartelas (1 - 400). The first cartela with a full line wins 80% of all stakes.</p>
+  <div id="screen-game" class="container px-1">
+    <h5 class="fw-bold text-white mb-1" style="font-size: 1.05rem;">Choose a table</h5>
+    <p class="text-muted small mb-2" style="font-size: 0.72rem;">Pick a stake, then choose up to 3 cartelas (1 - 400). Winner takes 80% of stakes.</p>
     
-    <div id="table-options-list" class="mb-3">
+    <div id="table-options-list" class="mb-2">
       <div class="table-option selected" onclick="selectTable(10, this)">
         <div class="d-flex justify-content-between align-items-center">
           <div>
-            <h5 class="fw-bold text-warning mb-1">10 <small class="text-muted fs-6">ETB per cartela</small></h5>
-            <p class="small mb-0">1 line to win. Winner takes 80% of all stakes</p>
+            <h6 class="fw-bold text-warning mb-0">10 <small class="text-muted">ETB/cartela</small></h6>
+            <p class="mb-0">1 line to win (80% pool)</p>
           </div>
-          <input type="radio" name="stake" checked class="form-check-input">
+          <input type="radio" name="stake" checked class="form-check-input m-0">
         </div>
       </div>
 
       <div class="table-option" onclick="selectTable(20, this)">
         <div class="d-flex justify-content-between align-items-center">
           <div>
-            <h5 class="fw-bold text-warning mb-1">20 <small class="text-muted fs-6">ETB per cartela</small></h5>
-            <p class="small mb-0">1 line to win. Winner takes 80% of all stakes</p>
+            <h6 class="fw-bold text-warning mb-0">20 <small class="text-muted">ETB/cartela</small></h6>
+            <p class="mb-0">1 line to win (80% pool)</p>
           </div>
-          <input type="radio" name="stake" class="form-check-input">
+          <input type="radio" name="stake" class="form-check-input m-0">
         </div>
       </div>
 
       <div class="table-option" onclick="selectTable(50, this)">
         <div class="d-flex justify-content-between align-items-center">
           <div>
-            <h5 class="fw-bold text-warning mb-1">50 <small class="text-muted fs-6">ETB per cartela</small></h5>
-            <p class="small mb-0">1 line to win. Winner takes 80% of all stakes</p>
+            <h6 class="fw-bold text-warning mb-0">50 <small class="text-muted">ETB/cartela</small></h6>
+            <p class="mb-0">1 line to win (80% pool)</p>
           </div>
-          <input type="radio" name="stake" class="form-check-input">
+          <input type="radio" name="stake" class="form-check-input m-0">
         </div>
       </div>
     </div>
 
-    <div class="card-custom mb-3">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <span class="small fw-bold text-warning">Tap to pick your Cartela (1 - 400):</span>
-        <div class="small text-muted d-flex align-items-center gap-2">
+    <div class="card-custom mb-2">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="small fw-bold text-warning" style="font-size: 0.75rem;">Pick Cartela (1 - 400):</span>
+        <div class="small text-muted d-flex align-items-center gap-2" style="font-size: 0.7rem;">
           <span><span class="legend-dot bg-warning align-middle"></span> Yours</span>
           <span><span class="legend-dot align-middle" style="background:#153c42;"></span> Taken</span>
         </div>
       </div>
-      <div id="cartela-grid-picker" class="cartela-picker-grid mb-2"></div>
-      <p class="text-warning text-center small fw-bold mb-0" id="selected-cartela-info">Your cartelas (1/3). Tap a number again to remove it.</p>
+      <div id="cartela-grid-picker" class="cartela-picker-grid mb-1"></div>
+      <p class="text-warning text-center small fw-bold mb-0" id="selected-cartela-info" style="font-size: 0.7rem;">Your cartelas (0/3). Tap to select.</p>
     </div>
 
-    <div class="mb-3">
-      <button class="btn btn-warning w-100 fw-bold py-3 fs-5 shadow" id="play-btn" onclick="joinSelectedTable()">
-        Play for 10 ETB
+    <div class="mb-2">
+      <button class="btn btn-warning w-100 fw-bold py-2 shadow" id="play-btn" onclick="joinSelectedTable()" style="font-size: 0.95rem;">
+        Select at least 1 Cartela
       </button>
     </div>
   </div>
 
   <!-- LOBBY WAITING SCREEN -->
   <div id="screen-lobby" class="container text-center d-none">
-    <div class="card-custom my-4 py-4">
-      <h5 class="text-light fw-bold mb-2">⏳ Room Starting Soon</h5>
-      <div class="display-6 fw-bold text-warning my-2" id="lobby-prize-pool">0.00 ETB</div>
-      <p class="text-muted small">Estimated Prize Pool (80% of Stakes)</p>
-      <div class="badge bg-dark text-warning fs-5 px-4 py-2 mt-2" id="lobby-timer">00:30</div>
-      <p class="text-muted small mt-3 mb-0" id="lobby-player-count">👥 Players Joined: 1</p>
+    <div class="card-custom my-3 py-3">
+      <h6 class="text-light fw-bold mb-1">⏳ Room Starting Soon</h6>
+      <div class="fs-4 fw-bold text-warning my-1" id="lobby-prize-pool">0.00 ETB</div>
+      <p class="text-muted small mb-2" style="font-size: 0.75rem;">Estimated Prize Pool (80% of Stakes)</p>
+      <div class="badge bg-dark text-warning fs-6 px-3 py-1" id="lobby-timer">00:20</div>
+      <p class="text-muted small mt-2 mb-0" id="lobby-player-count" style="font-size: 0.75rem;">👥 Players Joined: 1</p>
     </div>
   </div>
 
   <!-- ACTIVE PLAYROOM SCREEN -->
   <div id="screen-playroom" class="container text-center d-none">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <button class="btn btn-outline-light btn-sm" onclick="switchTab('game')">← Leave</button>
-      <div class="d-flex gap-2">
-        <button id="sound-toggle" class="btn btn-outline-warning btn-sm" onclick="toggleSound()">🔊 Sound</button>
-        <span class="badge bg-danger fs-6 p-2" id="game-timer">⏱️ 01:00</span>
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <button class="btn btn-outline-light btn-sm py-0 px-2" style="font-size: 0.75rem;" onclick="switchTab('game')">← Leave</button>
+      <div class="d-flex gap-2 align-items-center">
+        <button id="sound-toggle" class="btn btn-outline-warning btn-sm py-0 px-2" style="font-size: 0.75rem;" onclick="toggleSound()">🔊 Sound</button>
+        <span class="badge bg-danger fs-6 py-1 px-2" id="game-timer" style="font-size: 0.75rem;">⏱️ 01:00</span>
       </div>
     </div>
 
     <!-- CIRCULAR BALL WHEEL DISPLAY -->
-    <div class="card-custom mb-3 py-3">
+    <div class="card-custom mb-2 py-2">
       <div class="wheel-container">
-        <span class="text-muted" style="font-size: 0.75rem;" id="current-ball-letter">NUMBER</span>
-        <span class="fw-bold text-white" style="font-size: 2.2rem; line-height: 1;" id="current-ball">--</span>
+        <span class="text-muted" style="font-size: 0.6rem;" id="current-ball-letter">NUMBER</span>
+        <span class="fw-bold text-white" style="font-size: 1.6rem; line-height: 1;" id="current-ball">--</span>
       </div>
-      <div class="d-flex justify-content-around align-items-center mt-2">
+      <div class="d-flex justify-content-around align-items-center mt-1">
         <div>
-          <span class="text-warning fw-bold fs-5" id="room-prize-display">0.00 ETB</span>
-          <small class="text-muted d-block" style="font-size: 0.65rem;">ETB prize</small>
+          <span class="text-warning fw-bold fs-6" id="room-prize-display">0.00 ETB</span>
+          <small class="text-muted d-block" style="font-size: 0.6rem;">prize</small>
         </div>
         <div>
-          <span class="text-light fw-bold fs-5" id="called-count-display">0/75</span>
-          <small class="text-muted d-block" style="font-size: 0.65rem;">called</small>
+          <span class="text-light fw-bold fs-6" id="called-count-display">0/75</span>
+          <small class="text-muted d-block" style="font-size: 0.6rem;">called</small>
         </div>
         <div>
-          <span class="text-light fw-bold fs-5" id="cartela-count-display">1</span>
-          <small class="text-muted d-block" style="font-size: 0.65rem;">cartelas</small>
+          <span class="text-light fw-bold fs-6" id="cartela-count-display">1</span>
+          <small class="text-muted d-block" style="font-size: 0.6rem;">cartelas</small>
         </div>
       </div>
     </div>
 
     <!-- CARTELA BOARD -->
-    <div class="card-custom mb-2">
-      <div class="d-flex justify-content-between mb-2">
-        <span class="small fw-bold text-warning" id="active-cartela-title">Future Bingo #1</span>
-        <span class="small text-muted">1 line to win</span>
+    <div class="card-custom mb-2 py-2 px-2">
+      <div class="d-flex justify-content-between mb-1">
+        <span class="small fw-bold text-warning" id="active-cartela-title" style="font-size: 0.75rem;">Future Bingo #1</span>
+        <span class="small text-muted" style="font-size: 0.7rem;">1 line to win</span>
       </div>
       <div class="bingo-grid mb-1">
         <div class="bingo-header">B</div>
@@ -301,12 +304,12 @@
     </div>
 
     <!-- MASTER 75 NUMBER BOARD -->
-    <div class="card-custom mb-3" style="max-height: 130px; overflow-y: auto;">
-      <div class="bingo-grid mb-1" style="grid-template-columns: repeat(15, 1fr); gap: 2px;" id="master-board"></div>
+    <div class="card-custom mb-2 py-1 px-1" style="max-height: 90px; overflow-y: auto;">
+      <div class="bingo-grid mb-0" style="grid-template-columns: repeat(15, 1fr); gap: 1px;" id="master-board"></div>
     </div>
 
-    <div class="d-grid gap-2 col-11 mx-auto mb-4">
-      <button id="bingo-btn" class="btn btn-warning btn-lg fw-bold shadow py-3 fs-4" onclick="claimBingo()">
+    <div class="d-grid col-11 mx-auto mb-2">
+      <button id="bingo-btn" class="btn btn-warning fw-bold shadow py-2 fs-6" onclick="claimBingo()">
         🎉 CLAIM BINGO!
       </button>
     </div>
@@ -314,25 +317,25 @@
 
   <!-- HISTORY SCREEN -->
   <div id="screen-history" class="container d-none">
-    <h3 class="fw-bold text-white mb-3">Game History</h3>
+    <h5 class="fw-bold text-white mb-2" style="font-size: 1.05rem;">Game History</h5>
     <div class="card-custom">
-      <p class="text-muted small text-center my-3">No recent games recorded yet.</p>
+      <p class="text-muted small text-center my-2" style="font-size: 0.75rem;">No recent games recorded yet.</p>
     </div>
   </div>
 
   <!-- WALLET SCREEN -->
   <div id="screen-wallet" class="container d-none">
-    <h3 class="fw-bold text-white mb-3">Wallet & Funds</h3>
-    <div class="card-custom text-center mb-3">
-      <p class="text-muted mb-1">Available Balance</p>
-      <h2 class="text-warning fw-bold" id="wallet-balance">0.00 ETB</h2>
+    <h5 class="fw-bold text-white mb-2" style="font-size: 1.05rem;">Wallet & Funds</h5>
+    <div class="card-custom text-center mb-2 py-2">
+      <p class="text-muted mb-0" style="font-size: 0.75rem;">Available Balance</p>
+      <h4 class="text-warning fw-bold mb-0" id="wallet-balance">0.00 ETB</h4>
     </div>
 
     <div class="d-grid gap-2">
-      <button class="btn btn-success fw-bold py-2" onclick="startInstantDeposit()">
+      <button class="btn btn-success fw-bold py-2 btn-sm" onclick="startInstantDeposit()">
         💳 Deposit & Verify Transaction ID
       </button>
-      <button class="btn btn-outline-warning fw-bold py-2" onclick="requestWithdrawal()">
+      <button class="btn btn-outline-warning fw-bold py-2 btn-sm" onclick="requestWithdrawal()">
         💸 Request Withdrawal
       </button>
     </div>
@@ -340,11 +343,11 @@
 
   <!-- PROFILE SCREEN -->
   <div id="screen-profile" class="container d-none">
-    <h3 class="fw-bold text-white mb-3">Player Profile</h3>
+    <h5 class="fw-bold text-white mb-2" style="font-size: 1.05rem;">Player Profile</h5>
     <div class="card-custom">
-      <p class="mb-2"><strong>Name:</strong> <span id="profile-name">Player</span></p>
-      <p class="mb-2"><strong>Telegram ID:</strong> <span id="profile-id">--</span></p>
-      <p class="mb-0"><strong>Status:</strong> <span class="badge bg-success">Verified Active</span></p>
+      <p class="mb-1" style="font-size: 0.8rem;"><strong>Name:</strong> <span id="profile-name">Player</span></p>
+      <p class="mb-1" style="font-size: 0.8rem;"><strong>Telegram ID:</strong> <span id="profile-id">--</span></p>
+      <p class="mb-0" style="font-size: 0.8rem;"><strong>Status:</strong> <span class="badge bg-success" style="font-size: 0.65rem;">Verified Active</span></p>
     </div>
   </div>
 
@@ -392,7 +395,6 @@
 
     let balance = 0.00;
     let selectedCardStake = 10;
-    // Updated: start with an empty array so no cartela is forced selected by default
     let selectedCartelaNumbers = []; 
     let card = [];
     let marked = Array(25).fill(false);
@@ -409,7 +411,6 @@
     function buildCartelaPickerGrid() {
       const gridContainer = document.getElementById('cartela-grid-picker');
       gridContainer.innerHTML = '';
-      // Expanded range from 1 to 400
       for (let i = 1; i <= 400; i++) {
         const circle = document.createElement('div');
         circle.className = 'cartela-circle' + (selectedCartelaNumbers.includes(i) ? ' selected' : '');
@@ -678,7 +679,7 @@
       for(let i=1; i<=75; i++) {
         const mCell = document.createElement('div');
         mCell.className = 'bingo-cell';
-        mCell.style.fontSize = '0.65rem';
+        mCell.style.fontSize = '0.55rem';
         mCell.id = `master-${i}`;
         mCell.textContent = i;
         master.appendChild(mCell);
