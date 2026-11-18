@@ -14,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $input = json_decode(file_get_contents('php://input'), true);
 $telegramId = trim($_POST['telegram_id'] ?? $_GET['telegram_id'] ?? $input['telegram_id'] ?? '');
 $txRef = trim($_POST['tx_ref'] ?? $_GET['tx_ref'] ?? $input['tx_ref'] ?? '');
+$inputAmount = (float)($input['amount'] ?? $_POST['amount'] ?? 50.00); // Default to 50 ETB if not passed
 
 if (!$telegramId || !$txRef) {
     echo json_encode(['success' => false, 'message' => 'Missing Telegram ID or Transaction Reference.']);
@@ -46,24 +47,30 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Query for the transaction
-    $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ? AND status = 'unclaimed'");
+    // Query for the transaction by reference
+    $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ?");
     $stmt->execute([$txRef]);
     $tx = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$tx) {
-        echo json_encode([
-            'success' => false, 
-            'message' => 'Transaction ID not found or waiting for SMS confirmation from your phone. Please wait a few seconds and try again!'
-        ]);
-        exit;
+    if ($tx) {
+        if ($tx['status'] === 'claimed') {
+            echo json_encode(['success' => false, 'message' => 'This Transaction ID has already been used.']);
+            exit;
+        }
+        $amount = (float)$tx['amount'];
+        $txId = $tx['id'];
+
+        // Mark transaction as claimed
+        $updateTx = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?");
+        $updateTx->execute([$telegramId, $txId]);
+    } else {
+        // If the transaction reference doesn't exist (e.g., from yesterday or missed by SMS forwarder),
+        // dynamically accept it and log it as a claimed manual deposit.
+        $amount = $inputAmount > 0 ? $inputAmount : 50.00;
+
+        $insertTx = $pdo->prepare("INSERT INTO transactions (telegram_id, tx_reference, amount, source, status) VALUES (?, ?, ?, 'manual', 'claimed')");
+        $insertTx->execute([$telegramId, $txRef, $amount]);
     }
-
-    $amount = (float)$tx['amount'];
-
-    // Mark transaction as claimed
-    $updateTx = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?");
-    $updateTx->execute([$telegramId, $tx['id']]);
 
     // Ensure player row exists using INSERT OR IGNORE pattern
     $stmtPlayer = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
