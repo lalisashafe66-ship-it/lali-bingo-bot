@@ -159,8 +159,11 @@ if ($chatId) {
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$player) {
-            $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance, referred_by) VALUES (?, ?, 'WebUser', 0.00, ?)");
-            $ins->execute([$telegramId, $firstName, $referrerId]);
+            // Automatically grant 100 ETB test balance for new users
+            $startingBalance = 100.00;
+
+            $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance, referred_by) VALUES (?, ?, 'WebUser', ?, ?)");
+            $ins->execute([$telegramId, $firstName, $startingBalance, $referrerId]);
 
             if ($referrerId && $referrerId !== $telegramId) {
                 $bonusAmount = 5.00;
@@ -170,17 +173,17 @@ if ($chatId) {
                 sendMessage($referrerId, "🎉 <b>Referral Bonus!</b>\nA new friend joined using your link. <b>{$bonusAmount} ETB</b> has been added to your balance!");
             }
 
-            sendMessage($chatId, "👋 Welcome to <b>Future Bingo</b>, <b>{$firstName}</b>!\nYour profile is registered. Choose an option from the menu below:", $mainMenu);
+            sendMessage($chatId, "👋 Welcome to <b>Future Bingo</b>, <b>{$firstName}</b>!\nYou received a <b>100.00 ETB</b> free starting balance to test the game! Choose an option from the menu below:", $mainMenu);
         } else {
             sendMessage($chatId, "👋 Welcome back to <b>Future Bingo</b>, <b>{$firstName}</b>!\nChoose an option from the menu below:", $mainMenu);
         }
     }
     elseif ($contact) {
         $phone = $contact['phone_number'];
-        $stmt = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, ?, 0.00) ON CONFLICT(telegram_id) DO UPDATE SET phone = excluded.phone");
+        $stmt = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, ?, 100.00) ON CONFLICT(telegram_id) DO UPDATE SET phone = excluded.phone");
         $stmt->execute([$telegramId, $firstName, $phone]);
 
-        sendMessage($chatId, "✅ <b>Registered successfully!</b>\nYour wallet balance is <b>0.00 ETB</b>.", $mainMenu);
+        sendMessage($chatId, "✅ <b>Registered successfully!</b>\nYour wallet balance is <b>100.00 ETB</b>.", $mainMenu);
     }
     elseif (stripos($text, 'Play Bingo') !== false) {
         $webAppKeyboard = [
