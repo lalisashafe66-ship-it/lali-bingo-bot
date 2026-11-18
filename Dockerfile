@@ -4,14 +4,13 @@ FROM php:8.2-apache
 RUN apt-get update && apt-get install -y libsqlite3-dev \
     && docker-php-ext-install pdo pdo_sqlite
 
+# Copy custom Apache configuration
+COPY 000-default.conf /etc/apache2/sites-available/000-default.conf
+
 # Copy all project files into Apache's web root
 COPY . /var/www/html/
 
-# Explicitly set Apache document root to /var/www/html
-RUN sed -i 's!/var/www/html!/var/www/html!g' /etc/apache2/sites-available/*.conf
-RUN sed -i 's!/var/www/!/var/www/html/!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
-
-# Enable Apache modules
+# Enable Apache rewrite module
 RUN a2enmod rewrite
 
 # Set correct permissions
