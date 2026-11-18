@@ -159,7 +159,7 @@ if ($chatId) {
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$player) {
-            // Automatically grant 100 ETB test balance for new users
+            // Brand new player: grant 100 ETB test bonus once
             $startingBalance = 100.00;
 
             $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance, referred_by) VALUES (?, ?, 'WebUser', ?, ?)");
@@ -175,15 +175,27 @@ if ($chatId) {
 
             sendMessage($chatId, "👋 Welcome to <b>Future Bingo</b>, <b>{$firstName}</b>!\nYou received a <b>100.00 ETB</b> free starting balance to test the game! Choose an option from the menu below:", $mainMenu);
         } else {
-            sendMessage($chatId, "👋 Welcome back to <b>Future Bingo</b>, <b>{$firstName}</b>!\nChoose an option from the menu below:", $mainMenu);
+            // Returning player: remind them they are already registered and keep their current balance intact
+            $currentBal = number_format((float)$player['balance'], 2);
+            sendMessage($chatId, "👋 Welcome back, <b>{$firstName}</b>!\nYou are already registered. Your current wallet balance is <b>{$currentBal} ETB</b>. Choose an option from the menu below:", $mainMenu);
         }
     }
     elseif ($contact) {
         $phone = $contact['phone_number'];
-        $stmt = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, ?, 100.00) ON CONFLICT(telegram_id) DO UPDATE SET phone = excluded.phone");
-        $stmt->execute([$telegramId, $firstName, $phone]);
+        $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+        $stmt->execute([$telegramId]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        sendMessage($chatId, "✅ <b>Registered successfully!</b>\nYour wallet balance is <b>100.00 ETB</b>.", $mainMenu);
+        if ($existing) {
+            $upd = $pdo->prepare("UPDATE players SET phone = ? WHERE telegram_id = ?");
+            $upd->execute([$phone, $telegramId]);
+            $bal = number_format((float)$existing['balance'], 2);
+            sendMessage($chatId, "✅ <b>Contact updated successfully!</b>\nYour current wallet balance is <b>{$bal} ETB</b>.", $mainMenu);
+        } else {
+            $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, ?, 100.00)");
+            $ins->execute([$telegramId, $firstName, $phone]);
+            sendMessage($chatId, "✅ <b>Registered successfully!</b>\nYou received a <b>100.00 ETB</b> starting balance.", $mainMenu);
+        }
     }
     elseif (stripos($text, 'Play Bingo') !== false) {
         $webAppKeyboard = [
@@ -215,7 +227,7 @@ if ($chatId) {
                         "1. Open the <b>🎮 Play Bingo</b> WebApp.\n" .
                         "2. Go to the <b>💰 Wallet</b> tab.\n" .
                         "3. Tap <b>💸 Request Withdrawal</b>.";
-        sendMessage($chatId, $withdrawText, $mainMenu);
+        sendMessage($chatId, "💸 Withdraw Funds\n\n1. Open the 🎮 Play Bingo WebApp.\n2. Go to the 💰 Wallet tab.\n3. Tap 💸 Request Withdrawal.", $mainMenu);
     }
     elseif (stripos($text, 'Invite Friends') !== false) {
         $botUsername = "Lali_Bingo_bot";
