@@ -69,6 +69,12 @@ if ($action === 'get_balance') {
         exit;
     }
 
+    // PERMANENT OVERRIDE: Lock balance for your Telegram ID so it never resets to 0.00
+    if ($telegramId === '730967613') {
+        echo json_encode(['success' => true, 'balance' => 50.00]);
+        exit;
+    }
+
     $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -91,19 +97,19 @@ elseif ($action === 'join_room') {
     $fee = (float)($_POST['fee'] ?? 0);
     $playerNumber = (int)($_POST['player_number'] ?? 0);
 
-    if ($playerNumber < 1 || $playerNumber > 56) {
-        echo json_encode(['success' => false, 'error' => 'Please choose a valid cartela number between 1 and 56.']);
+    if ($playerNumber < 1 || $playerNumber > 400) {
+        echo json_encode(['success' => false, 'error' => 'Please choose a valid cartela number between 1 and 400.']);
         exit;
     }
 
-    // Use transaction to ensure balance is never miscalculated during simultaneous plays
+    // Bypass check for override account during game play deductions if needed, or let it deduct normally from db
     $pdo->beginTransaction();
     try {
         $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $currentBalance = $player ? (float)$player['balance'] : 0.00;
+        $currentBalance = ($telegramId === '730967613') ? 50.00 : ($player ? (float)$player['balance'] : 0.00);
 
         if ($currentBalance < $fee) {
             $pdo->rollBack();
@@ -112,6 +118,11 @@ elseif ($action === 'join_room') {
         }
 
         $newBalance = $currentBalance - $fee;
+        
+        // Ensure player exists in DB before updating
+        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'LÀLISHAA', 'WebUser', ?)");
+        $stmtIns->execute([$telegramId, $newBalance]);
+
         $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
         $update->execute([$newBalance, $telegramId]);
 
@@ -157,6 +168,9 @@ elseif ($action === 'claim_win') {
 
     $pdo->beginTransaction();
     try {
+        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, 'WebUser', 0.00)");
+        $stmtIns->execute([$telegramId, $winnerName]);
+
         $stmt = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
         $stmt->execute([$prize, $telegramId]);
 
@@ -174,7 +188,7 @@ elseif ($action === 'claim_win') {
 
         echo json_encode([
             'success' => true,
-            'new_balance' => $updated ? (float)$updated['balance'] : 0.00
+            'new_balance' => $updated ? (float)$updated['balance'] : $prize
         ]);
     } catch (Exception $e) {
         $pdo->rollBack();
@@ -193,13 +207,19 @@ elseif ($action === 'request_withdrawal') {
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$player || $player['balance'] < $amount || $amount <= 0) {
+        $currentBal = ($telegramId === '730967613') ? 50.00 : ($player ? (float)$player['balance'] : 0.00);
+
+        if ($currentBal < $amount || $amount <= 0) {
             $pdo->rollBack();
             echo json_encode(['success' => false, 'error' => 'Invalid balance or amount.']);
             exit;
         }
 
-        $newBalance = $player['balance'] - $amount;
+        $newBalance = $currentBal - $amount;
+        
+        $stmtIns = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'LÀLISHAA', 'WebUser', ?)");
+        $stmtIns->execute([$telegramId, $newBalance]);
+
         $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
         $update->execute([$newBalance, $telegramId]);
 
@@ -211,7 +231,7 @@ elseif ($action === 'request_withdrawal') {
         $ADMIN_ID = "730967613";
         $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
         $adminMsg = "💸 <b>New Withdrawal Request (Future Bingo)!</b>\n\n" .
-                    "• <b>Player:</b> {$player['first_name']}\n" .
+                    "• <b>Player:</b> " . ($player['first_name'] ?? 'LÀLISHAA') . "\n" .
                     "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
                     "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
                     "• <b>Method:</b> {$method}\n" .
