@@ -154,7 +154,6 @@
       border-radius: 5px;
       font-size: 0.8rem;
       font-weight: 800;
-      cursor: pointer;
     }
     .bingo-cell.marked {
       background: var(--accent-purple);
@@ -172,8 +171,6 @@
       border-color: #51e39d;
       color: #fff;
     }
-
-    /* Stat pills & Recent balls (matching reference UI) */
     .stat-pill {
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.14);
@@ -213,8 +210,6 @@
       transform: scale(1.08);
       box-shadow: 0 0 12px rgba(255, 140, 0, 0.6);
     }
-
-    /* 75-number left board */
     .board-75-wrap {
       background: #1e2426;
       border-radius: 8px;
@@ -249,8 +244,6 @@
       background: #4ade80;
       color: #06282b;
     }
-
-    /* Auto switch */
     .auto-bar {
       background: rgba(0, 0, 0, 0.25);
       border-radius: 10px;
@@ -287,8 +280,6 @@
     .switch-btn.on .switch-knob {
       transform: translateX(22px);
     }
-
-    /* Winner modal overlay */
     .winner-modal-backdrop {
       position: fixed;
       inset: 0;
@@ -442,7 +433,7 @@
       <h6 class="text-light fw-bold mb-1">⏳ Room Starting Soon</h6>
       <div class="fs-4 fw-bold text-warning my-1" id="lobby-prize-pool">0.00 ETB</div>
       <p class="text-muted small mb-2" style="font-size: 0.75rem;">Estimated Prize Pool (80% of Stakes)</p>
-      <div class="badge bg-dark text-warning fs-6 px-3 py-1" id="lobby-timer">00:20</div>
+      <div class="badge bg-dark text-warning fs-6 px-3 py-1" id="lobby-timer">00:15</div>
       <p class="text-muted small mt-2 mb-0" id="lobby-player-count" style="font-size: 0.75rem;">👥 Players Joined: 1</p>
     </div>
   </div>
@@ -481,10 +472,10 @@
         <div class="auto-bar">
           <div class="d-flex align-items-center gap-2">
             <span class="fw-bold small">Auto</span>
-            <button type="button" class="switch-btn" id="auto-switch" onclick="toggleAutoMode()">
+            <button type="button" class="switch-btn on" id="auto-switch" onclick="toggleAutoMode()">
               <span class="switch-knob"></span>
             </button>
-            <span class="fw-bold small" id="auto-status-label" style="color:#ff8c00;">OFF</span>
+            <span class="fw-bold small" id="auto-status-label" style="color:#4ade80;">ON</span>
           </div>
           <span class="badge bg-dark text-warning" id="active-cartela-badge">Board #1</span>
         </div>
@@ -499,8 +490,8 @@
         <div id="board" class="bingo-grid mb-2"></div>
 
         <div class="d-grid">
-          <button id="bingo-btn" class="btn fw-bold shadow py-2" style="background:#ff8c00; color:#fff;" onclick="claimBingo(false)">
-            BINGO! (<span id="bingo-btn-derash">0</span>)
+          <button id="bingo-btn" class="btn fw-bold shadow py-2" style="background:#198754; color:#fff;" disabled>
+            Automatic (<span id="bingo-btn-derash">0</span>)
           </button>
         </div>
       </div>
@@ -609,8 +600,7 @@
     let marked = Array(25).fill(false);
     let calledNumbers = [];
     let lastAnnouncedNumber = null;
-    let autoMode = false;
-    let claimingInProgress = false;
+    let autoMode = true;
     let winnerModalShownForRoom = null;
     let roomPollInterval = null;
     let gameHistory = [];
@@ -868,109 +858,33 @@
         const isMarked = isFree || marked[idx];
         cell.className = 'bingo-cell' + (isFree ? ' free marked' : (isMarked ? ' marked' : ''));
         cell.textContent = isFree ? '★' : num;
-        cell.onclick = () => {
-          if (isFree || autoMode) return;
-          if (calledNumbers.includes(num)) {
-            marked[idx] = !marked[idx];
-            if (marked[idx]) sounds.daubMatch();
-            renderPlayerCard();
-          } else {
-            sounds.errorBuzz();
-          }
-        };
         boardEl.appendChild(cell);
       });
-    }
-
-    function checkLocalWin() {
-      const lines = [
-        [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
-        [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
-        [0,6,12,18,24], [4,8,12,16,20]
-      ];
-      return lines.some(line => line.every(idx => idx === 12 || marked[idx]));
     }
 
     function toggleAutoMode() {
       autoMode = !autoMode;
       const btn = document.getElementById('auto-switch');
       const label = document.getElementById('auto-status-label');
-      const bingoBtn = document.getElementById('bingo-btn');
-
       if (autoMode) {
         btn.classList.add('on');
         label.textContent = 'ON';
         label.style.color = '#4ade80';
-        bingoBtn.innerHTML = `Automatic (<span id="bingo-btn-derash">${Math.round(currentDerash)}</span>)`;
-        bingoBtn.style.background = '#198754';
-        syncAutoDaubsAndMaybeClaim();
       } else {
         btn.classList.remove('on');
         label.textContent = 'OFF';
         label.style.color = '#ff8c00';
-        bingoBtn.innerHTML = `BINGO! (<span id="bingo-btn-derash">${Math.round(currentDerash)}</span>)`;
-        bingoBtn.style.background = '#ff8c00';
       }
-    }
-
-    function syncAutoDaubsAndMaybeClaim() {
-      if (!autoMode) return;
-      const calledSet = new Set(calledNumbers);
-      let changed = false;
-      card.forEach((num, idx) => {
-        if (idx !== 12 && calledSet.has(num) && !marked[idx]) {
-          marked[idx] = true;
-          changed = true;
-        }
-      });
-      if (changed) renderPlayerCard();
-      if (checkLocalWin() && !claimingInProgress && winnerModalShownForRoom !== currentRoomId) {
-        claimBingo(true);
-      }
-    }
-
-    function claimBingo(isAuto) {
-      if (!currentRoomId || claimingInProgress) return;
-      if (!isAuto && !checkLocalWin()) {
-        sounds.errorBuzz();
-        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
-        alert('❌ Not a valid Bingo line yet!');
-        return;
-      }
-
-      claimingInProgress = true;
-      const formData = new FormData();
-      formData.append('action', 'claim_win');
-      formData.append('telegram_id', telegramId);
-      formData.append('room_id', currentRoomId);
-      formData.append('cartela_number', activeCartelaNumber);
-      formData.append('winner_name', playerName);
-
-      fetch('api.php', { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(data => {
-          claimingInProgress = false;
-          if (data.success) {
-            if (data.new_balance !== undefined) updateBalanceUI(data.new_balance);
-            sounds.winFanfare();
-            if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-            openWinnerModal(currentRoomId, data.winners || [], data.room || null);
-          } else if (!isAuto) {
-            sounds.errorBuzz();
-            alert(data.error || 'Could not verify Bingo.');
-          }
-        })
-        .catch(() => {
-          claimingInProgress = false;
-          if (!isAuto) alert('Network error while claiming Bingo.');
-        });
     }
 
     function openWinnerModal(roomId, winners, roomObj) {
       if (!roomId || winnerModalShownForRoom === roomId) return;
       winnerModalShownForRoom = roomId;
       stopRoomPolling();
+      syncBalance();
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      sounds.winFanfare();
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
       const banner = document.getElementById('winner-list-banner');
       if (!winners || winners.length === 0) {
@@ -1067,8 +981,17 @@
       renderRecentBalls('play-recent-balls', arr);
       render75Grid('play-master-grid', new Set(arr), latest);
 
-      if (autoMode) {
-        syncAutoDaubsAndMaybeClaim();
+      const calledSet = new Set(calledNumbers);
+      let changed = false;
+      card.forEach((num, idx) => {
+        if (idx !== 12 && calledSet.has(num) && !marked[idx]) {
+          marked[idx] = true;
+          changed = true;
+        }
+      });
+      if (changed) {
+        sounds.daubMatch();
+        renderPlayerCard();
       }
     }
 
