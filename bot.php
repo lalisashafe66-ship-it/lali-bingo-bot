@@ -411,7 +411,7 @@ if ($chatId) {
         sendMessage($chatId, $withdrawText, $mainMenu);
     }
     elseif (stripos($text, 'Invite Friends') !== false) {
-        $botUsername = "Lali_Bingo_bot";
+        $botUsername = "Future_Bingo_bot";
         sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/{$botUsername}?start={$telegramId}", $mainMenu);
     }
     elseif (stripos($text, 'Instruction') !== false) {
