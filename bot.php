@@ -92,12 +92,39 @@ function answerCallback($callbackId, $text = '') {
 }
 
 function recordBotLedger(PDO $pdo, string $telegramId, string $type, float $amount, float $before, float $after, string $note): void {
-    $stmt = $pdo->prepare("INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note) VALUES (?, NULL, ?, ?, ?, ?, ?)");
-    $stmt->execute([$telegramId, $type, $amount, $before, $after, $note]);
+    try {
+        $stmt = $pdo->prepare("INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note) VALUES (?, NULL, ?, ?, ?, ?, ?)");
+        $stmt->execute([$telegramId, $type, $amount, $before, $after, $note]);
+    } catch (Exception $e) {
+        error_log("Ledger insert skipped/failed: " . $e->getMessage());
+    }
+}
+
+function ensureReferredByColumn(PDO $pdo): void {
+    try {
+        $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        if ($driver === 'sqlite') {
+            $cols = $pdo->query("PRAGMA table_info(players)")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($cols as $col) {
+                if (($col['name'] ?? '') === 'referred_by') {
+                    return;
+                }
+            }
+            $pdo->exec("ALTER TABLE players ADD COLUMN referred_by TEXT");
+        } elseif ($driver === 'mysql') {
+            $stmt = $pdo->query("SHOW COLUMNS FROM players LIKE 'referred_by'");
+            if (!$stmt->fetch()) {
+                $pdo->exec("ALTER TABLE players ADD COLUMN referred_by VARCHAR(64) NULL");
+            }
+        }
+    } catch (Exception $e) {
+        error_log("ensureReferredByColumn notice: " . $e->getMessage());
+    }
 }
 
 try {
     $pdo = getBingoPdo();
+    ensureReferredByColumn($pdo);
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -327,42 +354,48 @@ if ($chatId) {
     }
     elseif (preg_match('/^\/start(?:\s+(\S+))?/i', $text, $matches)) {
         $referrerId = isset($matches[1]) ? trim($matches[1]) : null;
+        $startingBalance = 100.00;
+        $currentBal = $startingBalance;
 
-        $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = ?");
-        $stmt->execute([$telegramId]);
-        $player = $stmt->fetch(PDO::FETCH_ASSOC);
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = ?");
+            $stmt->execute([$telegramId]);
+            $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$player) {
-            $startingBalance = 100.00;
-            $pdo->beginTransaction();
-            try {
-                $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance, referred_by) VALUES (?, ?, 'WebUser', ?, ?)");
-                $ins->execute([$telegramId, $firstName, $startingBalance, $referrerId]);
-                recordBotLedger($pdo, $telegramId, 'welcome_bonus', $startingBalance, 0.00, $startingBalance, 'Initial /start registration bonus');
+            if (!$player) {
+                $pdo->beginTransaction();
+                try {
+                    $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance, referred_by) VALUES (?, ?, 'WebUser', ?, ?)");
+                    $ins->execute([$telegramId, $firstName, $startingBalance, $referrerId]);
+                    recordBotLedger($pdo, $telegramId, 'welcome_bonus', $startingBalance, 0.00, $startingBalance, 'Initial /start registration bonus');
 
-                if ($referrerId && $referrerId !== $telegramId) {
-                    $bonusAmount = 5.00;
-                    $refStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
-                    $refStmt->execute([$referrerId]);
-                    $refRow = $refStmt->fetch(PDO::FETCH_ASSOC);
-                    if ($refRow) {
-                        $refBefore = (float)$refRow['balance'];
-                        $refAfter = round($refBefore + $bonusAmount, 2);
-                        $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")->execute([$refAfter, $referrerId]);
-                        recordBotLedger($pdo, $referrerId, 'referral_bonus', $bonusAmount, $refBefore, $refAfter, "Referral from {$telegramId}");
-                        sendMessage($referrerId, "🎉 <b>Referral Bonus!</b>\nA new friend joined using your link. <b>{$bonusAmount} ETB</b> has been added to your balance!");
+                    if ($referrerId && $referrerId !== $telegramId) {
+                        $bonusAmount = 5.00;
+                        $refStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+                        $refStmt->execute([$referrerId]);
+                        $refRow = $refStmt->fetch(PDO::FETCH_ASSOC);
+                        if ($refRow) {
+                            $refBefore = (float)$refRow['balance'];
+                            $refAfter = round($refBefore + $bonusAmount, 2);
+                            $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")->execute([$refAfter, $referrerId]);
+                            recordBotLedger($pdo, $referrerId, 'referral_bonus', $bonusAmount, $refBefore, $refAfter, "Referral from {$telegramId}");
+                            sendMessage($referrerId, "🎉 <b>Referral Bonus!</b>\nA new friend joined using your link. <b>{$bonusAmount} ETB</b> has been added to your balance!");
+                        }
                     }
+                    $pdo->commit();
+                } catch (Exception $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    error_log("/start insert error: " . $e->getMessage());
                 }
-                $pdo->commit();
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) $pdo->rollBack();
-                error_log("/start error: " . $e->getMessage());
-            }
 
-            sendMessage($chatId, "👋 Welcome to <b>Future Bingo</b>, <b>{$firstName}</b>!\nYou received a <b>100.00 ETB</b> free starting balance to test the game! Choose an option from the menu below:", $mainMenu);
-        } else {
-            $currentBal = number_format((float)$player['balance'], 2);
-            sendMessage($chatId, "👋 Welcome back, <b>{$firstName}</b>!\nYou are already registered. Your current wallet balance is <b>{$currentBal} ETB</b>. Choose an option from the menu below:", $mainMenu);
+                sendMessage($chatId, "👋 Welcome to <b>Future Bingo</b>, <b>{$firstName}</b>!\nYou received a <b>100.00 ETB</b> free starting balance to test the game! Choose an option from the menu below:", $mainMenu);
+            } else {
+                $currentBal = number_format((float)$player['balance'], 2);
+                sendMessage($chatId, "👋 Welcome back, <b>{$firstName}</b>!\nYou are already registered. Your current wallet balance is <b>{$currentBal} ETB</b>. Choose an option from the menu below:", $mainMenu);
+            }
+        } catch (Exception $e) {
+            error_log("/start outer error: " . $e->getMessage());
+            sendMessage($chatId, "👋 Welcome to <b>Future Bingo</b>, <b>{$firstName}</b>!\nChoose an option from the menu below:", $mainMenu);
         }
     }
     elseif ($contact) {
