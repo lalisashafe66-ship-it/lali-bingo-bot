@@ -12,6 +12,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/db.php';
 
+function sendAdminTelegramMessage(string $token, string $chatId, string $message, ?array $keyboard = null): void {
+    if ($token === '' || $chatId === '') {
+        error_log("Future Bingo notify: missing TELEGRAM_BOT_TOKEN or ADMIN_ID.");
+        return;
+    }
+
+    $params = [
+        'chat_id' => $chatId,
+        'text' => $message,
+        'parse_mode' => 'HTML'
+    ];
+    if ($keyboard !== null) {
+        $params['reply_markup'] = json_encode($keyboard);
+    }
+
+    $url = "https://api.telegram.org/bot{$token}/sendMessage";
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $params,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ]);
+        $res = curl_exec($ch);
+        if ($res === false) {
+            error_log("Telegram admin notify cURL error: " . curl_error($ch));
+        } else {
+            error_log("Telegram admin notify resp: " . $res);
+        }
+        curl_close($ch);
+    } else {
+        $ctx = stream_context_create([
+            'http' => [
+                'method' => 'POST',
+                'header' => "Content-type: application/x-www-form-urlencoded\r\n",
+                'content' => http_build_query($params),
+                'timeout' => 10,
+            ]
+        ]);
+        $res = @file_get_contents($url, false, $ctx);
+        error_log("Telegram admin notify fallback resp: " . var_export($res, true));
+    }
+}
+
 $input = json_decode(file_get_contents('php://input'), true);
 if (!is_array($input)) {
     $input = [];
@@ -75,29 +121,22 @@ try {
     $txId = $pdo->lastInsertId();
 
     // Notify Admin with inline Approve / Reject buttons
-    if ($token !== '') {
-        $adminMsg = "🔔 <b>New Deposit Verification Request</b>\n\n" .
-                    "👤 <b>Player:</b> {$playerName} (<code>{$telegramId}</code>)\n" .
-                    "💰 <b>Amount:</b> <b>{$amount} ETB</b>\n" .
-                    "🧾 <b>Ref ID:</b> <code>{$txRef}</code>\n\n" .
-                    "Check your Telebirr/CBE app and confirm below:";
+    $adminMsg = "🔔 <b>New Deposit Verification Request</b>\n\n" .
+                "👤 <b>Player:</b> {$playerName} (<code>{$telegramId}</code>)\n" .
+                "💰 <b>Amount:</b> <b>{$amount} ETB</b>\n" .
+                "🧾 <b>Ref ID:</b> <code>{$txRef}</code>\n\n" .
+                "Check your Telebirr/CBE app and confirm below:";
 
-        $keyboard = [
-            'inline_keyboard' => [
-                [
-                    ['text' => "✅ Approve ({$amount} ETB)", 'callback_data' => "approve_tx:{$txId}"],
-                    ['text' => "❌ Reject", 'callback_data' => "reject_tx:{$txId}"]
-                ]
+    $keyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => "✅ Approve ({$amount} ETB)", 'callback_data' => "approve_tx:{$txId}"],
+                ['text' => "❌ Reject", 'callback_data' => "reject_tx:{$txId}"]
             ]
-        ];
+        ]
+    ];
 
-        @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?" . http_build_query([
-            'chat_id' => $ADMIN_ID,
-            'text' => $adminMsg,
-            'parse_mode' => 'HTML',
-            'reply_markup' => json_encode($keyboard)
-        ]));
-    }
+    sendAdminTelegramMessage($token, $ADMIN_ID, $adminMsg, $keyboard);
 
     echo json_encode([
         'success' => true,
@@ -106,5 +145,6 @@ try {
     ]);
 
 } catch (Exception $e) {
+    error_log("verify_payment error: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
 }
