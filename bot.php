@@ -274,6 +274,7 @@ if ($chatId) {
                 sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\nCurrent Balance: <b>{$newBal} ETB</b>");
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
+                error_log("Admin /add error: " . $e->getMessage());
                 sendMessage($chatId, "❌ Failed to credit balance.");
             }
         } else {
@@ -355,6 +356,7 @@ if ($chatId) {
                 $pdo->commit();
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
+                error_log("/start error: " . $e->getMessage());
             }
 
             sendMessage($chatId, "👋 Welcome to <b>Future Bingo</b>, <b>{$firstName}</b>!\nYou received a <b>100.00 ETB</b> free starting balance to test the game! Choose an option from the menu below:", $mainMenu);
@@ -416,7 +418,7 @@ if ($chatId) {
         sendMessage($chatId, "📤 Share your referral link with friends:\n\nhttps://t.me/{$botUsername}?start={$telegramId}", $mainMenu);
     }
     elseif (stripos($text, 'Instruction') !== false) {
-        sendMessage($chatId, "📖 <b>How to Play Future Bingo:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, or 50 ETB) and your Cartela number (1-56).\n3. Complete a line and tap <b>CLAIM BINGO</b> to win!", $mainMenu);
+        sendMessage($chatId, "📖 <b>How to Play Future Bingo:</b>\n1. Fund your wallet via <b>💳 Deposit</b>.\n2. Tap <b>🎮 Play Bingo</b> and pick a table stake (10, 20, or 50 ETB) and your Cartela number (1-400).\n3. Complete a line and tap <b>CLAIM BINGO</b> to win!", $mainMenu);
     }
     elseif (stripos($text, 'Support') !== false) {
         sendMessage($chatId, "📞 Contact our support team: @Future_Support", $mainMenu);
