@@ -1004,7 +1004,6 @@
           .then(data => {
             if (!data.success || !data.room) return;
             const room = data.room;
-
             if (room.status === 'waiting') {
               showOnlyScreen('lobby');
               const secs = Math.max(0, Number(room.lobby_seconds_left || 0));
@@ -1137,7 +1136,10 @@
       formData.append('tx_ref', txRef.trim());
 
       fetch('verify_payment.php', { method: 'POST', body: formData })
-        .then(res => res.json())
+        .then(async res => {
+          const text = await res.text();
+          try { return JSON.parse(text); } catch { return { success: false, message: text || 'Invalid server response' }; }
+        })
         .then(data => {
           if (data.success) {
             if (data.new_balance !== undefined) {
@@ -1145,7 +1147,7 @@
             }
             alert(`✅ ${data.message || 'Deposit request submitted!'}`);
           } else {
-            alert(`❌ ${data.message || 'Transaction ID not found or already claimed.'}`);
+            alert(`❌ ${data.message || data.error || 'Transaction ID not found or already claimed.'}`);
           }
         })
         .catch(err => alert('Network error: ' + err.message));
@@ -1172,16 +1174,19 @@
       formData.append('account', account);
 
       fetch('api.php', { method: 'POST', body: formData })
-        .then(res => res.json())
+        .then(async res => {
+          const text = await res.text();
+          try { return JSON.parse(text); } catch { return { success: false, error: text || 'Invalid server response' }; }
+        })
         .then(data => {
           if (data.success) {
             updateBalanceUI(data.new_balance);
             alert(`✅ ${data.message || 'Withdrawal requested successfully!'}`);
           } else {
-            alert(data.error || 'Withdrawal failed.');
+            alert(data.error || data.message || 'Withdrawal failed.');
           }
         })
-        .catch(() => alert('Network error.'));
+        .catch(err => alert('Network error: ' + err.message));
     }
 
     setInterval(syncBalance, 5000);
