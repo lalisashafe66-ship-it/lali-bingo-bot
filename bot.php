@@ -5,54 +5,87 @@ error_reporting(E_ALL);
 $content = file_get_contents("php://input");
 $update = json_decode($content, true);
 
-if (!$update) {
+if (!$update || !is_array($update)) {
     exit;
 }
 
 $callbackQuery = $update['callback_query'] ?? null;
 $chatId = $update['message']['chat']['id'] ?? $callbackQuery['message']['chat']['id'] ?? null;
 $messageId = $callbackQuery['message']['message_id'] ?? null;
-$text = trim($update['message']['text'] ?? '');
+$text = trim((string)($update['message']['text'] ?? ''));
 $contact = $update['message']['contact'] ?? null;
 $firstName = $update['message']['from']['first_name'] ?? $callbackQuery['from']['first_name'] ?? 'Player';
 $telegramId = (string)($update['message']['from']['id'] ?? $callbackQuery['from']['id'] ?? '');
 
-$token = getenv('TELEGRAM_BOT_TOKEN') ?: '';
+$token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
 $ADMIN_ID = "730967613";
 
-function sendMessage($chatId, $message, $keyboard = null) {
+function tgRequest($method, array $params) {
     global $token;
-    if ($token === '') return;
-    $url = "https://api.telegram.org/bot$token/sendMessage";
-    $data = [
+    if ($token === '') {
+        error_log("Future Bingo bot: TELEGRAM_BOT_TOKEN is empty.");
+        return false;
+    }
+
+    $url = "https://api.telegram.org/bot{$token}/{$method}";
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $params,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ]);
+        $result = curl_exec($ch);
+        if ($result === false) {
+            error_log("Telegram cURL error ({$method}): " . curl_error($ch));
+        }
+        curl_close($ch);
+        return $result;
+    }
+
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-type: application/x-www-form-urlencoded\r\n",
+            'content' => http_build_query($params),
+            'timeout' => 10,
+        ]
+    ]);
+    return @file_get_contents($url, false, $context);
+}
+
+function sendMessage($chatId, $message, $keyboard = null) {
+    if (!$chatId) return;
+    $params = [
         'chat_id' => $chatId,
         'text' => $message,
         'parse_mode' => 'HTML'
     ];
     if ($keyboard) {
-        $data['reply_markup'] = json_encode($keyboard);
+        $params['reply_markup'] = json_encode($keyboard);
     }
-    @file_get_contents($url . '?' . http_build_query($data));
+    tgRequest('sendMessage', $params);
 }
 
 function editMessage($chatId, $messageId, $message) {
-    global $token;
-    if ($token === '' || !$messageId) return;
-    @file_get_contents("https://api.telegram.org/bot$token/editMessageText?" . http_build_query([
+    if (!$chatId || !$messageId) return;
+    tgRequest('editMessageText', [
         'chat_id' => $chatId,
         'message_id' => $messageId,
         'text' => $message,
         'parse_mode' => 'HTML'
-    ]));
+    ]);
 }
 
 function answerCallback($callbackId, $text = '') {
-    global $token;
-    if ($token === '' || !$callbackId) return;
-    @file_get_contents("https://api.telegram.org/bot$token/answerCallbackQuery?" . http_build_query([
+    if (!$callbackId) return;
+    tgRequest('answerCallbackQuery', [
         'callback_query_id' => $callbackId,
         'text' => $text
-    ]));
+    ]);
 }
 
 try {
@@ -80,6 +113,7 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 } catch (PDOException $e) {
+    error_log("Future Bingo DB error: " . $e->getMessage());
     exit;
 }
 
@@ -144,6 +178,7 @@ if ($callbackQuery) {
             }
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
+            error_log("Callback tx error: " . $e->getMessage());
             answerCallback($cbId, "Error processing request.");
         }
     }
