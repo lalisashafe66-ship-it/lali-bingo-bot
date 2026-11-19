@@ -16,11 +16,14 @@ $contact = $update['message']['contact'] ?? null;
 $firstName = $update['message']['from']['first_name'] ?? $update['callback_query']['from']['first_name'] ?? 'Player';
 $telegramId = (string)($update['message']['from']['id'] ?? $update['callback_query']['from']['id'] ?? '');
 
-$token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
-$ADMIN_ID = "730967613"; 
+$token = getenv('TELEGRAM_BOT_TOKEN') ?: '';
+$ADMIN_ID = "730967613";
 
 function sendMessage($chatId, $message, $keyboard = null) {
     global $token;
+    if ($token === '') {
+        return;
+    }
     $url = "https://api.telegram.org/bot$token/sendMessage";
     $data = [
         'chat_id' => $chatId,
@@ -36,7 +39,8 @@ function sendMessage($chatId, $message, $keyboard = null) {
 try {
     $pdo = new PDO("sqlite:" . __DIR__ . "/bingo.db");
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
+    $pdo->exec("PRAGMA busy_timeout = 5000;");
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id TEXT UNIQUE,
@@ -97,69 +101,95 @@ if ($chatId) {
             exit;
         }
         $parts = preg_split('/\s+/', trim($text));
-        
+
         if (count($parts) >= 3 && is_numeric($parts[2])) {
             $targetId = trim($parts[1]);
             $amount = (float)$parts[2];
 
-            $stmt = $pdo->prepare("SELECT first_name, balance FROM players WHERE telegram_id = ?");
-            $stmt->execute([$targetId]);
-            $targetPlayer = $stmt->fetch(PDO::FETCH_ASSOC);
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare("SELECT first_name, balance FROM players WHERE telegram_id = ?");
+                $stmt->execute([$targetId]);
+                $targetPlayer = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if ($targetPlayer) {
-                $newBal = $targetPlayer['balance'] + $amount;
-                $upd = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
-                $upd->execute([$newBal, $targetId]);
+                if ($targetPlayer) {
+                    $newBal = round((float)$targetPlayer['balance'] + $amount, 2);
+                    $upd = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
+                    $upd->execute([$newBal, $targetId]);
+                    $playerName = $targetPlayer['first_name'];
+                } else {
+                    $newBal = round($amount, 2);
+                    $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', ?)");
+                    $ins->execute([$targetId, $newBal]);
+                    $playerName = 'Player';
+                }
+                $pdo->commit();
 
-                sendMessage($chatId, "✅ Credited <b>{$amount} ETB</b> to <b>{$targetPlayer['first_name']}</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$newBal} ETB</b>");
+                sendMessage($chatId, "✅ Credited <b>{$amount} ETB</b> to <b>{$playerName}</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$newBal} ETB</b>");
                 sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\nCurrent Balance: <b>{$newBal} ETB</b>");
-            } else {
-                $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', ?)");
-                $ins->execute([$targetId, $amount]);
-
-                sendMessage($chatId, "✅ Player created and credited <b>{$amount} ETB</b> (<code>{$targetId}</code>).\nNew Balance: <b>{$amount} ETB</b>");
-                sendMessage($targetId, "🎉 <b>Deposit Confirmed!</b>\n\n<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\nCurrent Balance: <b>{$amount} ETB</b>");
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                sendMessage($chatId, "❌ Failed to credit balance.");
             }
         } else {
             sendMessage($chatId, "⚠️ Usage format: <code>/add TELEGRAM_ID AMOUNT</code>\nExample: <code>/add 730967613 200</code>");
         }
     }
-    elseif (stripos($text, '/verify') === 0) {
-        $parts = preg_split('/\s+/', trim($text));
-        if (count($parts) >= 2) {
-            $txRef = trim($parts[1]);
-            
-            $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ? AND status = 'unclaimed'");
-            $stmt->execute([$txRef]);
-            $tx = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($tx) {
-                $amount = (float)$tx['amount'];
-                $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?")->execute([$telegramId, $tx['id']]);
-                $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?")->execute([$amount, $telegramId]);
-
-                $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
-                $stmt->execute([$telegramId]);
-                $newBal = $stmt->fetch(PDO::FETCH_ASSOC)['balance'];
-
-                sendMessage($chatId, "✅ <b>Deposit Successful!</b>\n\n<b>{$amount} ETB</b> has been credited to your wallet.\nNew Balance: <b>{$newBal} ETB</b>", $mainMenu);
-            } else {
-                sendMessage($chatId, "❌ Transaction ID not found, already claimed, or waiting for SMS verification.");
-            }
-        } else {
+    elseif (preg_match('/^\/verify(?:\s+(\S+))?/i', $text, $matches)) {
+        $txRef = strtoupper(trim($matches[1] ?? ''));
+        if ($txRef === '') {
             sendMessage($chatId, "⚠️ Usage: <code>/verify TRANSACTION_ID</code>\nExample: <code>/verify BGH82K91LM</code>");
+        } else {
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare("SELECT * FROM transactions WHERE UPPER(tx_reference) = ? AND status = 'unclaimed' LIMIT 1");
+                $stmt->execute([$txRef]);
+                $tx = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$tx) {
+                    $pdo->rollBack();
+                    sendMessage($chatId, "❌ Transaction ID not found, already claimed, or waiting for SMS verification.");
+                } else {
+                    $amount = (float)$tx['amount'];
+                    $claim = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ? AND status = 'unclaimed'");
+                    $claim->execute([$telegramId, $tx['id']]);
+
+                    if ($claim->rowCount() === 0) {
+                        $pdo->rollBack();
+                        sendMessage($chatId, "❌ This Transaction ID was just claimed.");
+                    } else {
+                        $insPlayer = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, 'WebUser', 0.00)");
+                        $insPlayer->execute([$telegramId, $firstName]);
+
+                        $pdo->prepare("UPDATE players SET balance = ROUND(balance + ?, 2) WHERE telegram_id = ?")->execute([$amount, $telegramId]);
+
+                        $stmtBal = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+                        $stmtBal->execute([$telegramId]);
+                        $newBal = number_format((float)($stmtBal->fetchColumn() ?: 0), 2);
+
+                        $pdo->commit();
+
+                        sendMessage($chatId, "✅ <b>Deposit Successful!</b>\n\n<b>{$amount} ETB</b> has been credited to your wallet.\nNew Balance: <b>{$newBal} ETB</b>", $mainMenu);
+                    }
+                }
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                sendMessage($chatId, "❌ Verification error. Please try again.");
+            }
         }
     }
-    elseif ($text === '/start' || stripos($text, 'start') !== false) {
-        $parts = preg_split('/\s+/', trim($text));
-        $referrerId = ($parts && count($parts) > 1) ? trim($parts[1]) : null;
+    elseif (preg_match('/^\/start(?:\s+(\S+))?/i', $text, $matches)) {
+        $referrerId = isset($matches[1]) ? trim($matches[1]) : null;
 
         $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$player) {
-            // Brand new player: grant 100 ETB test bonus once
             $startingBalance = 100.00;
 
             $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance, referred_by) VALUES (?, ?, 'WebUser', ?, ?)");
@@ -167,7 +197,7 @@ if ($chatId) {
 
             if ($referrerId && $referrerId !== $telegramId) {
                 $bonusAmount = 5.00;
-                $updRef = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
+                $updRef = $pdo->prepare("UPDATE players SET balance = ROUND(balance + ?, 2) WHERE telegram_id = ?");
                 $updRef->execute([$bonusAmount, $referrerId]);
 
                 sendMessage($referrerId, "🎉 <b>Referral Bonus!</b>\nA new friend joined using your link. <b>{$bonusAmount} ETB</b> has been added to your balance!");
@@ -175,7 +205,6 @@ if ($chatId) {
 
             sendMessage($chatId, "👋 Welcome to <b>Future Bingo</b>, <b>{$firstName}</b>!\nYou received a <b>100.00 ETB</b> free starting balance to test the game! Choose an option from the menu below:", $mainMenu);
         } else {
-            // Returning player: remind them they are already registered and keep their current balance intact
             $currentBal = number_format((float)$player['balance'], 2);
             sendMessage($chatId, "👋 Welcome back, <b>{$firstName}</b>!\nYou are already registered. Your current wallet balance is <b>{$currentBal} ETB</b>. Choose an option from the menu below:", $mainMenu);
         }
@@ -227,7 +256,7 @@ if ($chatId) {
                         "1. Open the <b>🎮 Play Bingo</b> WebApp.\n" .
                         "2. Go to the <b>💰 Wallet</b> tab.\n" .
                         "3. Tap <b>💸 Request Withdrawal</b>.";
-        sendMessage($chatId, "💸 Withdraw Funds\n\n1. Open the 🎮 Play Bingo WebApp.\n2. Go to the 💰 Wallet tab.\n3. Tap 💸 Request Withdrawal.", $mainMenu);
+        sendMessage($chatId, $withdrawText, $mainMenu);
     }
     elseif (stripos($text, 'Invite Friends') !== false) {
         $botUsername = "Lali_Bingo_bot";
@@ -240,4 +269,3 @@ if ($chatId) {
         sendMessage($chatId, "📞 Contact our support team: @Future_Support", $mainMenu);
     }
 }
-?>
