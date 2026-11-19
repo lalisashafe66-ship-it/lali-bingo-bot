@@ -1,23 +1,27 @@
 <?php
-// verify_payment.php - Verifies local transaction reference and credits wallet with exact amount
+// verify_payment.php - Strictly verifies existing unclaimed transactions and credits wallet
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
-// Handle browser preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
 
 $input = json_decode(file_get_contents('php://input'), true);
-$telegramId = trim($_POST['telegram_id'] ?? $_GET['telegram_id'] ?? $input['telegram_id'] ?? '');
-$txRef = trim($_POST['tx_ref'] ?? $_GET['tx_ref'] ?? $input['tx_ref'] ?? '');
-$inputAmount = (float)($input['amount'] ?? $_POST['amount'] ?? 50.00); // Default to 50 ETB if not passed
+$telegramId = trim((string)($_POST['telegram_id'] ?? $_GET['telegram_id'] ?? $input['telegram_id'] ?? ''));
+$txRef = strtoupper(trim((string)($_POST['tx_ref'] ?? $_GET['tx_ref'] ?? $input['tx_ref'] ?? '')));
 
-if (!$telegramId || !$txRef) {
+if ($telegramId === '' || $txRef === '') {
     echo json_encode(['success' => false, 'message' => 'Missing Telegram ID or Transaction Reference.']);
+    exit;
+}
+
+// Optional sanity check: reject obviously fake/empty strings (adjust length/regex to match your bank/gateway)
+if (strlen($txRef) < 6 || !preg_match('/^[A-Z0-9_-]+$/', $txRef)) {
+    echo json_encode(['success' => false, 'message' => 'Invalid transaction reference format.']);
     exit;
 }
 
@@ -25,8 +29,8 @@ try {
     $dbPath = __DIR__ . '/bingo.db';
     $pdo = new PDO("sqlite:" . $dbPath);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->exec("PRAGMA busy_timeout = 5000;");
 
-    // Ensure tables exist
     $pdo->exec("CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         telegram_id TEXT UNIQUE,
@@ -47,61 +51,83 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Query for the transaction by reference
-    $stmt = $pdo->prepare("SELECT * FROM transactions WHERE tx_reference = ?");
+    $pdo->beginTransaction();
+
+    // Look up the transaction reference (case-insensitive match recommended)
+    $stmt = $pdo->prepare("SELECT * FROM transactions WHERE UPPER(tx_reference) = ? LIMIT 1");
     $stmt->execute([$txRef]);
     $tx = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($tx) {
-        if ($tx['status'] === 'claimed') {
-            echo json_encode(['success' => false, 'message' => 'This Transaction ID has already been used.']);
-            exit;
-        }
-        $amount = (float)$tx['amount'];
-        $txId = $tx['id'];
-
-        // Mark transaction as claimed
-        $updateTx = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ?");
-        $updateTx->execute([$telegramId, $txId]);
-    } else {
-        // If the transaction reference doesn't exist (e.g., from yesterday or missed by SMS forwarder),
-        // dynamically accept it and log it as a claimed manual deposit.
-        $amount = $inputAmount > 0 ? $inputAmount : 50.00;
-
-        $insertTx = $pdo->prepare("INSERT INTO transactions (telegram_id, tx_reference, amount, source, status) VALUES (?, ?, ?, 'manual', 'claimed')");
-        $insertTx->execute([$telegramId, $txRef, $amount]);
+    if (!$tx) {
+        $pdo->rollBack();
+        echo json_encode([
+            'success' => false,
+            'message' => 'Transaction reference not found. Please check your reference ID or wait a moment for confirmation.'
+        ]);
+        exit;
     }
 
-    // Ensure player row exists using INSERT OR IGNORE pattern
-    $stmtPlayer = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
-    $stmtPlayer->execute([$telegramId]);
-    $player = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
-
-    if (!$player) {
-        $insPlayer = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', 0.00)");
-        $insPlayer->execute([$telegramId]);
+    if ($tx['status'] !== 'unclaimed') {
+        $pdo->rollBack();
+        echo json_encode([
+            'success' => false,
+            'message' => 'This Transaction ID has already been used.'
+        ]);
+        exit;
     }
 
-    // Safely update player balance
-    $updateBalance = $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?");
+    $amount = (float)$tx['amount'];
+    if ($amount <= 0) {
+        $pdo->rollBack();
+        echo json_encode([
+            'success' => false,
+            'message' => 'Invalid transaction amount recorded.'
+        ]);
+        exit;
+    }
+
+    // Atomically claim the transaction so it can never be claimed twice
+    $claimTx = $pdo->prepare("UPDATE transactions SET status = 'claimed', telegram_id = ? WHERE id = ? AND status = 'unclaimed'");
+    $claimTx->execute([$telegramId, $tx['id']]);
+
+    if ($claimTx->rowCount() === 0) {
+        $pdo->rollBack();
+        echo json_encode([
+            'success' => false,
+            'message' => 'This Transaction ID was just claimed.'
+        ]);
+        exit;
+    }
+
+    // Ensure player row exists
+    $insPlayer = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', 0.00)");
+    $insPlayer->execute([$telegramId]);
+
+    // Credit player balance
+    $updateBalance = $pdo->prepare("UPDATE players SET balance = ROUND(balance + ?, 2) WHERE telegram_id = ?");
     $updateBalance->execute([$amount, $telegramId]);
 
-    // Fetch final updated balance
+    // Fetch updated balance
+    $stmtPlayer = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
     $stmtPlayer->execute([$telegramId]);
     $updatedPlayer = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
     $newBal = $updatedPlayer ? (float)$updatedPlayer['balance'] : $amount;
 
-    // Send Telegram Notification
-    $token = getenv('TELEGRAM_BOT_TOKEN') ?: '9251047882:AAFbbYkqcqfPvhkXtK5cfTgm1Z5xghmqaq0';
-    $msg = "🎉 <b>Automated Deposit Confirmed!</b>\n\n" .
-           "<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\n" .
-           "Current Balance: <b>{$newBal} ETB</b>";
+    $pdo->commit();
 
-    @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?" . http_build_query([
-        'chat_id' => $telegramId,
-        'text' => $msg,
-        'parse_mode' => 'HTML'
-    ]));
+    // Send Telegram Notification using environment variable
+    $token = getenv('TELEGRAM_BOT_TOKEN') ?: '';
+    if ($token !== '') {
+        $msg = "🎉 <b>Automated Deposit Confirmed!</b>\n\n" .
+               "<b>{$amount} ETB</b> has been added to your Future Bingo wallet.\n" .
+               "Current Balance: <b>{$newBal} ETB</b>";
+
+        @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?" . http_build_query([
+            'chat_id' => $telegramId,
+            'text' => $msg,
+            'parse_mode' => 'HTML'
+        ]));
+    }
 
     echo json_encode([
         'success' => true,
@@ -110,6 +136,8 @@ try {
     ]);
 
 } catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
 }
-?>
