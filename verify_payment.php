@@ -10,7 +10,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+require_once __DIR__ . '/db.php';
+
 $input = json_decode(file_get_contents('php://input'), true);
+if (!is_array($input)) {
+    $input = [];
+}
+
 $telegramId = trim((string)($_POST['telegram_id'] ?? $_GET['telegram_id'] ?? $input['telegram_id'] ?? ''));
 $txRef = strtoupper(trim((string)($_POST['tx_ref'] ?? $_GET['tx_ref'] ?? $input['tx_ref'] ?? '')));
 $amount = round((float)($_POST['amount'] ?? $_GET['amount'] ?? $input['amount'] ?? 0), 2);
@@ -25,24 +31,11 @@ if (strlen($txRef) < 6 || !preg_match('/^[A-Z0-9_-]+$/', $txRef)) {
     exit;
 }
 
-$token = getenv('TELEGRAM_BOT_TOKEN') ?: '';
+$token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
 $ADMIN_ID = "730967613";
 
 try {
-    $dbPath = __DIR__ . '/bingo.db';
-    $pdo = new PDO("sqlite:" . $dbPath);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $pdo->exec("PRAGMA busy_timeout = 5000;");
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS players (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT UNIQUE,
-        first_name TEXT,
-        phone TEXT,
-        balance REAL DEFAULT 0.00,
-        referred_by TEXT DEFAULT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
+    $pdo = getBingoPdo();
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +69,7 @@ try {
     $player = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
     $playerName = $player['first_name'] ?? 'Player';
 
-    // Insert as 'pending' — DO NOT credit balance yet
+    // Insert as 'pending' — credited only when approved in bot.php
     $insertTx = $pdo->prepare("INSERT INTO transactions (telegram_id, tx_reference, amount, source, status) VALUES (?, ?, ?, 'webapp_manual', 'pending')");
     $insertTx->execute([$telegramId, $txRef, $amount]);
     $txId = $pdo->lastInsertId();
