@@ -99,12 +99,17 @@ function generateGameCode(int $length = 5): string {
 }
 
 /**
- * Deterministically generates a 5x5 Bingo cartela (row-major array of 25 ints, index 12 = 0/FREE)
- * for any cartela number from 1 to 400.
+ * Deterministic 5x5 Bingo cartela (25 ints, index 12 = 0/FREE) using a deterministic LCG
+ * matching the frontend so client and server always share the exact same board.
  */
 function generateCartelaBoard(int $cartelaNumber): array {
     $seed = ($cartelaNumber * 2654435761) & 0x7fffffff;
-    mt_srand($seed ?: 1);
+    if ($seed === 0) $seed = 1;
+
+    $nextRand = function (int $maxExclusive) use (&$seed): int {
+        $seed = ($seed * 1103515245 + 12345) & 0x7fffffff;
+        return $seed % $maxExclusive;
+    };
 
     $ranges = [
         [1, 15],
@@ -118,7 +123,7 @@ function generateCartelaBoard(int $cartelaNumber): array {
     foreach ($ranges as [$min, $max]) {
         $pool = range($min, $max);
         for ($i = count($pool) - 1; $i > 0; $i--) {
-            $j = mt_rand(0, $i);
+            $j = $nextRand($i + 1);
             [$pool[$i], $pool[$j]] = [$pool[$j], $pool[$i]];
         }
         $cols[] = array_slice($pool, 0, 5);
@@ -157,15 +162,63 @@ function hasWinningLine(array $board, array $calledSet): ?array {
     return null;
 }
 
+function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
+    $roomId = (int)$room['id'];
+
+    $stakesStmt = $pdo->prepare("SELECT COALESCE(SUM(stake_paid), 0) AS total_stakes FROM room_players WHERE room_id = ?");
+    $stakesStmt->execute([$roomId]);
+    $totalStakes = (float)($stakesStmt->fetchColumn() ?: 0);
+    $totalDerash = round($totalStakes * 0.80, 2);
+
+    $winnerCount = max(1, count($winners));
+    $sharePerWinner = round($totalDerash / $winnerCount, 2);
+
+    foreach ($winners as &$w) {
+        $w['prize'] = $sharePerWinner;
+    }
+    unset($w);
+
+    foreach ($winners as $w) {
+        $wTid = $w['telegram_id'];
+        $wName = $w['name'];
+        $checkLog = $pdo->prepare("SELECT id, prize FROM game_winners WHERE room_id = ? AND telegram_id = ? LIMIT 1");
+        $checkLog->execute([$roomId, $wTid]);
+        $prevWin = $checkLog->fetch(PDO::FETCH_ASSOC);
+
+        if (!$prevWin) {
+            $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?")
+                ->execute([$sharePerWinner, $wTid]);
+            $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)")
+                ->execute([$roomId, $wTid, $wName, $sharePerWinner]);
+        } else {
+            $oldPrize = (float)$prevWin['prize'];
+            $diff = round($sharePerWinner - $oldPrize, 2);
+            if (abs($diff) > 0.001) {
+                $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?")
+                    ->execute([$diff, $wTid]);
+                $pdo->prepare("UPDATE game_winners SET prize = ? WHERE id = ?")
+                    ->execute([$sharePerWinner, $prevWin['id']]);
+            }
+        }
+    }
+
+    $pdo->prepare("UPDATE rooms SET status = 'finished', winners_json = ? WHERE id = ?")
+        ->execute([json_encode($winners), $roomId]);
+
+    $room['status'] = 'finished';
+    $room['winners_json'] = json_encode($winners);
+    return $room;
+}
+
 /**
- * Advances room state based on server timestamps:
- * - waiting -> active once starts_at is reached (or after 20s)
- * - active -> draws 1 number every 2.5s (up to 75 numbers or 60s round)
+ * Advances room state automatically based on server timestamps:
+ * - waiting -> active once starts_at is reached
+ * - active -> draws 1 number every 2.5s and automatically detects & pays winner(s)
  */
 function syncRoomLifecycle(PDO $pdo, array $room): array {
     $now = time();
     $status = $room['status'];
-    $startsAt = (int)($room['starts_at'] ?? (($room['created_at'] ?? $now) + 20));
+    $startsAt = (int)($room['starts_at'] ?? (($room['created_at'] ?? $now) + 15));
     $startedAt = (int)($room['started_at'] ?? 0);
     $pool = json_decode($room['draw_pool_json'] ?? '[]', true);
     if (!is_array($pool) || count($pool) !== 75) {
@@ -174,7 +227,7 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
     }
 
     $drawIntervalSec = 2.5;
-    $maxRoundSec = 90;
+    $maxRoundSec = 185;
 
     if ($status === 'waiting' && $now >= $startsAt) {
         $status = 'active';
@@ -191,19 +244,42 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
         $elapsed = max(0, $now - $startedAt);
         $targetCalls = min(75, (int)floor($elapsed / $drawIntervalSec) + 1);
         $called = array_slice($pool, 0, $targetCalls);
+        $calledSet = array_flip(array_map('intval', $called));
+
+        $pdo->prepare("UPDATE rooms SET called_numbers_json = ? WHERE id = ?")
+            ->execute([json_encode($called), $room['id']]);
+        $room['called_numbers_json'] = json_encode($called);
+
+        // Automatic server-side win detection on every tick
+        $rpStmt = $pdo->prepare("SELECT telegram_id, first_name, player_number FROM room_players WHERE room_id = ? ORDER BY id ASC");
+        $rpStmt->execute([$room['id']]);
+        $entries = $rpStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $autoWinners = [];
+        foreach ($entries as $entry) {
+            $cn = (int)$entry['player_number'];
+            $board = generateCartelaBoard($cn);
+            $winLine = hasWinningLine($board, $calledSet);
+            if ($winLine !== null) {
+                $autoWinners[] = [
+                    'telegram_id' => $entry['telegram_id'],
+                    'name' => $entry['first_name'] ?: 'Player',
+                    'cartela_number' => $cn,
+                    'board' => $board,
+                    'winning_line' => $winLine,
+                ];
+            }
+        }
+
+        if (count($autoWinners) > 0) {
+            return finalizeRoomWinners($pdo, $room, $autoWinners);
+        }
 
         if ($elapsed >= $maxRoundSec || count($called) >= 75) {
-            $winners = json_decode($room['winners_json'] ?? '[]', true);
-            if (!is_array($winners) || count($winners) === 0) {
-                $pdo->prepare("UPDATE rooms SET status = 'finished', called_numbers_json = ? WHERE id = ?")
-                    ->execute([json_encode($called), $room['id']]);
-                $room['status'] = 'finished';
-            }
-        } else {
-            $pdo->prepare("UPDATE rooms SET called_numbers_json = ? WHERE id = ?")
-                ->execute([json_encode($called), $room['id']]);
+            $pdo->prepare("UPDATE rooms SET status = 'finished' WHERE id = ?")
+                ->execute([$room['id']]);
+            $room['status'] = 'finished';
         }
-        $room['called_numbers_json'] = json_encode($called);
     }
 
     return $room;
@@ -235,11 +311,11 @@ function buildRoomPayload(PDO $pdo, array $room): array {
     $derash = round($totalStakes * 0.80, 2);
 
     $now = time();
-    $startsAt = (int)($room['starts_at'] ?? ($now + 20));
+    $startsAt = (int)($room['starts_at'] ?? ($now + 15));
     $lobbySecondsLeft = max(0, $startsAt - $now);
 
     $startedAt = (int)($room['started_at'] ?? $now);
-    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 90 - ($now - $startedAt)) : 0;
+    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 185 - ($now - $startedAt)) : 0;
 
     return [
         'room_id' => (int)$room['id'],
@@ -329,7 +405,6 @@ elseif ($action === 'join_room') {
         exit;
     }
 
-    // Check if an active round is already running for this stake
     $activeStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'active' ORDER BY id DESC LIMIT 1");
     $activeStmt->execute([$stake]);
     $activeRoom = $activeStmt->fetch(PDO::FETCH_ASSOC);
@@ -382,7 +457,7 @@ elseif ($action === 'join_room') {
             $pool = range(1, 75);
             shuffle($pool);
             $insRoom = $pdo->prepare("INSERT INTO rooms (game_code, stake, status, created_at, starts_at, draw_pool_json, called_numbers_json, winners_json) VALUES (?, ?, 'waiting', ?, ?, ?, '[]', '[]')");
-            $insRoom->execute([$code, $stake, $now, $now + 20, json_encode($pool)]);
+            $insRoom->execute([$code, $stake, $now, $now + 15, json_encode($pool)]);
             $roomId = (int)$pdo->lastInsertId();
             $roomStmt->execute([$stake]);
             $room = $roomStmt->fetch(PDO::FETCH_ASSOC);
@@ -390,7 +465,6 @@ elseif ($action === 'join_room') {
             $roomId = (int)$room['id'];
         }
 
-        // Prevent duplicate cartela selection inside the same waiting room
         $takenStmt = $pdo->prepare("SELECT player_number FROM room_players WHERE room_id = ?");
         $takenStmt->execute([$roomId]);
         $takenList = $takenStmt->fetchAll(PDO::FETCH_COLUMN, 0);
@@ -425,137 +499,6 @@ elseif ($action === 'join_room') {
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         echo json_encode(['success' => false, 'error' => 'Transaction error: ' . $e->getMessage()]);
-    }
-}
-elseif ($action === 'claim_win') {
-    $telegramId = trim($_POST['telegram_id'] ?? '');
-    $roomId = (int)($_POST['room_id'] ?? 0);
-    $cartelaNumber = (int)($_POST['cartela_number'] ?? 0);
-    $winnerName = trim($_POST['winner_name'] ?? 'Player');
-
-    if ($roomId <= 0 || $cartelaNumber < 1 || $cartelaNumber > 400) {
-        echo json_encode(['success' => false, 'error' => 'Invalid room or cartela number.']);
-        exit;
-    }
-
-    $pdo->beginTransaction();
-    try {
-        $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
-        $stmt->execute([$roomId]);
-        $room = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$room) {
-            $pdo->rollBack();
-            echo json_encode(['success' => false, 'error' => 'Room not found.']);
-            exit;
-        }
-
-        $room = syncRoomLifecycle($pdo, $room);
-        $called = json_decode($room['called_numbers_json'] ?? '[]', true);
-        if (!is_array($called)) $called = [];
-        $calledSet = array_flip(array_map('intval', $called));
-
-        $board = generateCartelaBoard($cartelaNumber);
-        $winningLine = hasWinningLine($board, $calledSet);
-
-        if ($winningLine === null) {
-            $pdo->rollBack();
-            echo json_encode(['success' => false, 'error' => 'Not a valid Bingo line on the server called numbers yet!']);
-            exit;
-        }
-
-        // Verify player actually holds this cartela in this room
-        $rpStmt = $pdo->prepare("SELECT first_name FROM room_players WHERE room_id = ? AND telegram_id = ? AND player_number = ? LIMIT 1");
-        $rpStmt->execute([$roomId, $telegramId, $cartelaNumber]);
-        $rp = $rpStmt->fetch(PDO::FETCH_ASSOC);
-        if (!$rp) {
-            $pdo->rollBack();
-            echo json_encode(['success' => false, 'error' => 'Cartela does not belong to you in this room.']);
-            exit;
-        }
-
-        $winners = json_decode($room['winners_json'] ?? '[]', true);
-        if (!is_array($winners)) $winners = [];
-
-        $alreadyInWinners = false;
-        foreach ($winners as $w) {
-            if (($w['telegram_id'] ?? '') === $telegramId && (int)($w['cartela_number'] ?? 0) === $cartelaNumber) {
-                $alreadyInWinners = true;
-                break;
-            }
-        }
-
-        if (!$alreadyInWinners) {
-            $winners[] = [
-                'telegram_id' => $telegramId,
-                'name' => $winnerName ?: ($rp['first_name'] ?: 'Player'),
-                'cartela_number' => $cartelaNumber,
-                'board' => $board,
-                'winning_line' => $winningLine,
-            ];
-        }
-
-        // Calculate 80% pot and split evenly among all winners
-        $stakesStmt = $pdo->prepare("SELECT COALESCE(SUM(stake_paid), 0) AS total_stakes FROM room_players WHERE room_id = ?");
-        $stakesStmt->execute([$roomId]);
-        $totalStakes = (float)($stakesStmt->fetchColumn() ?: 0);
-        $totalDerash = round($totalStakes * 0.80, 2);
-        $winnerCount = max(1, count($winners));
-        $sharePerWinner = round($totalDerash / $winnerCount, 2);
-
-        foreach ($winners as &$w) {
-            $w['prize'] = $sharePerWinner;
-        }
-        unset($w);
-
-        // Credit each winner's balance cleanly (idempotent per room_id + telegram_id)
-        foreach ($winners as $w) {
-            $wTid = $w['telegram_id'];
-            $wName = $w['name'];
-            $checkLog = $pdo->prepare("SELECT id, prize FROM game_winners WHERE room_id = ? AND telegram_id = ? LIMIT 1");
-            $checkLog->execute([$roomId, $wTid]);
-            $prevWin = $checkLog->fetch(PDO::FETCH_ASSOC);
-
-            if (!$prevWin) {
-                $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?")
-                    ->execute([$sharePerWinner, $wTid]);
-                $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)")
-                    ->execute([$roomId, $wTid, $wName, $sharePerWinner]);
-            } else {
-                $oldPrize = (float)$prevWin['prize'];
-                $diff = round($sharePerWinner - $oldPrize, 2);
-                if (abs($diff) > 0.001) {
-                    $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?")
-                        ->execute([$diff, $wTid]);
-                    $pdo->prepare("UPDATE game_winners SET prize = ? WHERE id = ?")
-                        ->execute([$sharePerWinner, $prevWin['id']]);
-                }
-            }
-        }
-
-        $pdo->prepare("UPDATE rooms SET status = 'finished', winners_json = ? WHERE id = ?")
-            ->execute([json_encode($winners), $roomId]);
-
-        $pdo->commit();
-
-        $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
-        $balStmt->execute([$telegramId]);
-        $updatedBal = (float)($balStmt->fetchColumn() ?: 0);
-
-        $updatedRoomStmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
-        $updatedRoomStmt->execute([$roomId]);
-        $updatedRoom = $updatedRoomStmt->fetch(PDO::FETCH_ASSOC);
-
-        echo json_encode([
-            'success' => true,
-            'new_balance' => $updatedBal,
-            'share_prize' => $sharePerWinner,
-            'winners' => $winners,
-            'room' => buildRoomPayload($pdo, $updatedRoom)
-        ]);
-    } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        echo json_encode(['success' => false, 'error' => 'Win verification error: ' . $e->getMessage()]);
     }
 }
 elseif ($action === 'request_withdrawal') {
