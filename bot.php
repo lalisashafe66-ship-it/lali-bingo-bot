@@ -69,7 +69,8 @@ function sendMessage($chatId, $message, $keyboard = null) {
     if ($keyboard) {
         $params['reply_markup'] = json_encode($keyboard);
     }
-    tgRequest('sendMessage', $params);
+    $resp = tgRequest('sendMessage', $params);
+    error_log("sendMessage resp for {$chatId}: " . var_export($resp, true));
 }
 
 function editMessage($chatId, $messageId, $message) {
