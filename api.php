@@ -5,6 +5,49 @@ header('Access-Control-Allow-Methods: GET, POST');
 
 require_once __DIR__ . '/db.php';
 
+function notifyAdminWithdrawal(string $token, string $chatId, string $message): void {
+    if ($token === '' || $chatId === '') {
+        error_log("Future Bingo withdrawal notify: missing TELEGRAM_BOT_TOKEN or ADMIN_ID.");
+        return;
+    }
+
+    $params = [
+        'chat_id' => $chatId,
+        'text' => $message,
+        'parse_mode' => 'HTML'
+    ];
+
+    $url = "https://api.telegram.org/bot{$token}/sendMessage";
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $params,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ]);
+        $res = curl_exec($ch);
+        if ($res === false) {
+            error_log("Telegram withdrawal cURL error: " . curl_error($ch));
+        } else {
+            error_log("Telegram withdrawal resp: " . $res);
+        }
+        curl_close($ch);
+    } else {
+        $ctx = stream_context_create([
+            'http' => [
+                'method' => 'POST',
+                'header' => "Content-type: application/x-www-form-urlencoded\r\n",
+                'content' => http_build_query($params),
+                'timeout' => 10,
+            ]
+        ]);
+        $res = @file_get_contents($url, false, $ctx);
+        error_log("Telegram withdrawal fallback resp: " . var_export($res, true));
+    }
+}
+
 try {
     $pdo = getBingoPdo();
 
@@ -488,21 +531,15 @@ elseif ($action === 'request_withdrawal') {
         $pdo->commit();
 
         $ADMIN_ID = "730967613";
-        $token = getenv('TELEGRAM_BOT_TOKEN') ?: '';
-        if ($token !== '') {
-            $adminMsg = "💸 <b>New Withdrawal Request (Future Bingo)!</b>\n\n" .
-                        "• <b>Player:</b> " . ($player['first_name'] ?? 'Player') . "\n" .
-                        "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
-                        "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
-                        "• <b>Method:</b> {$method}\n" .
-                        "• <b>Account/Phone:</b> <code>{$account}</code>";
+        $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
+        $adminMsg = "💸 <b>New Withdrawal Request (Future Bingo)!</b>\n\n" .
+                    "• <b>Player:</b> " . ($player['first_name'] ?? 'Player') . "\n" .
+                    "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
+                    "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
+                    "• <b>Method:</b> {$method}\n" .
+                    "• <b>Account/Phone:</b> <code>{$account}</code>";
 
-            @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?" . http_build_query([
-                'chat_id' => $ADMIN_ID,
-                'text' => $adminMsg,
-                'parse_mode' => 'HTML'
-            ]));
-        }
+        notifyAdminWithdrawal($token, $ADMIN_ID, $adminMsg);
 
         echo json_encode([
             'success' => true,
@@ -511,6 +548,7 @@ elseif ($action === 'request_withdrawal') {
         ]);
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log("request_withdrawal error: " . $e->getMessage());
         echo json_encode(['success' => false, 'error' => 'Withdrawal error: ' . $e->getMessage()]);
     }
 }
