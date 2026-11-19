@@ -320,7 +320,6 @@
   </style>
 </head>
 <body class="px-2">
-
   <div class="d-flex justify-content-between align-items-center mb-1">
     <div class="d-flex align-items-center gap-2">
       <span style="font-size: 1.2rem;">🔶</span>
@@ -613,7 +612,6 @@
       return 'O';
     }
 
-    // Matches generateCartelaBoard(int $cartelaNumber) in api.php
     function generateDeterministicCard(cartelaNumber) {
       let seed = (cartelaNumber * 2654435761) & 0x7fffffff;
       if (seed === 0) seed = 1;
@@ -1122,19 +1120,30 @@
     }
 
     function startInstantDeposit() {
+      const amountStr = prompt("Enter deposit amount in ETB (minimum 10):", "50");
+      if (!amountStr) return;
+      const amountNum = parseFloat(amountStr);
+      if (isNaN(amountNum) || amountNum < 10) {
+        alert("Please enter a valid deposit amount (minimum 10 ETB).");
+        return;
+      }
+
       const txRef = prompt("Enter your Telebirr or CBE Transaction ID / Receipt Reference:");
       if (!txRef || !txRef.trim()) return;
 
       const formData = new FormData();
       formData.append('telegram_id', telegramId);
+      formData.append('amount', amountNum.toFixed(2));
       formData.append('tx_ref', txRef.trim());
 
-      fetch('https://lali-bingo-bot.onrender.com/verify_payment.php', { method: 'POST', body: formData })
+      fetch('verify_payment.php', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
           if (data.success) {
-            updateBalanceUI(data.new_balance);
-            alert(`✅ ${data.message || 'Deposit verified successfully!'}`);
+            if (data.new_balance !== undefined) {
+              updateBalanceUI(data.new_balance);
+            }
+            alert(`✅ ${data.message || 'Deposit request submitted!'}`);
           } else {
             alert(`❌ ${data.message || 'Transaction ID not found or already claimed.'}`);
           }
