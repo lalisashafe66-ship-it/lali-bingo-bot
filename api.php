@@ -3,34 +3,10 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 
+require_once __DIR__ . '/db.php';
+
 try {
-    $dbPath = __DIR__ . '/bingo.db';
-    $pdo = new PDO("sqlite:" . $dbPath);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $pdo->exec("PRAGMA journal_mode = WAL;");
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS players (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT UNIQUE,
-        first_name TEXT,
-        phone TEXT,
-        balance REAL DEFAULT 50.00,
-        referred_by TEXT DEFAULT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS rooms (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        game_code TEXT,
-        stake REAL,
-        status TEXT DEFAULT 'waiting',
-        created_at INTEGER,
-        starts_at INTEGER,
-        started_at INTEGER,
-        draw_pool_json TEXT,
-        called_numbers_json TEXT DEFAULT '[]',
-        winners_json TEXT DEFAULT '[]'
-    )");
+    $pdo = getBingoPdo();
 
     // Safe column migrations for existing bingo.db files
     $existingCols = $pdo->query("PRAGMA table_info(rooms)")->fetchAll(PDO::FETCH_COLUMN, 1);
@@ -48,16 +24,6 @@ try {
         }
     }
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS room_players (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        room_id INTEGER,
-        telegram_id TEXT,
-        first_name TEXT,
-        player_number INTEGER,
-        stake_paid REAL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
-
     $rpCols = $pdo->query("PRAGMA table_info(room_players)")->fetchAll(PDO::FETCH_COLUMN, 1);
     if (!in_array('first_name', $rpCols, true)) {
         $pdo->exec("ALTER TABLE room_players ADD COLUMN first_name TEXT");
@@ -65,28 +31,14 @@ try {
     if (!in_array('stake_paid', $rpCols, true)) {
         $pdo->exec("ALTER TABLE room_players ADD COLUMN stake_paid REAL DEFAULT 0");
     }
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS withdrawals (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT,
-        amount REAL,
-        method TEXT,
-        account TEXT,
-        status TEXT DEFAULT 'pending',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS game_winners (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        room_id INTEGER,
-        telegram_id TEXT,
-        winner_name TEXT,
-        prize REAL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
 } catch (PDOException $e) {
     echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
     exit;
+}
+
+function logBalanceChange(PDO $pdo, string $telegramId, ?int $roomId, string $type, float $amount, float $before, float $after, string $note = ''): void {
+    $stmt = $pdo->prepare("INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$telegramId, $roomId, $type, $amount, $before, $after, $note]);
 }
 
 function generateGameCode(int $length = 5): string {
@@ -98,10 +50,6 @@ function generateGameCode(int $length = 5): string {
     return $code;
 }
 
-/**
- * Deterministic 5x5 Bingo cartela (25 ints, index 12 = 0/FREE) using a deterministic LCG
- * matching the frontend so client and server always share the exact same board.
- */
 function generateCartelaBoard(int $cartelaNumber): array {
     $seed = ($cartelaNumber * 2654435761) & 0x7fffffff;
     if ($seed === 0) $seed = 1;
@@ -148,7 +96,7 @@ function hasWinningLine(array $board, array $calledSet): ?array {
     foreach ($lines as $line) {
         $ok = true;
         foreach ($line as $idx) {
-            if ($idx === 12) continue; // Free center
+            if ($idx === 12) continue;
             $val = (int)($board[$idx] ?? -1);
             if (!isset($calledSet[$val])) {
                 $ok = false;
@@ -179,26 +127,23 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
     unset($w);
 
     foreach ($winners as $w) {
-        $wTid = $w['telegram_id'];
+        $wTid = (string)$w['telegram_id'];
         $wName = $w['name'];
         $checkLog = $pdo->prepare("SELECT id, prize FROM game_winners WHERE room_id = ? AND telegram_id = ? LIMIT 1");
         $checkLog->execute([$roomId, $wTid]);
         $prevWin = $checkLog->fetch(PDO::FETCH_ASSOC);
 
         if (!$prevWin) {
-            $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?")
-                ->execute([$sharePerWinner, $wTid]);
+            $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+            $balStmt->execute([$wTid]);
+            $before = (float)($balStmt->fetchColumn() ?: 0);
+            $after = round($before + $sharePerWinner, 2);
+
+            $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
+                ->execute([$after, $wTid]);
             $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)")
                 ->execute([$roomId, $wTid, $wName, $sharePerWinner]);
-        } else {
-            $oldPrize = (float)$prevWin['prize'];
-            $diff = round($sharePerWinner - $oldPrize, 2);
-            if (abs($diff) > 0.001) {
-                $pdo->prepare("UPDATE players SET balance = balance + ? WHERE telegram_id = ?")
-                    ->execute([$diff, $wTid]);
-                $pdo->prepare("UPDATE game_winners SET prize = ? WHERE id = ?")
-                    ->execute([$sharePerWinner, $prevWin['id']]);
-            }
+            logBalanceChange($pdo, $wTid, $roomId, 'win_payout', $sharePerWinner, $before, $after, "Won Game " . ($room['game_code'] ?? $roomId));
         }
     }
 
@@ -210,11 +155,6 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
     return $room;
 }
 
-/**
- * Advances room state automatically based on server timestamps:
- * - waiting -> active once starts_at is reached
- * - active -> draws 1 number every 2.5s and automatically detects & pays winner(s)
- */
 function syncRoomLifecycle(PDO $pdo, array $room): array {
     $now = time();
     $status = $room['status'];
@@ -250,7 +190,6 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             ->execute([json_encode($called), $room['id']]);
         $room['called_numbers_json'] = json_encode($called);
 
-        // Automatic server-side win detection on every tick
         $rpStmt = $pdo->prepare("SELECT telegram_id, first_name, player_number FROM room_players WHERE room_id = ? ORDER BY id ASC");
         $rpStmt->execute([$room['id']]);
         $entries = $rpStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -262,7 +201,7 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             $winLine = hasWinningLine($board, $calledSet);
             if ($winLine !== null) {
                 $autoWinners[] = [
-                    'telegram_id' => $entry['telegram_id'],
+                    'telegram_id' => (string)$entry['telegram_id'],
                     'name' => $entry['first_name'] ?: 'Player',
                     'cartela_number' => $cn,
                     'board' => $board,
@@ -337,9 +276,9 @@ function buildRoomPayload(PDO $pdo, array $room): array {
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 if ($action === 'get_balance') {
-    $telegramId = trim($_GET['telegram_id'] ?? '');
+    $telegramId = trim((string)($_GET['telegram_id'] ?? ''));
 
-    if (empty($telegramId) || $telegramId === 'undefined' || $telegramId === 'null') {
+    if ($telegramId === '' || $telegramId === 'undefined' || $telegramId === 'null') {
         echo json_encode(['success' => false, 'balance' => 0.00, 'error' => 'Invalid Telegram ID']);
         exit;
     }
@@ -352,8 +291,9 @@ if ($action === 'get_balance') {
         $balance = (float)$player['balance'];
     } else {
         $initialBal = 50.00;
-        $stmtIns = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'LÀLISHAA', 'WebUser', ?)");
+        $stmtIns = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', ?)");
         $stmtIns->execute([$telegramId, $initialBal]);
+        logBalanceChange($pdo, $telegramId, null, 'welcome_bonus', $initialBal, 0.00, $initialBal, 'Initial player registration');
         $balance = $initialBal;
     }
 
@@ -383,10 +323,15 @@ elseif ($action === 'get_room_state') {
     echo json_encode(['success' => true, 'room' => buildRoomPayload($pdo, $room)]);
 }
 elseif ($action === 'join_room') {
-    $telegramId = trim($_POST['telegram_id'] ?? '');
-    $firstName = trim($_POST['first_name'] ?? 'Player');
+    $telegramId = trim((string)($_POST['telegram_id'] ?? ''));
+    $firstName = trim((string)($_POST['first_name'] ?? 'Player'));
     $stake = (float)($_POST['stake'] ?? $_POST['fee'] ?? 0);
     $cartelasRaw = $_POST['cartela_numbers'] ?? '';
+
+    if ($telegramId === '' || $telegramId === 'undefined' || $telegramId === 'null') {
+        echo json_encode(['success' => false, 'error' => 'Invalid Telegram ID.']);
+        exit;
+    }
 
     $cartelaNumbers = [];
     if (is_array($cartelasRaw)) {
@@ -402,6 +347,11 @@ elseif ($action === 'join_room') {
 
     if (count($cartelaNumbers) < 1 || count($cartelaNumbers) > 3) {
         echo json_encode(['success' => false, 'error' => 'Please choose between 1 and 3 valid cartelas (1 - 400).']);
+        exit;
+    }
+
+    if ($stake <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Invalid table stake.']);
         exit;
     }
 
@@ -422,7 +372,7 @@ elseif ($action === 'join_room') {
         }
     }
 
-    $totalFee = $stake * count($cartelaNumbers);
+    $totalFee = round($stake * count($cartelaNumbers), 2);
 
     $pdo->beginTransaction();
     try {
@@ -432,11 +382,11 @@ elseif ($action === 'join_room') {
 
         if (!$player) {
             $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, 'WebUser', 50.00)");
-            $ins->execute([$telegramId, $firstName ?: 'LÀLISHAA']);
+            $ins->execute([$telegramId, $firstName ?: 'Player']);
             $currentBalance = 50.00;
         } else {
             $currentBalance = (float)$player['balance'];
-            if (!empty($firstName) && $player['first_name'] !== $firstName) {
+            if ($firstName !== '' && $player['first_name'] !== $firstName) {
                 $pdo->prepare("UPDATE players SET first_name = ? WHERE telegram_id = ?")->execute([$firstName, $telegramId]);
             }
         }
@@ -476,8 +426,10 @@ elseif ($action === 'join_room') {
             }
         }
 
-        $newBalance = $currentBalance - $totalFee;
+        // Permanently deduct stake immediately upon joining
+        $newBalance = round($currentBalance - $totalFee, 2);
         $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")->execute([$newBalance, $telegramId]);
+        logBalanceChange($pdo, $telegramId, $roomId, 'stake_deduct', -$totalFee, $currentBalance, $newBalance, "Joined Game " . ($room['game_code'] ?? $roomId) . " (" . count($cartelaNumbers) . " cartela)");
 
         $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, first_name, player_number, stake_paid) VALUES (?, ?, ?, ?, ?)");
         foreach ($cartelaNumbers as $cn) {
@@ -502,10 +454,10 @@ elseif ($action === 'join_room') {
     }
 }
 elseif ($action === 'request_withdrawal') {
-    $telegramId = trim($_POST['telegram_id'] ?? '');
-    $amount = (float)($_POST['amount'] ?? 0);
-    $method = $_POST['method'] ?? 'Telebirr';
-    $account = $_POST['account'] ?? '';
+    $telegramId = trim((string)($_POST['telegram_id'] ?? ''));
+    $amount = round((float)($_POST['amount'] ?? 0), 2);
+    $method = trim((string)($_POST['method'] ?? 'Telebirr'));
+    $account = trim((string)($_POST['account'] ?? ''));
 
     $pdo->beginTransaction();
     try {
@@ -513,7 +465,13 @@ elseif ($action === 'request_withdrawal') {
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $currentBal = $player ? (float)$player['balance'] : 50.00;
+        if (!$player) {
+            $pdo->rollBack();
+            echo json_encode(['success' => false, 'error' => 'Player record not found.']);
+            exit;
+        }
+
+        $currentBal = (float)$player['balance'];
 
         if ($currentBal < $amount || $amount <= 0) {
             $pdo->rollBack();
@@ -521,13 +479,11 @@ elseif ($action === 'request_withdrawal') {
             exit;
         }
 
-        $newBalance = $currentBal - $amount;
+        $newBalance = round($currentBal - $amount, 2);
 
-        $update = $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?");
-        $update->execute([$newBalance, $telegramId]);
-
-        $log = $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')");
-        $log->execute([$telegramId, $amount, $method, $account]);
+        $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")->execute([$newBalance, $telegramId]);
+        $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')")->execute([$telegramId, $amount, $method, $account]);
+        logBalanceChange($pdo, $telegramId, null, 'withdrawal', -$amount, $currentBal, $newBalance, "Withdrawal via {$method} ({$account})");
 
         $pdo->commit();
 
@@ -535,7 +491,7 @@ elseif ($action === 'request_withdrawal') {
         $token = getenv('TELEGRAM_BOT_TOKEN') ?: '';
         if ($token !== '') {
             $adminMsg = "💸 <b>New Withdrawal Request (Future Bingo)!</b>\n\n" .
-                        "• <b>Player:</b> " . ($player['first_name'] ?? 'LÀLISHAA') . "\n" .
+                        "• <b>Player:</b> " . ($player['first_name'] ?? 'Player') . "\n" .
                         "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
                         "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
                         "• <b>Method:</b> {$method}\n" .
