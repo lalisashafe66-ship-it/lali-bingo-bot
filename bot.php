@@ -21,7 +21,9 @@ if (!is_array($update)) {
 
 $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: '9105830123:AAGh_IUoXNiUbLZX2f5BBUo7_woBuzn8zBU'));
 $adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
+$botUsername = 'SmartBingoHub_bot';
 $webAppUrl = 'https://lali-bingo-bot.onrender.com/index.php';
+$referralBonusEtb = round((float)(getenv('REFERRAL_BONUS_ETB') ?: '5.00'), 2);
 
 if ($token === '') {
     error_log("SmartBingoHub_bot: TELEGRAM_BOT_TOKEN is empty");
@@ -55,6 +57,26 @@ function tableExists(PDO $pdo, string $table): bool {
     $stmt = $pdo->prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?");
     $stmt->execute([$table]);
     return (bool)$stmt->fetchColumn();
+}
+
+function ensureReferralSchema(PDO $pdo): void {
+    $cols = $pdo->query("PRAGMA table_info(players)")->fetchAll(PDO::FETCH_COLUMN, 1);
+    if (!in_array('referred_by', $cols, true)) {
+        $pdo->exec("ALTER TABLE players ADD COLUMN referred_by TEXT");
+    }
+    if (!in_array('invites_count', $cols, true)) {
+        $pdo->exec("ALTER TABLE players ADD COLUMN invites_count INTEGER NOT NULL DEFAULT 0");
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS referrals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            referrer_id TEXT NOT NULL,
+            referred_id TEXT NOT NULL UNIQUE,
+            bonus_amount REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
 }
 
 function addLedger(PDO $pdo, string $telegramId, ?int $roomId, string $type, float $amount, float $before, float $after, string $note): void {
@@ -98,6 +120,92 @@ function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId,
     return false;
 }
 
+function applyJoinReferralBonus(PDO $pdo, string $token, string $newUserId, string $newUserName, string $referrerId, float $bonusAmount): array {
+    $referrerId = preg_replace('/\D+/', '', $referrerId) ?? '';
+    if ($referrerId === '' || $referrerId === $newUserId) {
+        return ['awarded' => false, 'reason' => 'invalid_or_self'];
+    }
+
+    ensureReferralSchema($pdo);
+
+    $pdo->beginTransaction();
+    try {
+        // Only apply once per new user
+        $chk = $pdo->prepare("SELECT id FROM referrals WHERE referred_id = ? LIMIT 1");
+        $chk->execute([$newUserId]);
+        if ($chk->fetchColumn()) {
+            $pdo->rollBack();
+            return ['awarded' => false, 'reason' => 'already_referred'];
+        }
+
+        $pNewStmt = $pdo->prepare("SELECT referred_by FROM players WHERE telegram_id = ? LIMIT 1");
+        $pNewStmt->execute([$newUserId]);
+        $existingRef = trim((string)($pNewStmt->fetchColumn() ?: ''));
+        if ($existingRef !== '') {
+            $pdo->rollBack();
+            return ['awarded' => false, 'reason' => 'existing_referrer'];
+        }
+
+        $pRefStmt = $pdo->prepare("SELECT balance, invites_count FROM players WHERE telegram_id = ? LIMIT 1");
+        $pRefStmt->execute([$referrerId]);
+        $refRow = $pRefStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$refRow) {
+            $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, invites_count) VALUES (?, ?, 'Player', 0.00, 0)")
+                ->execute([$referrerId, $referrerId]);
+            $refBefore = 0.00;
+            $refInvites = 0;
+        } else {
+            $refBefore = round((float)($refRow['balance'] ?? 0.00), 2);
+            $refInvites = (int)($refRow['invites_count'] ?? 0);
+        }
+
+        $pdo->prepare("UPDATE players SET referred_by = ? WHERE telegram_id = ?")
+            ->execute([$referrerId, $newUserId]);
+
+        $actualBonus = ($bonusAmount > 0) ? $bonusAmount : 0.00;
+        $refAfter = round($refBefore + $actualBonus, 2);
+        $newInvites = $refInvites + 1;
+
+        $pdo->prepare("UPDATE players SET balance = ?, invites_count = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
+            ->execute([$refAfter, $newInvites, $referrerId]);
+
+        $pdo->prepare("INSERT INTO referrals (referrer_id, referred_id, bonus_amount) VALUES (?, ?, ?)")
+            ->execute([$referrerId, $newUserId, $actualBonus]);
+
+        if ($actualBonus > 0) {
+            addLedger(
+                $pdo,
+                $referrerId,
+                null,
+                'referral_bonus',
+                $actualBonus,
+                $refBefore,
+                $refAfter,
+                "Join referral bonus for inviting {$newUserId}"
+            );
+        }
+
+        $pdo->commit();
+
+        if ($actualBonus > 0) {
+            $msg = "SMART BINGO — Join Referral Bonus!\n\n"
+                 . "New Friend Joined: {$newUserName} (ID: {$newUserId})\n"
+                 . "Bonus Credited: +" . number_format($actualBonus, 2) . " ETB\n"
+                 . "Total Invites: {$newInvites}\n"
+                 . "New Balance: " . number_format($refAfter, 2) . " ETB";
+            sendPlayerNotification($pdo, $token, $referrerId, $msg);
+        }
+
+        return ['awarded' => true, 'bonus' => $actualBonus, 'new_balance' => $refAfter];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("Referral bonus error ({$referrerId} -> {$newUserId}): " . $e->getMessage());
+        return ['awarded' => false, 'reason' => 'db_error'];
+    }
+}
+
 function buildMainMenuKeyboard(string $webAppUrl, bool $isAdmin): array {
     $rows = [
         [
@@ -109,7 +217,10 @@ function buildMainMenuKeyboard(string $webAppUrl, bool $isAdmin): array {
             ['text' => 'Withdraw'],
         ],
         [
+            ['text' => 'Share & Invite'],
             ['text' => 'How to Play'],
+        ],
+        [
             ['text' => 'My ID'],
         ],
     ];
@@ -403,7 +514,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 }
 
 /* =========================================================================
- * 2. HANDLE NORMAL MESSAGES, COMMANDS & BOTTOM MENU BUTTONS
+ * 2. HANDLE NORMAL MESSAGES, COMMANDS, REFERRALS & BOTTOM MENU BUTTONS
  * ========================================================================= */
 $message = $update['message'] ?? $update['edited_message'] ?? null;
 if (!is_array($message)) {
@@ -430,72 +541,117 @@ $replyMarkup = buildMainMenuKeyboard($webAppUrl, $isAdmin);
 
 try {
     $pdo = getBingoPdo();
+    ensureReferralSchema($pdo);
     $player = registerOrGetUser($userId, $chatId, $firstName, $username);
     $balanceFormatted = number_format((float)($player['balance'] ?? 0.0), 2);
+    $invitesCount = (int)($player['invites_count'] ?? 0);
 
-    switch ($text) {
-        case '/start':
-        case '/menu':
-            $reply = "Welcome to SMART BINGO ({$firstName})!\n"
-                   . "Balance: {$balanceFormatted} ETB\n"
-                   . "Use the menu buttons below or tap Play Bingo to open the game.";
-            break;
+    // Handle /start with optional referral payload: /start ref_<id> or /start <id>
+    if (preg_match('/^\/start(?:\s+(.+))?$/i', $text, $startMatch)) {
+        $startPayload = trim((string)($startMatch[1] ?? ''));
+        $refBonusNote = '';
 
-        case 'My Balance':
-        case '/balance':
-            $reply = "SMART BINGO — Account Balance\n\n"
-                   . "Player: {$firstName}\n"
-                   . "Balance: {$balanceFormatted} ETB";
-            break;
-
-        case 'Deposit':
-        case '/deposit':
-            $reply = "SMART BINGO — Deposit Accounts\n\n"
-                   . "Transfer your deposit (minimum 10 ETB) to either account below:\n"
-                   . "• CBE Bank: 1000171689116 (LALISA SHAFE)\n"
-                   . "• Telebirr: 0917461538\n\n"
-                   . "After sending, tap Play Bingo -> Wallet -> Deposit, enter your ETB amount, and paste your full payment SMS or receipt message for admin approval.";
-            break;
-
-        case 'Withdraw':
-        case '/withdraw':
-            $reply = "SMART BINGO — Withdraw\n\n"
-                   . "Available Balance: {$balanceFormatted} ETB\n"
-                   . "Open Play Bingo -> Wallet -> Withdraw to submit your Telebirr or CBE payout request.";
-            break;
-
-        case 'How to Play':
-        case '/help':
-            $reply = "SMART BINGO — Game Rules\n\n"
-                   . "• Pick 1 to 3 cartelas during the lobby countdown.\n"
-                   . "• All waiting players start together when the countdown ends.\n"
-                   . "• Up to 2 players can win together and split the 80% Derash pool equally.\n"
-                   . "• Late joiners while a game is active wait for the next round.";
-            break;
-
-        case 'My ID':
-        case '/myid':
-            $reply = "Telegram User ID: {$userId}\n"
-                   . "Chat ID: {$chatId}\n"
-                   . "Balance: {$balanceFormatted} ETB";
-            break;
-
-        case 'Admin Stats':
-        case '/stats':
-            if ($isAdmin) {
-                $pCount = (int)$pdo->query("SELECT COUNT(*) FROM players")->fetchColumn();
-                $rCount = (int)$pdo->query("SELECT COUNT(*) FROM rooms")->fetchColumn();
-                $wPending = tableExists($pdo, 'withdrawals')
-                    ? (int)$pdo->query("SELECT COUNT(*) FROM withdrawals WHERE status = 'pending'")->fetchColumn()
-                    : 0;
-                $reply = "SMART BINGO — Admin Overview\n\n"
-                       . "• Registered Players: {$pCount}\n"
-                       . "• Total Rooms: {$rCount}\n"
-                       . "• Pending Withdrawals: {$wPending}";
-            } else {
-                $reply = "This menu is for admins only.";
+        if ($startPayload !== '') {
+            $cleanRef = preg_replace('/^ref[_-]?/i', '', $startPayload) ?? '';
+            $cleanRef = preg_replace('/\D+/', '', $cleanRef) ?? '';
+            if ($cleanRef !== '' && $cleanRef !== (string)$userId) {
+                $bonusRes = applyJoinReferralBonus($pdo, $token, (string)$userId, $firstName, $cleanRef, $referralBonusEtb);
+                if (!empty($bonusRes['awarded']) && $referralBonusEtb > 0) {
+                    $refBonusNote = "\n🎁 Join promotion active! Your inviter received +" . number_format($referralBonusEtb, 2) . " ETB.";
+                }
             }
-            break;
+        }
+
+        $inviteLink = "https://t.me/{$botUsername}?start=ref_{$userId}";
+        $reply = "Welcome to SMART BINGO ({$firstName})!\n"
+               . "Balance: {$balanceFormatted} ETB | Invites: {$invitesCount}\n"
+               . "Your Invite Link: {$inviteLink}"
+               . $refBonusNote . "\n\n"
+               . "Tap Play Bingo below or use the menu buttons.";
+    } else {
+        switch ($text) {
+            case '/menu':
+                $reply = "SMART BINGO Menu ({$firstName})\n"
+                       . "Balance: {$balanceFormatted} ETB\n"
+                       . "Tap Play Bingo or choose a menu option below.";
+                break;
+
+            case 'Share & Invite':
+            case '/invite':
+            case '/share':
+                $inviteLink = "https://t.me/{$botUsername}?start=ref_{$userId}";
+                $bonusLine = ($referralBonusEtb > 0)
+                    ? "• Join Bonus: +" . number_format($referralBonusEtb, 2) . " ETB per valid friend who joins\n"
+                    : "• Share your link with friends to join SMART BINGO together\n";
+                $reply = "SMART BINGO — Join & Share Promotion\n\n"
+                       . $bonusLine
+                       . "• Your Total Invites: {$invitesCount}\n\n"
+                       . "Forward or share this link with friends:\n{$inviteLink}";
+                break;
+
+            case 'My Balance':
+            case '/balance':
+                $reply = "SMART BINGO — Account Balance\n\n"
+                       . "Player: {$firstName}\n"
+                       . "Balance: {$balanceFormatted} ETB\n"
+                       . "Invites: {$invitesCount}";
+                break;
+
+            case 'Deposit':
+            case '/deposit':
+                $reply = "SMART BINGO — Deposit Accounts\n\n"
+                       . "Transfer your deposit (minimum 10 ETB) to either account below:\n"
+                       . "• CBE Bank: 1000171689116 (LALISA SHAFE)\n"
+                       . "• Telebirr: 0917461538\n\n"
+                       . "After sending, tap Play Bingo -> Wallet -> Deposit, enter your ETB amount, and paste your full payment SMS or receipt message for admin approval.";
+                break;
+
+            case 'Withdraw':
+            case '/withdraw':
+                $reply = "SMART BINGO — Withdraw\n\n"
+                       . "Available Balance: {$balanceFormatted} ETB\n"
+                       . "Open Play Bingo -> Wallet -> Withdraw to submit your Telebirr or CBE payout request.";
+                break;
+
+            case 'How to Play':
+            case '/help':
+                $reply = "SMART BINGO — Game Rules\n\n"
+                       . "• Pick 1 to 3 cartelas during the lobby countdown.\n"
+                       . "• All waiting players start together when the countdown ends.\n"
+                       . "• Up to 2 players can win together and split the 80% Derash pool equally.\n"
+                       . "• Late joiners while a game is active wait for the next round.";
+                break;
+
+            case 'My ID':
+            case '/myid':
+                $inviteLink = "https://t.me/{$botUsername}?start=ref_{$userId}";
+                $reply = "Telegram User ID: {$userId}\n"
+                       . "Chat ID: {$chatId}\n"
+                       . "Balance: {$balanceFormatted} ETB\n"
+                       . "Invite Link: {$inviteLink}";
+                break;
+
+            case 'Admin Stats':
+            case '/stats':
+                if ($isAdmin) {
+                    $pCount = (int)$pdo->query("SELECT COUNT(*) FROM players")->fetchColumn();
+                    $rCount = (int)$pdo->query("SELECT COUNT(*) FROM rooms")->fetchColumn();
+                    $refTotal = tableExists($pdo, 'referrals')
+                        ? (int)$pdo->query("SELECT COUNT(*) FROM referrals")->fetchColumn()
+                        : 0;
+                    $wPending = tableExists($pdo, 'withdrawals')
+                        ? (int)$pdo->query("SELECT COUNT(*) FROM withdrawals WHERE status = 'pending'")->fetchColumn()
+                        : 0;
+                    $reply = "SMART BINGO — Admin Overview\n\n"
+                           . "• Registered Players: {$pCount}\n"
+                           . "• Total Rooms: {$rCount}\n"
+                           . "• Join Referrals: {$refTotal}\n"
+                           . "• Pending Withdrawals: {$wPending}";
+                } else {
+                    $reply = "This menu is for admins only.";
+                }
+                break;
+        }
     }
 } catch (Throwable $e) {
     error_log("SmartBingoHub_bot DB error: " . $e->getMessage());
