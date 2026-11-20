@@ -69,6 +69,70 @@ function getPlayerChatTarget(PDO $pdo, string $telegramId): string {
     return $chatId !== '' ? $chatId : $telegramId;
 }
 
+/**
+ * Parses callback_data across formats like:
+ * - dep_approve:<id>:<telegram_id>:<amount>
+ * - approve_deposit_<telegram_id>_<amount>
+ * - dep_approve_<id>_<telegram_id>_<amount>
+ * - wd_approve:<id>:<telegram_id>:<amount> / approve_wd_<telegram_id>_<amount>
+ */
+function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
+    $lower = strtolower(trim($data));
+    if ($lower === '') return null;
+
+    $isApprove = str_contains($lower, 'approve') || str_starts_with($lower, 'app');
+    $isReject  = str_contains($lower, 'reject')  || str_starts_with($lower, 'rej');
+    if (!$isApprove && !$isReject) return null;
+
+    $isWithdraw = str_contains($lower, 'wd') || str_contains($lower, 'withdraw');
+    $kind = $isWithdraw ? 'withdrawal' : 'deposit';
+
+    $tokens = preg_split('/[:|_ -]+/', trim($data)) ?: [];
+    $nums = [];
+    $recordId = 0;
+    $playerId = '';
+    $amount = 0.0;
+
+    // Colon format: kind_action:id:telegram_id:amount
+    if (str_contains($data, ':') && count($tokens) >= 4) {
+        $recordId = (int)$tokens[1];
+        $playerId = preg_replace('/\D+/', '', (string)$tokens[2]) ?? '';
+        $amount   = round((float)$tokens[3], 2);
+    } else {
+        foreach ($tokens as $tok) {
+            if (is_numeric($tok)) {
+                $nums[] = $tok;
+            }
+        }
+        // Look for a Telegram user ID (typically 6+ digits) and an amount
+        foreach ($nums as $n) {
+            if (strlen((string)$n) >= 6 && $playerId === '') {
+                $playerId = (string)$n;
+            } elseif ($amount <= 0 && (float)$n > 0) {
+                $amount = round((float)$n, 2);
+            }
+        }
+        if ($amount <= 0 && $fallbackText !== '') {
+            if (preg_match('/(\d+(?:\.\d{1,2})?)\s*ETB/i', $fallbackText, $m)) {
+                $amount = round((float)$m[1], 2);
+            }
+        }
+        if ($playerId === '' && $fallbackText !== '') {
+            if (preg_match('/\((\d{5,})\)/', $fallbackText, $m) || preg_match('/ID[:\s]*(\d{5,})/i', $fallbackText, $m)) {
+                $playerId = (string)$m[1];
+            }
+        }
+    }
+
+    return [
+        'kind'       => $kind,
+        'is_approve' => $isApprove,
+        'record_id'  => $recordId,
+        'player_id'  => $playerId,
+        'amount'     => $amount,
+    ];
+}
+
 /* =========================================================================
  * 1. HANDLE INLINE BUTTON CLICKS (DEPOSIT & WITHDRAWAL APPROVE / REJECT)
  * ========================================================================= */
@@ -92,49 +156,50 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
         exit;
     }
 
-    // Expected callback_data formats:
-    // dep_approve:<id>:<telegram_id>:<amount>
-    // dep_reject:<id>:<telegram_id>:<amount>
-    // wd_approve:<id>:<telegram_id>:<amount>
-    // wd_reject:<id>:<telegram_id>:<amount>
-    $parts = explode(':', $data);
-    $actionKey = $parts[0] ?? '';
-
+    $parsed = parseAdminCallback($data, $origText);
     $pdo = getBingoPdo();
-    $toastText = 'Done';
-    $statusLabel = '';
-    $playerNotify = '';
-    $targetPlayerId = '';
 
     try {
-        if ($actionKey === 'dep_approve' || $actionKey === 'dep_reject') {
-            $depId          = isset($parts[1]) ? (int)$parts[1] : 0;
-            $targetPlayerId = trim((string)($parts[2] ?? ''));
-            $amount         = round((float)($parts[3] ?? 0), 2);
-            $isApprove      = ($actionKey === 'dep_approve');
+        if ($parsed === null) {
+            throw new RuntimeException('Unrecognized callback action: ' . $data);
+        }
 
-            if ($targetPlayerId === '' || $amount <= 0) {
-                throw new RuntimeException('Invalid deposit callback data.');
+        $kind           = $parsed['kind'];
+        $isApprove      = $parsed['is_approve'];
+        $recId          = (int)$parsed['record_id'];
+        $targetPlayerId = (string)$parsed['player_id'];
+        $amount         = (float)$parsed['amount'];
+
+        $pdo->beginTransaction();
+
+        if ($kind === 'deposit') {
+            if ($recId > 0 && tableExists($pdo, 'deposits')) {
+                $dStmt = $pdo->prepare("SELECT * FROM deposits WHERE id = ? LIMIT 1");
+                $dStmt->execute([$recId]);
+                $depRow = $dStmt->fetch(PDO::FETCH_ASSOC);
+                if ($depRow) {
+                    if ($targetPlayerId === '' && isset($depRow['telegram_id'])) {
+                        $targetPlayerId = (string)$depRow['telegram_id'];
+                    }
+                    if ($amount <= 0 && isset($depRow['amount'])) {
+                        $amount = round((float)$depRow['amount'], 2);
+                    }
+                    if (isset($depRow['status']) && $depRow['status'] !== 'pending') {
+                        $pdo->rollBack();
+                        tgPost($token, 'answerCallbackQuery', [
+                            'callback_query_id' => $cbId,
+                            'text'              => "Already {$depRow['status']}.",
+                            'show_alert'        => true,
+                        ]);
+                        http_response_code(200);
+                        echo "OK";
+                        exit;
+                    }
+                }
             }
 
-            $pdo->beginTransaction();
-
-            $depRow = null;
-            if ($depId > 0 && tableExists($pdo, 'deposits')) {
-                $dStmt = $pdo->prepare("SELECT * FROM deposits WHERE id = ? LIMIT 1");
-                $dStmt->execute([$depId]);
-                $depRow = $dStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-                if ($depRow && isset($depRow['status']) && $depRow['status'] !== 'pending') {
-                    $pdo->rollBack();
-                    tgPost($token, 'answerCallbackQuery', [
-                        'callback_query_id' => $cbId,
-                        'text'              => "Already {$depRow['status']}.",
-                        'show_alert'        => true,
-                    ]);
-                    http_response_code(200);
-                    echo "OK";
-                    exit;
-                }
+            if ($targetPlayerId === '' || $amount <= 0) {
+                throw new RuntimeException("Missing player_id ({$targetPlayerId}) or amount ({$amount}) in {$data}");
             }
 
             if ($isApprove) {
@@ -154,47 +219,38 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
                     ->execute([$after, $targetPlayerId]);
 
-                if ($depId > 0 && tableExists($pdo, 'deposits')) {
-                    $pdo->prepare("UPDATE deposits SET status = 'approved' WHERE id = ?")->execute([$depId]);
+                if ($recId > 0 && tableExists($pdo, 'deposits')) {
+                    $pdo->prepare("UPDATE deposits SET status = 'approved' WHERE id = ?")->execute([$recId]);
                 }
 
-                addLedger($pdo, $targetPlayerId, null, 'deposit', $amount, $before, $after, "Deposit #{$depId} approved by admin");
-                $toastText = "Approved +{$amount} ETB";
-                $statusLabel = "\n\n✅ <b>APPROVED</b> by Admin";
+                addLedger($pdo, $targetPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin");
+                $toastText    = "Approved +{$amount} ETB";
+                $statusLabel  = "\n\n✅ <b>APPROVED</b> (+{$amount} ETB)";
                 $playerNotify = "✅ <b>Deposit Approved!</b>\n\n"
                               . "Amount Credited: <b>+" . number_format($amount, 2) . " ETB</b>\n"
                               . "New Balance: <b>" . number_format($after, 2) . " ETB</b>";
             } else {
-                if ($depId > 0 && tableExists($pdo, 'deposits')) {
-                    $pdo->prepare("UPDATE deposits SET status = 'rejected' WHERE id = ?")->execute([$depId]);
+                if ($recId > 0 && tableExists($pdo, 'deposits')) {
+                    $pdo->prepare("UPDATE deposits SET status = 'rejected' WHERE id = ?")->execute([$recId]);
                 }
-                $toastText = "Rejected deposit";
-                $statusLabel = "\n\n❌ <b>REJECTED</b> by Admin";
+                $toastText    = "Rejected deposit";
+                $statusLabel  = "\n\n❌ <b>REJECTED</b> by Admin";
                 $playerNotify = "❌ <b>Deposit Rejected</b>\n\n"
-                              . "Your deposit request of <b>" . number_format($amount, 2) . " ETB</b> was not approved. Please check your transaction reference or contact support.";
+                              . "Your deposit request of <b>" . number_format($amount, 2) . " ETB</b> was rejected.";
             }
-
-            $pdo->commit();
-        } elseif ($actionKey === 'wd_approve' || $actionKey === 'wd_reject') {
-            $wdId           = isset($parts[1]) ? (int)$parts[1] : 0;
-            $targetPlayerId = trim((string)($parts[2] ?? ''));
-            $amount         = round((float)($parts[3] ?? 0), 2);
-            $isApprove      = ($actionKey === 'wd_approve');
-
-            if ($targetPlayerId === '' || $amount <= 0) {
-                throw new RuntimeException('Invalid withdrawal callback data.');
-            }
-
-            $pdo->beginTransaction();
-
-            $wdRow = null;
-            if ($wdId > 0 && tableExists($pdo, 'withdrawals')) {
+        } else {
+            // Withdrawal
+            if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
                 $wStmt = $pdo->prepare("SELECT * FROM withdrawals WHERE id = ? LIMIT 1");
-                $wStmt->execute([$wdId]);
-                $wdRow = $wStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+                $wStmt->execute([$recId]);
+                $wdRow = $wStmt->fetch(PDO::FETCH_ASSOC);
                 if ($wdRow) {
-                    $targetPlayerId = (string)($wdRow['telegram_id'] ?: $targetPlayerId);
-                    $amount = round((float)($wdRow['amount'] ?: $amount), 2);
+                    if ($targetPlayerId === '' && isset($wdRow['telegram_id'])) {
+                        $targetPlayerId = (string)$wdRow['telegram_id'];
+                    }
+                    if ($amount <= 0 && isset($wdRow['amount'])) {
+                        $amount = round((float)$wdRow['amount'], 2);
+                    }
                     if (isset($wdRow['status']) && $wdRow['status'] !== 'pending') {
                         $pdo->rollBack();
                         tgPost($token, 'answerCallbackQuery', [
@@ -209,21 +265,24 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 }
             }
 
+            if ($targetPlayerId === '' || $amount <= 0) {
+                throw new RuntimeException("Missing withdrawal player_id ({$targetPlayerId}) or amount ({$amount}) in {$data}");
+            }
+
             if ($isApprove) {
-                if ($wdId > 0 && tableExists($pdo, 'withdrawals')) {
-                    $pdo->prepare("UPDATE withdrawals SET status = 'approved' WHERE id = ?")->execute([$wdId]);
+                if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
+                    $pdo->prepare("UPDATE withdrawals SET status = 'approved' WHERE id = ?")->execute([$recId]);
                 }
                 $bStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ? LIMIT 1");
                 $bStmt->execute([$targetPlayerId]);
                 $curBal = (float)($bStmt->fetchColumn() ?: 0.0);
 
-                $toastText = "Approved withdrawal";
-                $statusLabel = "\n\n✅ <b>WITHDRAWAL APPROVED</b> by Admin";
+                $toastText    = "Approved withdrawal";
+                $statusLabel  = "\n\n✅ <b>WITHDRAWAL APPROVED</b>";
                 $playerNotify = "✅ <b>Withdrawal Approved!</b>\n\n"
-                              . "Amount: <b>" . number_format($amount, 2) . " ETB</b> has been processed.\n"
+                              . "Amount: <b>" . number_format($amount, 2) . " ETB</b> has been approved.\n"
                               . "Current Balance: <b>" . number_format($curBal, 2) . " ETB</b>";
             } else {
-                // Refund deducted withdrawal amount back to player balance
                 $bStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ? LIMIT 1");
                 $bStmt->execute([$targetPlayerId]);
                 $before = (float)($bStmt->fetchColumn() ?: 0.0);
@@ -232,29 +291,20 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
                     ->execute([$after, $targetPlayerId]);
 
-                if ($wdId > 0 && tableExists($pdo, 'withdrawals')) {
-                    $pdo->prepare("UPDATE withdrawals SET status = 'rejected' WHERE id = ?")->execute([$wdId]);
+                if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
+                    $pdo->prepare("UPDATE withdrawals SET status = 'rejected' WHERE id = ?")->execute([$recId]);
                 }
 
-                addLedger($pdo, $targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal #{$wdId} rejected & refunded");
-                $toastText = "Rejected & refunded {$amount} ETB";
-                $statusLabel = "\n\n❌ <b>WITHDRAWAL REJECTED & REFUNDED</b>";
+                addLedger($pdo, $targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal rejected & refunded");
+                $toastText    = "Rejected & refunded {$amount} ETB";
+                $statusLabel  = "\n\n❌ <b>WITHDRAWAL REJECTED & REFUNDED</b>";
                 $playerNotify = "❌ <b>Withdrawal Rejected</b>\n\n"
-                              . "Your withdrawal of <b>" . number_format($amount, 2) . " ETB</b> was rejected and refunded to your balance.\n"
+                              . "Your withdrawal of <b>" . number_format($amount, 2) . " ETB</b> was rejected and refunded.\n"
                               . "Current Balance: <b>" . number_format($after, 2) . " ETB</b>";
             }
-
-            $pdo->commit();
-        } else {
-            tgPost($token, 'answerCallbackQuery', [
-                'callback_query_id' => $cbId,
-                'text'              => 'Data: ' . substr($data, 0, 150),
-                'show_alert'        => true,
-            ]);
-            http_response_code(200);
-            echo "OK";
-            exit;
         }
+
+        $pdo->commit();
 
         tgPost($token, 'answerCallbackQuery', [
             'callback_query_id' => $cbId,
@@ -287,7 +337,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
         error_log("Callback error ({$data}): " . $e->getMessage());
         tgPost($token, 'answerCallbackQuery', [
             'callback_query_id' => $cbId,
-            'text'              => 'Error processing action.',
+            'text'              => 'Callback error: ' . substr($e->getMessage(), 0, 140),
             'show_alert'        => true,
         ]);
     }
