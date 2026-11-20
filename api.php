@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
@@ -7,24 +9,24 @@ require_once __DIR__ . '/db.php';
 
 function notifyAdminWithdrawal(string $token, string $chatId, string $message): void {
     if ($token === '' || $chatId === '') {
-        error_log("Future Bingo withdrawal notify: missing TELEGRAM_BOT_TOKEN or ADMIN_ID.");
+        error_log("SMART BINGO withdrawal notify: missing TELEGRAM_BOT_TOKEN or ADMIN_ID.");
         return;
     }
 
     $params = [
-        'chat_id' => $chatId,
-        'text' => $message,
-        'parse_mode' => 'HTML'
+        'chat_id'    => $chatId,
+        'text'       => $message,
+        'parse_mode' => 'HTML',
     ];
 
     $url = "https://api.telegram.org/bot{$token}/sendMessage";
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $params,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $params,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 10,
+            CURLOPT_TIMEOUT        => 10,
             CURLOPT_CONNECTTIMEOUT => 5,
         ]);
         $res = curl_exec($ch);
@@ -37,11 +39,11 @@ function notifyAdminWithdrawal(string $token, string $chatId, string $message): 
     } else {
         $ctx = stream_context_create([
             'http' => [
-                'method' => 'POST',
-                'header' => "Content-type: application/x-www-form-urlencoded\r\n",
+                'method'  => 'POST',
+                'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
                 'content' => http_build_query($params),
                 'timeout' => 10,
-            ]
+            ],
         ]);
         $res = @file_get_contents($url, false, $ctx);
         error_log("Telegram withdrawal fallback resp: " . var_export($res, true));
@@ -51,15 +53,15 @@ function notifyAdminWithdrawal(string $token, string $chatId, string $message): 
 try {
     $pdo = getBingoPdo();
 
-    // Safe column migrations for existing bingo.db files
+    // Safe column migrations for existing SQLite files
     $existingCols = $pdo->query("PRAGMA table_info(rooms)")->fetchAll(PDO::FETCH_COLUMN, 1);
     $migrations = [
-        'game_code' => "ALTER TABLE rooms ADD COLUMN game_code TEXT",
-        'starts_at' => "ALTER TABLE rooms ADD COLUMN starts_at INTEGER",
-        'started_at' => "ALTER TABLE rooms ADD COLUMN started_at INTEGER",
-        'draw_pool_json' => "ALTER TABLE rooms ADD COLUMN draw_pool_json TEXT",
+        'game_code'           => "ALTER TABLE rooms ADD COLUMN game_code TEXT",
+        'starts_at'           => "ALTER TABLE rooms ADD COLUMN starts_at INTEGER",
+        'started_at'          => "ALTER TABLE rooms ADD COLUMN started_at INTEGER",
+        'draw_pool_json'      => "ALTER TABLE rooms ADD COLUMN draw_pool_json TEXT",
         'called_numbers_json' => "ALTER TABLE rooms ADD COLUMN called_numbers_json TEXT DEFAULT '[]'",
-        'winners_json' => "ALTER TABLE rooms ADD COLUMN winners_json TEXT DEFAULT '[]'"
+        'winners_json'        => "ALTER TABLE rooms ADD COLUMN winners_json TEXT DEFAULT '[]'",
     ];
     foreach ($migrations as $col => $sql) {
         if (!in_array($col, $existingCols, true)) {
@@ -133,7 +135,7 @@ function hasWinningLine(array $board, array $calledSet): ?array {
     $lines = [
         [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
         [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
-        [0,6,12,18,24], [4,8,12,16,20]
+        [0,6,12,18,24], [4,8,12,16,20],
     ];
 
     foreach ($lines as $line) {
@@ -155,6 +157,9 @@ function hasWinningLine(array $board, array $calledSet): ?array {
 
 function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
     $roomId = (int)$room['id'];
+
+    // Cap at maximum 2 winners
+    $winners = array_slice($winners, 0, 2);
 
     $stakesStmt = $pdo->prepare("SELECT COALESCE(SUM(stake_paid), 0) AS total_stakes FROM room_players WHERE room_id = ?");
     $stakesStmt->execute([$roomId]);
@@ -209,8 +214,8 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
         shuffle($pool);
     }
 
-    $drawIntervalSec = 2.5;
-    $maxRoundSec = 185;
+    $drawIntervalSec = 0.8;
+    $maxRoundSec = 60;
 
     if ($status === 'waiting' && $now >= $startsAt) {
         $status = 'active';
@@ -237,27 +242,43 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
         $rpStmt->execute([$room['id']]);
         $entries = $rpStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Require 2 unique winners when 2+ players are in the room; 1 winner if solo
+        $uniquePlayers = [];
+        foreach ($entries as $e) {
+            $uniquePlayers[(string)$e['telegram_id']] = true;
+        }
+        $targetWinners = (count($uniquePlayers) >= 2) ? 2 : 1;
+
         $autoWinners = [];
+        $seenWinnerIds = [];
         foreach ($entries as $entry) {
+            $tid = (string)$entry['telegram_id'];
+            if (isset($seenWinnerIds[$tid])) {
+                continue;
+            }
             $cn = (int)$entry['player_number'];
             $board = generateCartelaBoard($cn);
             $winLine = hasWinningLine($board, $calledSet);
             if ($winLine !== null) {
+                $seenWinnerIds[$tid] = true;
                 $autoWinners[] = [
-                    'telegram_id' => (string)$entry['telegram_id'],
-                    'name' => $entry['first_name'] ?: 'Player',
+                    'telegram_id'    => $tid,
+                    'name'           => $entry['first_name'] ?: 'Player',
                     'cartela_number' => $cn,
-                    'board' => $board,
-                    'winning_line' => $winLine,
+                    'board'          => $board,
+                    'winning_line'   => $winLine,
                 ];
             }
         }
 
-        if (count($autoWinners) > 0) {
+        if (count($autoWinners) >= $targetWinners) {
             return finalizeRoomWinners($pdo, $room, $autoWinners);
         }
 
         if ($elapsed >= $maxRoundSec || count($called) >= 75) {
+            if (count($autoWinners) > 0) {
+                return finalizeRoomWinners($pdo, $room, $autoWinners);
+            }
             $pdo->prepare("UPDATE rooms SET status = 'finished' WHERE id = ?")
                 ->execute([$room['id']]);
             $room['status'] = 'finished';
@@ -297,22 +318,22 @@ function buildRoomPayload(PDO $pdo, array $room): array {
     $lobbySecondsLeft = max(0, $startsAt - $now);
 
     $startedAt = (int)($room['started_at'] ?? $now);
-    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 185 - ($now - $startedAt)) : 0;
+    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 60 - ($now - $startedAt)) : 0;
 
     return [
-        'room_id' => (int)$room['id'],
-        'game_code' => $room['game_code'] ?: '1T6BX',
-        'stake' => (float)$room['stake'],
-        'status' => $room['status'],
+        'room_id'            => (int)$room['id'],
+        'game_code'          => $room['game_code'] ?: '1T6BX',
+        'stake'              => (float)$room['stake'],
+        'status'             => $room['status'],
         'lobby_seconds_left' => $lobbySecondsLeft,
         'round_seconds_left' => $roundSecondsLeft,
-        'players_count' => $playersCount,
-        'taken_cartelas' => array_values(array_unique($takenCartelas)),
-        'derash' => $derash,
-        'bonus' => 0,
-        'calls_count' => count($called),
-        'called_numbers' => $called,
-        'winners' => $winners,
+        'players_count'      => $playersCount,
+        'taken_cartelas'     => array_values(array_unique($takenCartelas)),
+        'derash'             => $derash,
+        'bonus'              => 0,
+        'calls_count'        => count($called),
+        'called_numbers'     => $called,
+        'winners'            => $winners,
     ];
 }
 
@@ -411,10 +432,10 @@ elseif ($action === 'join_room') {
             if ($payload['status'] === 'active') {
                 $pdo->commit();
                 echo json_encode([
-                    'success' => false,
+                    'success'         => false,
                     'already_started' => true,
-                    'room' => $payload,
-                    'error' => 'Game is already in progress. Please wait until this game finishes!'
+                    'room'            => $payload,
+                    'error'           => 'Game is already in progress. Please wait until this game finishes!',
                 ]);
                 exit;
             }
@@ -470,7 +491,6 @@ elseif ($action === 'join_room') {
             }
         }
 
-        // Permanently deduct stake immediately upon joining
         $newBalance = round($currentBalance - $totalFee, 2);
         $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")->execute([$newBalance, $telegramId]);
         logBalanceChange($pdo, $telegramId, $roomId, 'stake_deduct', -$totalFee, $currentBalance, $newBalance, "Joined Game " . ($room['game_code'] ?? $roomId) . " (" . count($cartelaNumbers) . " cartela)");
@@ -484,13 +504,13 @@ elseif ($action === 'join_room') {
 
         $payload = buildRoomPayload($pdo, $room);
         echo json_encode([
-            'success' => true,
-            'room_id' => $roomId,
+            'success'         => true,
+            'room_id'         => $roomId,
             'cartela_numbers' => $cartelaNumbers,
-            'total_players' => $payload['players_count'],
-            'prize_pool' => $payload['derash'],
-            'new_balance' => $newBalance,
-            'room' => $payload
+            'total_players'   => $payload['players_count'],
+            'prize_pool'      => $payload['derash'],
+            'new_balance'     => $newBalance,
+            'room'            => $payload,
         ]);
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
@@ -536,7 +556,7 @@ elseif ($action === 'request_withdrawal') {
         $safePlayerName = htmlspecialchars((string)($player['first_name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
         $safeMethod = htmlspecialchars($method, ENT_QUOTES, 'UTF-8');
         $safeAccount = htmlspecialchars($account, ENT_QUOTES, 'UTF-8');
-        $adminMsg = "💸 <b>New Withdrawal Request (Future Bingo)!</b>\n\n" .
+        $adminMsg = "💸 <b>New Withdrawal Request (SMART BINGO)!</b>\n\n" .
                     "• <b>Player:</b> {$safePlayerName}\n" .
                     "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
                     "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
@@ -546,9 +566,9 @@ elseif ($action === 'request_withdrawal') {
         notifyAdminWithdrawal($token, $ADMIN_ID, $adminMsg);
 
         echo json_encode([
-            'success' => true,
+            'success'     => true,
             'new_balance' => $newBalance,
-            'message' => 'Withdrawal request submitted! Admin has been notified.'
+            'message'     => 'Withdrawal request submitted! Admin has been notified.',
         ]);
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
