@@ -1262,15 +1262,17 @@
       return trimmed.slice(0, 32).toUpperCase();
     }
 
-    function startInstantDeposit() {
-      const amountStr = prompt('Enter deposit amount in ETB (minimum 10):', '50');
-      if (!amountStr) return;
-      const amountNum = parseFloat(amountStr);
-      if (isNaN(amountNum) || amountNum < 10) {
-        alert('Please enter a valid deposit amount (minimum 10 ETB).');
-        return;
+    function extractAmountFromMessage(rawText) {
+      if (!rawText) return null;
+      const match = rawText.match(/(\d+(?:\.\d{1,2})?)\s*(?:ብር|ETB)\b/i);
+      if (match && match[1]) {
+        const val = parseFloat(match[1]);
+        return (!isNaN(val) && val >= 10) ? val : null;
       }
+      return null;
+    }
 
+    function startInstantDeposit() {
       const fullMsg = prompt(
         'Paste the FULL SMS or payment message from Telebirr or CBE (no need to type only the short code):',
         ''
@@ -1281,10 +1283,27 @@
       }
 
       const cleanMessage = fullMsg.trim();
+      const detectedSmsAmount = extractAmountFromMessage(cleanMessage);
+      const defaultAmount = detectedSmsAmount !== null ? detectedSmsAmount.toFixed(2) : '30';
+
+      const amountStr = prompt('Enter deposit amount in ETB (minimum 10):', defaultAmount);
+      if (!amountStr) return;
+
+      let amountNum = parseFloat(amountStr);
+      if (isNaN(amountNum) || amountNum < 10) {
+        alert('Please enter a valid deposit amount (minimum 10 ETB).');
+        return;
+      }
+
+      if (detectedSmsAmount !== null && Math.abs(amountNum - detectedSmsAmount) > 0.01) {
+        amountNum = detectedSmsAmount;
+      }
+
       const extractedRef = extractTxRefFromMessage(cleanMessage);
 
       const formData = new FormData();
       formData.append('telegram_id', telegramId);
+      formData.append('first_name', playerName);
       formData.append('amount', amountNum.toFixed(2));
       formData.append('tx_ref', extractedRef);
       formData.append('full_message', cleanMessage);
