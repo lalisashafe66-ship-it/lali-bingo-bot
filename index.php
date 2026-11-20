@@ -590,7 +590,7 @@
   <section id="screen-profile" class="container d-none">
     <h1 class="section-title">Profile</h1>
     <div class="card-panel" style="text-align:center;">
-      <div class="profile-badge-circle" id="profile-avatar">F</div>
+      <div class="profile-badge-circle" id="profile-avatar">P</div>
       <div style="font-size:1.2rem;font-weight:800;" id="profile-name">Player</div>
       <div style="color:var(--accent-green);font-size:0.85rem;margin-top:2px;">Verified player</div>
       <div style="color:var(--text-muted);font-size:0.78rem;margin-top:4px;">ID: <span id="profile-id">--</span></div>
@@ -690,10 +690,32 @@
       return localStorage.getItem('Smart_bingo_ref_id') || '';
     }
 
+    function resolveDisplayName() {
+      const u = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
+      if (u) {
+        const full = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+        if (full) {
+          localStorage.setItem('Smart_bingo_player_name', full);
+          return full;
+        }
+        if (u.username) {
+          localStorage.setItem('Smart_bingo_player_name', u.username);
+          return u.username;
+        }
+      }
+      const urlParams = new URLSearchParams(window.location.search);
+      const paramName = (urlParams.get('first_name') || urlParams.get('name') || '').trim();
+      if (paramName) {
+        localStorage.setItem('Smart_bingo_player_name', paramName);
+        return paramName;
+      }
+      return localStorage.getItem('Smart_bingo_player_name') || 'Player';
+    }
+
     const telegramId = getUserId();
     const referrerId = getReferrerId();
     const user = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
-    const playerName = user && user.first_name ? user.first_name : 'Player';
+    const playerName = resolveDisplayName();
 
     document.getElementById('profile-name').textContent = playerName;
     document.getElementById('profile-avatar').textContent = (playerName.charAt(0) || 'P').toUpperCase();
@@ -997,13 +1019,13 @@
         if (topNameEl) topNameEl.textContent = '';
         banner.innerHTML = `<div>Round Ended</div>`;
       } else {
-        const winnerNamesOnly = winners.map(w => w.name || 'Player').join(', ');
+        const winnerNamesOnly = winners.map(w => (w.name && w.name !== 'Player') ? w.name : playerName).join(', ');
         if (topNameEl) {
           topNameEl.textContent = didIWin ? `Congratulation ${winnerNamesOnly}` : winnerNamesOnly;
         }
 
         banner.innerHTML = winners.map(w => {
-          const wName = w.name || 'Player';
+          const wName = (w.name && w.name !== 'Player') ? w.name : playerName;
           const wPrize = Number(w.prize || 0).toFixed(2);
           if (didIWin) {
             return `
@@ -1208,10 +1230,12 @@
       }
       initAudio();
 
+      const tgUsername = (user && user.username) ? user.username : '';
       const formData = new FormData();
       formData.append('action', 'join_room');
       formData.append('telegram_id', telegramId);
       formData.append('first_name', playerName);
+      formData.append('username', tgUsername);
       formData.append('stake', selectedStake);
       formData.append('cartela_numbers', selectedCartelaNumbers.join(','));
       if (referrerId) {
