@@ -398,27 +398,28 @@ elseif ($action === 'join_room') {
         exit;
     }
 
-    $activeStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'active' ORDER BY id DESC LIMIT 1");
-    $activeStmt->execute([$stake]);
-    $activeRoom = $activeStmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($activeRoom) {
-        $payload = buildRoomPayload($pdo, $activeRoom);
-        if ($payload['status'] === 'active') {
-            echo json_encode([
-                'success' => false,
-                'already_started' => true,
-                'room' => $payload,
-                'error' => 'Game is already in progress. Please wait until this game finishes!'
-            ]);
-            exit;
-        }
-    }
-
     $totalFee = round($stake * count($cartelaNumbers), 2);
 
     $pdo->beginTransaction();
     try {
+        $activeStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'active' ORDER BY id DESC LIMIT 1");
+        $activeStmt->execute([$stake]);
+        $activeRoom = $activeStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($activeRoom) {
+            $payload = buildRoomPayload($pdo, $activeRoom);
+            if ($payload['status'] === 'active') {
+                $pdo->commit();
+                echo json_encode([
+                    'success' => false,
+                    'already_started' => true,
+                    'room' => $payload,
+                    'error' => 'Game is already in progress. Please wait until this game finishes!'
+                ]);
+                exit;
+            }
+        }
+
         $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -530,14 +531,17 @@ elseif ($action === 'request_withdrawal') {
 
         $pdo->commit();
 
-        $ADMIN_ID = "730967613";
+        $ADMIN_ID = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
         $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
+        $safePlayerName = htmlspecialchars((string)($player['first_name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
+        $safeMethod = htmlspecialchars($method, ENT_QUOTES, 'UTF-8');
+        $safeAccount = htmlspecialchars($account, ENT_QUOTES, 'UTF-8');
         $adminMsg = "💸 <b>New Withdrawal Request (Future Bingo)!</b>\n\n" .
-                    "• <b>Player:</b> " . ($player['first_name'] ?? 'Player') . "\n" .
+                    "• <b>Player:</b> {$safePlayerName}\n" .
                     "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
                     "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
-                    "• <b>Method:</b> {$method}\n" .
-                    "• <b>Account/Phone:</b> <code>{$account}</code>";
+                    "• <b>Method:</b> {$safeMethod}\n" .
+                    "• <b>Account/Phone:</b> <code>{$safeAccount}</code>";
 
         notifyAdminWithdrawal($token, $ADMIN_ID, $adminMsg);
 
