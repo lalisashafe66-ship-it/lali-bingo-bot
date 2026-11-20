@@ -1,312 +1,206 @@
-<?php
-header('Content-Type: text/html; charset=utf-8');
-?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Future Bingo</title>
+  <title>Future Bingo — Play &amp; Win</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --bg-dark: #06282b;
-      --bg-header: #083034;
-      --card-bg: #0d3b3e;
-      --card-hover: #124a4e;
-      --accent-gold: #f5b41b;
-      --accent-green: #8cc63f;
-      --accent-cyan: #57b9c7;
-      --accent-red: #e0533c;
-      --accent-purple: #6f42c1;
-      --text-main: #ffffff;
-      --text-muted: #9ac0c2;
-      --line-border: rgba(255, 255, 255, 0.12);
+      --bg-deep: #0b1220;
+      --bg-card: #131d33;
+      --bg-card-soft: #1a2744;
+      --accent-gold: #f5b700;
+      --accent-gold-hover: #ffcc29;
+      --accent-green: #22c55e;
+      --accent-red: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --line-border: rgba(255, 255, 255, 0.08);
     }
 
     * {
       box-sizing: border-box;
-      user-select: none;
       -webkit-tap-highlight-color: transparent;
     }
 
     body {
       margin: 0;
-      padding: 0 0 90px 0;
-      background-color: var(--bg-dark);
+      padding: 0 0 82px 0;
+      background: radial-gradient(circle at top, #172542 0%, var(--bg-deep) 65%);
       color: var(--text-main);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      overflow-x: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       min-height: 100vh;
     }
 
-    .d-none {
-      display: none !important;
-    }
-
-    .app-header {
+    .top-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 12px 16px;
-      background: var(--bg-header);
-      border-bottom: 3px solid var(--accent-gold);
+      background: rgba(11, 18, 32, 0.85);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line-border);
+      position: sticky;
+      top: 0;
+      z-index: 40;
     }
 
-    .brand-wrap {
+    .brand-pill {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       font-weight: 800;
-      font-size: 1.1rem;
+      font-size: 1rem;
+      letter-spacing: 0.3px;
     }
 
-    .brand-gem {
-      width: 20px;
-      height: 20px;
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
       background: var(--accent-gold);
-      transform: rotate(45deg);
-      border-radius: 4px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      box-shadow: 0 0 10px var(--accent-gold);
     }
 
-    .brand-gem::after {
-      content: "";
-      width: 7px;
-      height: 7px;
-      background: var(--accent-red);
-      border-radius: 2px;
-    }
-
-    .balance-box {
-      text-align: right;
-    }
-
-    .balance-box small {
-      display: block;
-      font-size: 0.68rem;
-      color: var(--text-muted);
-    }
-
-    .balance-box strong {
-      font-size: 1.05rem;
+    .balance-pill {
+      background: var(--bg-card-soft);
+      border: 1px solid rgba(245, 183, 0, 0.35);
       color: var(--accent-gold);
       font-weight: 800;
-    }
-
-    .container {
-      max-width: 520px;
-      margin: 0 auto;
-      padding: 14px;
+      font-size: 0.88rem;
+      padding: 6px 12px;
+      border-radius: 999px;
+      cursor: pointer;
     }
 
     .section-title {
-      font-size: 1.55rem;
+      font-size: 1.25rem;
       font-weight: 800;
-      margin: 4px 0 6px;
+      margin: 14px 0 6px;
     }
 
     .section-sub {
       color: var(--text-muted);
-      font-size: 0.85rem;
-      line-height: 1.45;
-      margin: 0 0 14px;
+      font-size: 0.86rem;
+      margin-bottom: 12px;
+    }
+
+    .card-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--line-border);
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .stake-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
     }
 
     .stake-option {
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: var(--card-bg);
-      border: 2px solid var(--line-border);
-      border-radius: 16px;
-      padding: 14px 16px;
-      margin-bottom: 12px;
+      background: var(--bg-card-soft);
+      border: 2px solid transparent;
+      border-radius: 14px;
+      padding: 12px 8px;
+      text-align: center;
       cursor: pointer;
-      overflow: hidden;
-      transition: border-color 0.15s ease, background 0.15s ease;
+      transition: all 0.15s ease;
     }
 
-    .stake-option::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 8px;
-      background: var(--accent-green);
+    .stake-option input[type="radio"] {
+      display: none;
     }
 
-    .stake-option[data-stake="20"]::before {
-      background: var(--accent-cyan);
-    }
-
-    .stake-option[data-stake="50"]::before {
-      background: var(--accent-red);
-    }
-
-    .stake-option.selected {
-      border-color: var(--accent-gold);
-      background: var(--card-hover);
-    }
-
-    .stake-left {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding-left: 6px;
-    }
-
-    .stake-amount {
-      font-size: 2rem;
+    .stake-option .amt {
+      font-size: 1.1rem;
       font-weight: 900;
-      line-height: 1;
       color: #fff;
     }
 
-    .stake-name {
-      font-weight: 700;
-      font-size: 0.98rem;
-      color: #fff;
-    }
-
-    .stake-rule {
-      font-size: 0.82rem;
+    .stake-option .lbl {
+      font-size: 0.72rem;
       color: var(--text-muted);
       margin-top: 2px;
     }
 
-    .radio-ring {
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      border: 2px solid var(--text-muted);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
-    .stake-option.selected .radio-ring {
+    .stake-option.selected {
       border-color: var(--accent-gold);
+      background: rgba(245, 183, 0, 0.14);
+      box-shadow: 0 0 18px rgba(245, 183, 0, 0.18);
     }
 
-    .stake-option.selected .radio-ring::after {
-      content: "";
-      width: 11px;
-      height: 11px;
-      border-radius: 50%;
-      background: var(--accent-gold);
+    .cartela-picker-scroll {
+      max-height: 230px;
+      overflow-y: auto;
+      padding: 4px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.22);
     }
 
-    .card-panel {
-      background: var(--card-bg);
-      border: 1px solid var(--line-border);
-      border-radius: 16px;
-      padding: 14px;
-      margin-bottom: 12px;
-    }
-
-    .cartela-picker-grid {
+    .cartela-grid {
       display: grid;
       grid-template-columns: repeat(8, 1fr);
       gap: 6px;
-      max-height: 170px;
-      overflow-y: auto;
-      padding: 4px 2px;
     }
 
     .cartela-circle {
-      aspect-ratio: 1;
+      aspect-ratio: 1 / 1;
       border-radius: 50%;
-      background: #144448;
-      border: 1px solid #266066;
-      color: #fff;
-      font-size: 0.68rem;
+      background: var(--bg-card-soft);
+      border: 1px solid var(--line-border);
+      color: var(--text-main);
+      font-size: 0.74rem;
       font-weight: 700;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: transform 0.12s ease;
-    }
-
-    .cartela-circle.taken {
-      background: #3a1d24;
-      border-color: #7a3342;
-      color: #f8a5b3;
-      opacity: 0.65;
-      text-decoration: line-through;
-      cursor: not-allowed;
+      user-select: none;
     }
 
     .cartela-circle.selected {
       background: var(--accent-gold);
-      border-color: #ffd561;
-      color: #092022;
-      transform: scale(1.06);
+      color: #111827;
+      border-color: var(--accent-gold);
       font-weight: 900;
+    }
+
+    .cartela-circle.taken {
+      background: rgba(239, 68, 68, 0.22);
+      color: #fca5a5;
+      border-color: rgba(239, 68, 68, 0.45);
+      cursor: not-allowed;
+      text-decoration: line-through;
     }
 
     .btn-gold {
       width: 100%;
+      background: var(--accent-gold);
+      color: #111827;
+      font-weight: 900;
+      font-size: 1rem;
       border: none;
       border-radius: 14px;
-      background: var(--accent-gold);
-      color: #0a2022;
-      font-weight: 900;
-      font-size: 1.02rem;
-      padding: 14px 16px;
+      padding: 13px 16px;
       cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .btn-gold:hover {
+      background: var(--accent-gold-hover);
     }
 
     .btn-secondary-dark {
-      width: 100%;
+      background: var(--bg-card-soft);
+      color: var(--text-main);
       border: 1px solid var(--line-border);
       border-radius: 12px;
-      background: var(--card-hover);
-      color: #fff;
       font-weight: 700;
-      font-size: 0.9rem;
-      padding: 10px 14px;
       cursor: pointer;
-    }
-
-    .watch-card {
-      background: rgba(245, 180, 27, 0.14);
-      border: 1px solid rgba(245, 180, 27, 0.45);
-      border-radius: 12px;
-      padding: 10px 12px;
-      margin-bottom: 10px;
-    }
-
-    .stat-row-3 {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      text-align: center;
-      margin: 10px 0;
-    }
-
-    .stat-box {
-      background: rgba(0, 0, 0, 0.22);
-      border: 1px solid var(--line-border);
-      border-radius: 12px;
-      padding: 8px 6px;
-    }
-
-    .stat-box .num {
-      font-size: 1.15rem;
-      font-weight: 800;
-      display: block;
-    }
-
-    .stat-box .lbl {
-      font-size: 0.72rem;
-      color: var(--text-muted);
     }
 
     .recent-balls-row {
@@ -316,283 +210,269 @@ header('Content-Type: text/html; charset=utf-8');
     }
 
     .recent-ball {
-      width: 42px;
-      height: 42px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
-      display: inline-flex;
+      background: var(--bg-card-soft);
+      border: 2px solid rgba(255, 255, 255, 0.18);
+      display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 800;
+      font-weight: 900;
       font-size: 0.82rem;
-      background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.22);
     }
 
     .recent-ball.latest {
-      background: #ff8c00;
-      border-color: var(--accent-gold);
-      color: #fff;
+      background: var(--accent-gold);
+      color: #111827;
+      border-color: #fff;
       transform: scale(1.06);
     }
 
     .play-split {
       display: grid;
-      grid-template-columns: 5fr 7fr;
+      grid-template-columns: 1.05fr 0.95fr;
       gap: 10px;
       align-items: start;
-    }
-
-    .board-75-wrap {
-      background: #1b2427;
-      border-radius: 10px;
-      padding: 6px;
     }
 
     .bingo-5col {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 3px;
+      gap: 4px;
     }
 
     .bingo-head {
-      color: #091d1f;
-      font-weight: 900;
       text-align: center;
-      padding: 4px 0;
-      border-radius: 4px;
+      font-weight: 900;
       font-size: 0.78rem;
+      color: #111827;
+      border-radius: 6px;
+      padding: 3px 0;
     }
 
     .num-75-cell {
-      background: #2b3538;
-      color: #d6e2e4;
-      font-size: 0.64rem;
-      font-weight: 700;
-      padding: 3px 0;
-      text-align: center;
-      border-radius: 3px;
-    }
-
-    .num-75-cell.called {
-      background: #ff9800;
-      color: #111;
-      font-weight: 800;
-    }
-
-    .num-75-cell.called.latest {
-      background: #4ade80;
-      color: #06282b;
-    }
-
-    .bingo-cell {
-      aspect-ratio: 1;
+      aspect-ratio: 1 / 1;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #e9f2f2;
-      color: #092629;
-      border-radius: 5px;
-      font-size: 0.78rem;
-      font-weight: 800;
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--text-muted);
     }
 
-    .bingo-cell.marked,
-    .bingo-cell.free {
-      background: var(--accent-purple);
+    .num-75-cell.called {
+      background: rgba(34, 197, 94, 0.25);
       color: #fff;
+      border: 1px solid rgba(34, 197, 94, 0.65);
+    }
+
+    .num-75-cell.latest {
+      background: var(--accent-gold);
+      color: #111827;
+      font-weight: 900;
+    }
+
+    .bingo-cell {
+      aspect-ratio: 1 / 1;
+      background: var(--bg-card-soft);
+      border: 1px solid var(--line-border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.86rem;
+    }
+
+    .bingo-cell.free,
+    .bingo-cell.marked {
+      background: rgba(34, 197, 94, 0.28);
+      border-color: var(--accent-green);
+      color: #86efac;
     }
 
     .bingo-cell.win-highlight {
-      background: #198754;
-      color: #fff;
+      background: var(--accent-gold);
+      color: #111827;
+      border-color: #fff;
+      font-weight: 900;
     }
 
     .wallet-grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
-      margin: 12px 0;
+      margin-bottom: 10px;
     }
 
     .wallet-action-btn {
-      border: none;
-      border-radius: 16px;
-      padding: 16px 14px;
+      padding: 12px;
+      border-radius: 14px;
       font-weight: 800;
-      font-size: 1rem;
+      border: none;
       cursor: pointer;
-      text-align: left;
     }
 
     .wallet-action-btn.deposit {
       background: var(--accent-green);
-      color: #081e0c;
+      color: #062814;
     }
 
     .wallet-action-btn.withdraw {
-      background: var(--accent-cyan);
-      color: #062024;
+      background: var(--bg-card-soft);
+      color: #fff;
+      border: 1px solid var(--line-border);
     }
 
     .profile-badge-circle {
-      width: 62px;
-      height: 62px;
+      width: 64px;
+      height: 64px;
       border-radius: 50%;
       background: var(--accent-gold);
-      color: #082022;
-      font-size: 1.5rem;
+      color: #111827;
       font-weight: 900;
+      font-size: 1.6rem;
       display: flex;
       align-items: center;
       justify-content: center;
       margin: 0 auto 10px;
     }
 
-    .bottom-nav {
-      position: fixed;
-      bottom: 8px;
-      left: 10px;
-      right: 10px;
-      max-width: 500px;
-      margin: 0 auto;
-      background: #0c393d;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 24px;
+    .stat-row-3 {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      padding: 5px;
-      z-index: 1050;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
     }
 
-    .nav-tab {
-      text-align: center;
-      padding: 8px 6px;
-      border-radius: 18px;
-      font-size: 0.8rem;
-      font-weight: 700;
+    .stat-box {
+      background: rgba(0, 0, 0, 0.22);
+      border-radius: 12px;
+      padding: 10px 6px;
+    }
+
+    .stat-box .num {
+      display: block;
+      font-weight: 900;
+      font-size: 1.05rem;
+      color: var(--accent-gold);
+    }
+
+    .stat-box .lbl {
+      font-size: 0.72rem;
       color: var(--text-muted);
-      cursor: pointer;
-    }
-
-    .nav-tab.active {
-      background: var(--accent-gold);
-      color: #092022;
-      font-weight: 800;
     }
 
     .modal-backdrop-custom {
       position: fixed;
       inset: 0;
-      background: rgba(4, 14, 17, 0.88);
-      z-index: 2000;
+      background: rgba(0, 0, 0, 0.78);
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 14px;
+      padding: 16px;
+      z-index: 100;
     }
 
     .modal-box-custom {
       width: 100%;
-      max-width: 370px;
-      max-height: 90vh;
-      overflow-y: auto;
-      background: #142a2e;
-      border: 1px solid var(--accent-gold);
-      border-radius: 16px;
-      padding: 16px;
+      max-width: 390px;
+      background: var(--bg-card);
+      border: 1px solid rgba(245, 183, 0, 0.45);
+      border-radius: 18px;
+      padding: 18px;
       text-align: center;
+    }
+
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 64px;
+      background: rgba(11, 18, 32, 0.95);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid var(--line-border);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      z-index: 50;
+    }
+
+    .nav-tab {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .nav-tab.active {
+      color: var(--accent-gold);
+      border-top: 2px solid var(--accent-gold);
     }
   </style>
 </head>
 <body>
-  <header class="app-header">
-    <div class="brand-wrap">
-      <span class="brand-gem"></span>
+  <header class="top-bar">
+    <div class="brand-pill">
+      <span class="brand-dot"></span>
       <span>Future Bingo</span>
     </div>
-    <div class="balance-box">
-      <small>Balance</small>
-      <strong id="balance-display">0.00 ETB</strong>
-    </div>
+    <button type="button" class="balance-pill" id="balance-display" onclick="switchTab('wallet')">0.00 ETB</button>
   </header>
 
   <!-- SCREEN 1: GAME SETUP -->
   <section id="screen-game" class="container">
-    <h1 class="section-title">Choose a table</h1>
-    <p class="section-sub">
-      Pick a stake, then choose up to 3 cartelas (1 - 400). The first cartela with a full line wins. A line is a row, column, diagonal or the four corners.
-    </p>
+    <h1 class="section-title">Choose a Table</h1>
+    <div class="section-sub" id="credit-breakdown-text">Main 0.00 ETB, play credits 0.00 ETB</div>
 
-    <div id="table-options-list">
-      <div class="stake-option selected" data-stake="10" data-lines="1" onclick="selectTable(10, this)">
-        <div class="stake-left">
-          <div class="stake-amount">10</div>
-          <div>
-            <div class="stake-name">ETB per cartela</div>
-            <div class="stake-rule">1 line to win. Winner takes 80% of all stakes</div>
-          </div>
-        </div>
-        <div class="radio-ring"></div>
-      </div>
-
-      <div class="stake-option" data-stake="20" data-lines="2" onclick="selectTable(20, this)">
-        <div class="stake-left">
-          <div class="stake-amount">20</div>
-          <div>
-            <div class="stake-name">ETB per cartela</div>
-            <div class="stake-rule">2 lines to win. Winner takes 80% of all stakes</div>
-          </div>
-        </div>
-        <div class="radio-ring"></div>
-      </div>
-
-      <div class="stake-option" data-stake="50" data-lines="3" onclick="selectTable(50, this)">
-        <div class="stake-left">
-          <div class="stake-amount">50</div>
-          <div>
-            <div class="stake-name">ETB per cartela</div>
-            <div class="stake-rule">3 lines to win. Winner takes 80% of all stakes</div>
-          </div>
-        </div>
-        <div class="radio-ring"></div>
+    <div class="card-panel">
+      <div class="stake-grid">
+        <label class="stake-option selected" onclick="selectTable(10, this)">
+          <input type="radio" name="stake" value="10" checked />
+          <div class="amt">10 ETB</div>
+          <div class="lbl">1 Line Win</div>
+        </label>
+        <label class="stake-option" onclick="selectTable(20, this)">
+          <input type="radio" name="stake" value="20" />
+          <div class="amt">20 ETB</div>
+          <div class="lbl">2 Lines Win</div>
+        </label>
+        <label class="stake-option" onclick="selectTable(50, this)">
+          <input type="radio" name="stake" value="50" />
+          <div class="amt">50 ETB</div>
+          <div class="lbl">3 Lines Win</div>
+        </label>
       </div>
     </div>
 
     <div class="card-panel">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:0.78rem;">
-        <strong style="color:var(--accent-gold);">Pick Cartela (1 - 400)</strong>
-        <span style="color:var(--text-muted);">● Yours &nbsp; ● Taken</span>
-      </div>
-      <div id="cartela-grid-picker" class="cartela-picker-grid"></div>
-      <div id="selected-cartela-info" style="text-align:center;color:var(--accent-gold);font-size:0.76rem;font-weight:700;margin-top:8px;">
+      <div class="section-sub" id="selected-cartela-info" style="margin-bottom:8px;">
         Your cartelas (0/3). Tap a number to select/remove.
       </div>
+      <div class="cartela-picker-scroll">
+        <div id="cartela-grid-picker" class="cartela-grid"></div>
+      </div>
     </div>
 
-    <button class="btn-gold" id="play-btn" onclick="joinSelectedTable()">Select at least 1 Cartela</button>
-    <div id="credit-breakdown-text" style="text-align:center;color:var(--text-muted);font-size:0.82rem;margin-top:8px;">
-      Main 0.00 ETB, play credits 0.00 ETB
-    </div>
+    <button type="button" id="play-btn" class="btn-gold" onclick="joinSelectedTable()">Select at least 1 Cartela</button>
   </section>
 
-  <!-- SCREEN 2: WATCHING ACTIVE ROUND -->
+  <!-- SCREEN 2: LOBBY WAITING -->
   <section id="screen-wait-active" class="container d-none">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;font-size:0.78rem;">
-      <span>Game <strong id="wait-game-code">--</strong></span>
-      <span>Prize <strong id="wait-derash">0.00</strong></span>
-      <span>Calls <strong id="wait-calls">0</strong></span>
-      <button class="btn-secondary-dark" style="width:auto;padding:6px 12px;" onclick="leaveToSetup()">Exit</button>
-    </div>
-
-    <div class="watch-card">
-      <div style="font-weight:800;color:var(--accent-gold);">You are watching this round</div>
-      <div style="font-size:0.82rem;color:var(--text-muted);">Join the next round to play once this round finishes.</div>
-    </div>
-
-    <div class="recent-balls-row" id="wait-recent-balls" style="justify-content:center;margin-bottom:10px;"></div>
-
-    <div class="board-75-wrap">
+    <h1 class="section-title">Game In Progress</h1>
+    <p class="section-sub">Waiting for the current round to finish before joining the next lobby.</p>
+    <div class="card-panel">
+      <div style="display:flex;justify-content:space-between;font-size:0.86rem;margin-bottom:8px;">
+        <span>Game <strong id="wait-game-code">--</strong></span>
+        <span>Prize <strong id="wait-derash">0.00</strong></span>
+        <span>Calls <strong id="wait-calls">0</strong></span>
+      </div>
+      <div class="recent-balls-row" id="wait-recent-balls" style="justify-content:center;margin-bottom:10px;"></div>
       <div class="bingo-5col" style="margin-bottom:4px;">
         <div class="bingo-head" style="background:#ff9800;">B</div>
         <div class="bingo-head" style="background:#4ade80;">I</div>
@@ -602,17 +482,18 @@ header('Content-Type: text/html; charset=utf-8');
       </div>
       <div class="bingo-5col" id="wait-master-grid"></div>
     </div>
+    <button type="button" class="btn-secondary-dark" style="width:100%;padding:11px;" onclick="leaveToSetup()">Back to Tables</button>
   </section>
 
-  <!-- SCREEN 3: LOBBY TIMER -->
-  <section id="screen-lobby" class="container d-none" style="text-align:center;">
-    <div class="card-panel" style="margin-top:16px;">
-      <div style="font-weight:800;margin-bottom:6px;">Room Starting Soon</div>
-      <div id="lobby-prize-pool" style="font-size:1.6rem;font-weight:900;color:var(--accent-gold);">0.00 ETB</div>
-      <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;">Estimated Prize Pool (80% of Stakes)</div>
-      <div id="lobby-timer" style="font-size:1.3rem;font-weight:800;color:var(--accent-gold);">00:15</div>
-      <div id="lobby-player-count" style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;">Players Joined: 1</div>
+  <!-- SCREEN 3: LOBBY COUNTDOWN -->
+  <section id="screen-lobby" class="container d-none">
+    <h1 class="section-title">Starting Soon</h1>
+    <div class="card-panel" style="text-align:center;">
+      <div style="font-size:2.4rem;font-weight:900;color:var(--accent-gold);" id="lobby-timer">00:15</div>
+      <div style="margin-top:8px;font-size:0.95rem;">Prize Pool: <strong id="lobby-prize-pool">0.00 ETB</strong></div>
+      <div style="margin-top:4px;color:var(--text-muted);font-size:0.86rem;" id="lobby-player-count">Players Joined: 1</div>
     </div>
+    <button type="button" class="btn-secondary-dark" style="width:100%;padding:11px;" onclick="leaveToSetup()">Leave Lobby</button>
   </section>
 
   <!-- SCREEN 4: ACTIVE PLAYROOM -->
