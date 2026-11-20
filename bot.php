@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/db.php';
+
 header('Content-Type: text/plain; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -32,22 +34,35 @@ if (!is_array($message)) {
     exit;
 }
 
-$chatId = $message['chat']['id'] ?? null;
-$text   = trim((string)($message['text'] ?? ''));
-$userId = $message['from']['id'] ?? null;
-$name   = trim((string)($message['from']['first_name'] ?? 'Player'));
+$chatId    = isset($message['chat']['id']) ? (int)$message['chat']['id'] : 0;
+$userId    = isset($message['from']['id']) ? (int)$message['from']['id'] : $chatId;
+$text      = trim((string)($message['text'] ?? ''));
+$firstName = trim((string)($message['from']['first_name'] ?? 'Player'));
+$username  = trim((string)($message['from']['username'] ?? ''));
 
-if ($chatId === null) {
+if ($chatId === 0 || $userId === 0) {
     http_response_code(200);
     echo "NO_CHAT_ID";
     exit;
 }
 
 $reply = null;
-if ($text === '/start') {
-    $reply = "Welcome to SMART BINGO ({$name})! Your chat is connected.\nSend /myid to view your Telegram ID.";
-} elseif ($text === '/myid') {
-    $reply = "Your Telegram User ID: {$userId}\nChat ID: {$chatId}";
+try {
+    $player = registerOrGetUser($userId, $chatId, $firstName, $username);
+    $balanceFormatted = number_format((float)($player['balance'] ?? 0.0), 2);
+
+    if ($text === '/start') {
+        $reply = "Welcome to SMART BINGO ({$firstName})!\n"
+               . "Balance: {$balanceFormatted} ETB\n"
+               . "Send /myid to view your ID and balance.";
+    } elseif ($text === '/myid') {
+        $reply = "Telegram User ID: {$userId}\n"
+               . "Chat ID: {$chatId}\n"
+               . "Balance: {$balanceFormatted} ETB";
+    }
+} catch (Throwable $e) {
+    error_log("SmartBingoHub_bot DB error: " . $e->getMessage());
+    $reply = "Temporary database error while saving your profile. Please try again.";
 }
 
 if ($reply !== null) {
