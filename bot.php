@@ -47,6 +47,9 @@ if ($chatId === 0 || $userId === 0) {
 }
 
 $reply = null;
+$replyMarkup = null;
+$webAppUrl = 'https://lali-bingo-bot.onrender.com/index.php';
+
 try {
     $player = registerOrGetUser($userId, $chatId, $firstName, $username);
     $balanceFormatted = number_format((float)($player['balance'] ?? 0.0), 2);
@@ -54,7 +57,18 @@ try {
     if ($text === '/start') {
         $reply = "Welcome to SMART BINGO ({$firstName})!\n"
                . "Balance: {$balanceFormatted} ETB\n"
-               . "Send /myid to view your ID and balance.";
+               . "Tap below to open the Bingo WebApp or send /myid.";
+
+        $replyMarkup = [
+            'inline_keyboard' => [
+                [
+                    [
+                        'text'    => 'Play SMART BINGO',
+                        'web_app' => ['url' => $webAppUrl],
+                    ],
+                ],
+            ],
+        ];
     } elseif ($text === '/myid') {
         $reply = "Telegram User ID: {$userId}\n"
                . "Chat ID: {$chatId}\n"
@@ -66,15 +80,18 @@ try {
 }
 
 if ($reply !== null) {
-    $payload = json_encode([
+    $payloadData = [
         'chat_id' => $chatId,
         'text'    => $reply,
-    ]);
+    ];
+    if ($replyMarkup !== null) {
+        $payloadData['reply_markup'] = $replyMarkup;
+    }
 
     $ch = curl_init("https://api.telegram.org/bot{$token}/sendMessage");
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_POSTFIELDS     => json_encode($payloadData),
         CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => 15,
