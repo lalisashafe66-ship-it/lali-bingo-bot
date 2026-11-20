@@ -217,6 +217,7 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
     $drawIntervalSec = 0.8;
     $maxRoundSec = 60;
 
+    // All players in the waiting lobby start together once countdown ends
     if ($status === 'waiting' && $now >= $startsAt) {
         $status = 'active';
         $startedAt = $now;
@@ -242,7 +243,6 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
         $rpStmt->execute([$room['id']]);
         $entries = $rpStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Require 2 unique winners when 2+ players are in the room; 1 winner if solo
         $uniquePlayers = [];
         foreach ($entries as $e) {
             $uniquePlayers[(string)$e['telegram_id']] = true;
@@ -384,7 +384,32 @@ elseif ($action === 'get_room_state') {
         exit;
     }
 
-    echo json_encode(['success' => true, 'room' => buildRoomPayload($pdo, $room)]);
+    $payload = buildRoomPayload($pdo, $room);
+
+    // If the active round just finished, open a fresh waiting round with countdown so players can join next round
+    if ($payload['status'] === 'finished' && $stake > 0) {
+        $now = time();
+        $code = generateGameCode(5);
+        $pool = range(1, 75);
+        shuffle($pool);
+        $insRoom = $pdo->prepare("INSERT INTO rooms (game_code, stake, status, created_at, starts_at, draw_pool_json, called_numbers_json, winners_json) VALUES (?, ?, 'waiting', ?, ?, ?, '[]', '[]')");
+        $insRoom->execute([$code, $stake, $now, $now + 15, json_encode($pool)]);
+        $newRoomId = (int)$pdo->lastInsertId();
+        $newStmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
+        $newStmt->execute([$newRoomId]);
+        $newRoom = $newStmt->fetch(PDO::FETCH_ASSOC);
+        if ($newRoom) {
+            echo json_encode([
+                'success'           => true,
+                'previous_finished' => true,
+                'finished_room'     => $payload,
+                'room'              => buildRoomPayload($pdo, $newRoom),
+            ]);
+            exit;
+        }
+    }
+
+    echo json_encode(['success' => true, 'room' => $payload]);
 }
 elseif ($action === 'join_room') {
     $telegramId = trim((string)($_POST['telegram_id'] ?? ''));
@@ -423,6 +448,7 @@ elseif ($action === 'join_room') {
 
     $pdo->beginTransaction();
     try {
+        // Check if a round for this stake is currently active (in progress)
         $activeStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'active' ORDER BY id DESC LIMIT 1");
         $activeStmt->execute([$stake]);
         $activeRoom = $activeStmt->fetch(PDO::FETCH_ASSOC);
@@ -435,7 +461,7 @@ elseif ($action === 'join_room') {
                     'success'         => false,
                     'already_started' => true,
                     'room'            => $payload,
-                    'error'           => 'Game is already in progress. Please wait until this game finishes!',
+                    'error'           => 'you are visiting now, please wait for the next cartella to start the game',
                 ]);
                 exit;
             }
@@ -478,6 +504,19 @@ elseif ($action === 'join_room') {
             $room = $roomStmt->fetch(PDO::FETCH_ASSOC);
         } else {
             $roomId = (int)$room['id'];
+        }
+
+        // If countdown already reached zero right as this request arrived, start round and block late entry
+        $preCheckPayload = buildRoomPayload($pdo, $room);
+        if ($preCheckPayload['status'] === 'active') {
+            $pdo->commit();
+            echo json_encode([
+                'success'         => false,
+                'already_started' => true,
+                'room'            => $preCheckPayload,
+                'error'           => 'you are visiting now, please wait for the next cartella to start the game',
+            ]);
+            exit;
         }
 
         $takenStmt = $pdo->prepare("SELECT player_number FROM room_players WHERE room_id = ?");
