@@ -69,6 +69,34 @@ function getPlayerChatTarget(PDO $pdo, string $telegramId): string {
     return $chatId !== '' ? $chatId : $telegramId;
 }
 
+function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId, string $messageText): bool {
+    if ($targetPlayerId === '' || $messageText === '') {
+        return false;
+    }
+
+    $candidates = [];
+    $savedChat = getPlayerChatTarget($pdo, $targetPlayerId);
+    if ($savedChat !== '') {
+        $candidates[] = $savedChat;
+    }
+    if (!in_array($targetPlayerId, $candidates, true)) {
+        $candidates[] = $targetPlayerId;
+    }
+
+    foreach ($candidates as $chatTarget) {
+        $res = tgPost($token, 'sendMessage', [
+            'chat_id' => $chatTarget,
+            'text'    => $messageText,
+        ]);
+        if (!empty($res['ok'])) {
+            return true;
+        }
+        error_log("SmartBingoHub_bot notify failed for chat {$chatTarget} (player {$targetPlayerId}): " . json_encode($res));
+    }
+
+    return false;
+}
+
 /**
  * Parses callback_data across formats like:
  * - dep_approve:<id>:<telegram_id>:<amount>
@@ -93,7 +121,6 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
     $playerId = '';
     $amount = 0.0;
 
-    // Colon format: kind_action:id:telegram_id:amount
     if (str_contains($data, ':') && count($tokens) >= 4) {
         $recordId = (int)$tokens[1];
         $playerId = preg_replace('/\D+/', '', (string)$tokens[2]) ?? '';
@@ -104,7 +131,6 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
                 $nums[] = $tok;
             }
         }
-        // Look for a Telegram user ID (typically 6+ digits) and an amount
         foreach ($nums as $n) {
             if (strlen((string)$n) >= 6 && $playerId === '') {
                 $playerId = (string)$n;
@@ -203,7 +229,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
             }
 
             if ($isApprove) {
-                $pStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ? LIMIT 1");
+                $pStmt = $pdo->prepare("SELECT balance, chat_id FROM players WHERE telegram_id = ? LIMIT 1");
                 $pStmt->execute([$targetPlayerId]);
                 $pRow = $pStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -213,6 +239,10 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                     $before = 0.0;
                 } else {
                     $before = (float)$pRow['balance'];
+                    if (trim((string)($pRow['chat_id'] ?? '')) === '') {
+                        $pdo->prepare("UPDATE players SET chat_id = ? WHERE telegram_id = ?")
+                            ->execute([$targetPlayerId, $targetPlayerId]);
+                    }
                 }
 
                 $after = round($before + $amount, 2);
@@ -225,21 +255,20 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 
                 addLedger($pdo, $targetPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin");
                 $toastText    = "Approved +{$amount} ETB";
-                $statusLabel  = "\n\n✅ <b>APPROVED</b> (+{$amount} ETB)";
-                $playerNotify = "✅ <b>Deposit Approved!</b>\n\n"
-                              . "Amount Credited: <b>+" . number_format($amount, 2) . " ETB</b>\n"
-                              . "New Balance: <b>" . number_format($after, 2) . " ETB</b>";
+                $statusLabel  = "\n\n✅ APPROVED (+{$amount} ETB)";
+                $playerNotify = "SMART BINGO — Deposit Approved\n\n"
+                              . "Credited Amount: +" . number_format($amount, 2) . " ETB\n"
+                              . "New Balance: " . number_format($after, 2) . " ETB";
             } else {
                 if ($recId > 0 && tableExists($pdo, 'deposits')) {
                     $pdo->prepare("UPDATE deposits SET status = 'rejected' WHERE id = ?")->execute([$recId]);
                 }
                 $toastText    = "Rejected deposit";
-                $statusLabel  = "\n\n❌ <b>REJECTED</b> by Admin";
-                $playerNotify = "❌ <b>Deposit Rejected</b>\n\n"
-                              . "Your deposit request of <b>" . number_format($amount, 2) . " ETB</b> was rejected.";
+                $statusLabel  = "\n\n❌ REJECTED by Admin";
+                $playerNotify = "SMART BINGO — Deposit Rejected\n\n"
+                              . "Your deposit request of " . number_format($amount, 2) . " ETB was rejected. Please verify your reference or contact support.";
             }
         } else {
-            // Withdrawal
             if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
                 $wStmt = $pdo->prepare("SELECT * FROM withdrawals WHERE id = ? LIMIT 1");
                 $wStmt->execute([$recId]);
@@ -278,10 +307,10 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 $curBal = (float)($bStmt->fetchColumn() ?: 0.0);
 
                 $toastText    = "Approved withdrawal";
-                $statusLabel  = "\n\n✅ <b>WITHDRAWAL APPROVED</b>";
-                $playerNotify = "✅ <b>Withdrawal Approved!</b>\n\n"
-                              . "Amount: <b>" . number_format($amount, 2) . " ETB</b> has been approved.\n"
-                              . "Current Balance: <b>" . number_format($curBal, 2) . " ETB</b>";
+                $statusLabel  = "\n\n✅ WITHDRAWAL APPROVED";
+                $playerNotify = "SMART BINGO — Withdrawal Approved\n\n"
+                              . "Approved Amount: " . number_format($amount, 2) . " ETB\n"
+                              . "Current Balance: " . number_format($curBal, 2) . " ETB";
             } else {
                 $bStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ? LIMIT 1");
                 $bStmt->execute([$targetPlayerId]);
@@ -297,37 +326,31 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 
                 addLedger($pdo, $targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal rejected & refunded");
                 $toastText    = "Rejected & refunded {$amount} ETB";
-                $statusLabel  = "\n\n❌ <b>WITHDRAWAL REJECTED & REFUNDED</b>";
-                $playerNotify = "❌ <b>Withdrawal Rejected</b>\n\n"
-                              . "Your withdrawal of <b>" . number_format($amount, 2) . " ETB</b> was rejected and refunded.\n"
-                              . "Current Balance: <b>" . number_format($after, 2) . " ETB</b>";
+                $statusLabel  = "\n\n❌ WITHDRAWAL REJECTED & REFUNDED";
+                $playerNotify = "SMART BINGO — Withdrawal Rejected\n\n"
+                              . "Your withdrawal of " . number_format($amount, 2) . " ETB was rejected and refunded to your balance.\n"
+                              . "Current Balance: " . number_format($after, 2) . " ETB";
             }
         }
 
         $pdo->commit();
 
+        $notified = sendPlayerNotification($pdo, $token, $targetPlayerId, $playerNotify);
+
         tgPost($token, 'answerCallbackQuery', [
             'callback_query_id' => $cbId,
-            'text'              => $toastText,
+            'text'              => $notified ? "{$toastText} (Player notified)" : "{$toastText} (Check player chat)",
             'show_alert'        => false,
         ]);
 
         if ($adminMsgId > 0) {
+            $baseAdminText = $origText !== '' ? $origText : 'Request';
+            $deliveryNote  = $notified ? "\n📩 Player notified" : "\n⚠️ Could not DM player (ensure user sent /start to bot)";
             tgPost($token, 'editMessageText', [
                 'chat_id'      => $adminChat,
                 'message_id'   => $adminMsgId,
-                'text'         => ($origText !== '' ? $origText : 'Request') . $statusLabel,
-                'parse_mode'   => 'HTML',
+                'text'         => $baseAdminText . $statusLabel . $deliveryNote,
                 'reply_markup' => ['inline_keyboard' => []],
-            ]);
-        }
-
-        if ($playerNotify !== '' && $targetPlayerId !== '') {
-            $playerChat = getPlayerChatTarget($pdo, $targetPlayerId);
-            tgPost($token, 'sendMessage', [
-                'chat_id'    => $playerChat,
-                'text'       => $playerNotify,
-                'parse_mode' => 'HTML',
             ]);
         }
     } catch (Throwable $e) {
