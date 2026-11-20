@@ -648,16 +648,16 @@
     function getUserId() {
       if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
         const id = tg.initDataUnsafe.user.id.toString();
-        localStorage.setItem('Future_bingo_tg_id', id);
+        localStorage.setItem('Smart_bingo_tg_id', id);
         return id;
       }
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.has('telegram_id')) {
         const id = urlParams.get('telegram_id');
-        localStorage.setItem('Future_bingo_tg_id', id);
+        localStorage.setItem('Smart_bingo_tg_id', id);
         return id;
       }
-      return localStorage.getItem('Future_bingo_tg_id') || '730967613';
+      return localStorage.getItem('Smart_bingo_tg_id') || '730967613';
     }
 
     const telegramId = getUserId();
