@@ -1,14 +1,13 @@
 <?php
 declare(strict_types=1);
 
-function getDb(): PDO
+function getBingoPdo(): PDO
 {
     static $pdo = null;
     if ($pdo instanceof PDO) {
         return $pdo;
     }
 
-    // Store SQLite in /tmp on Render so it is writable across requests
     $dbDir = is_dir('/tmp') ? '/tmp' : __DIR__;
     $dbPath = rtrim($dbDir, '/') . '/smart_bingo.sqlite';
 
@@ -18,31 +17,103 @@ function getDb(): PDO
     ]);
 
     $pdo->exec("
-        CREATE TABLE IF NOT EXISTS users (
-            telegram_id INTEGER PRIMARY KEY,
-            chat_id     INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS players (
+            telegram_id TEXT PRIMARY KEY,
+            chat_id     TEXT DEFAULT '',
             first_name  TEXT NOT NULL DEFAULT 'Player',
             username    TEXT DEFAULT '',
+            phone       TEXT DEFAULT '',
             balance     REAL NOT NULL DEFAULT 0.0,
             created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     ");
 
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS rooms (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            game_code           TEXT,
+            stake               REAL NOT NULL DEFAULT 10,
+            status              TEXT NOT NULL DEFAULT 'waiting',
+            created_at          INTEGER,
+            starts_at           INTEGER,
+            started_at          INTEGER,
+            draw_pool_json      TEXT,
+            called_numbers_json TEXT DEFAULT '[]',
+            winners_json        TEXT DEFAULT '[]'
+        )
+    ");
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS room_players (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id       INTEGER NOT NULL,
+            telegram_id   TEXT NOT NULL,
+            first_name    TEXT DEFAULT 'Player',
+            player_number INTEGER NOT NULL,
+            stake_paid    REAL DEFAULT 0,
+            created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS balance_ledger (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id    TEXT NOT NULL,
+            room_id        INTEGER,
+            type           TEXT NOT NULL,
+            amount         REAL NOT NULL,
+            balance_before REAL NOT NULL,
+            balance_after  REAL NOT NULL,
+            note           TEXT DEFAULT '',
+            created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS game_winners (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id     INTEGER NOT NULL,
+            telegram_id TEXT NOT NULL,
+            winner_name TEXT DEFAULT 'Player',
+            prize       REAL NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS withdrawals (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id TEXT NOT NULL,
+            amount      REAL NOT NULL,
+            method      TEXT NOT NULL,
+            account     TEXT NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'pending',
+            created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
+
     return $pdo;
+}
+
+function getDb(): PDO
+{
+    return getBingoPdo();
 }
 
 function registerOrGetUser(int $telegramId, int $chatId, string $firstName, string $username = ''): array
 {
-    $pdo = getDb();
+    $pdo = getBingoPdo();
+    $tid = (string)$telegramId;
+    $cid = (string)$chatId;
 
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE telegram_id = :tid LIMIT 1");
-    $stmt->execute([':tid' => $telegramId]);
+    $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = :tid LIMIT 1");
+    $stmt->execute([':tid' => $tid]);
     $existing = $stmt->fetch();
 
     if ($existing) {
         $upd = $pdo->prepare("
-            UPDATE users
+            UPDATE players
             SET chat_id = :cid,
                 first_name = :fname,
                 username = :uname,
@@ -50,24 +121,24 @@ function registerOrGetUser(int $telegramId, int $chatId, string $firstName, stri
             WHERE telegram_id = :tid
         ");
         $upd->execute([
-            ':cid'   => $chatId,
+            ':cid'   => $cid,
             ':fname' => $firstName !== '' ? $firstName : $existing['first_name'],
             ':uname' => $username,
-            ':tid'   => $telegramId,
+            ':tid'   => $tid,
         ]);
     } else {
         $ins = $pdo->prepare("
-            INSERT INTO users (telegram_id, chat_id, first_name, username, balance)
-            VALUES (:tid, :cid, :fname, :uname, 0.0)
+            INSERT INTO players (telegram_id, chat_id, first_name, username, phone, balance)
+            VALUES (:tid, :cid, :fname, :uname, '', 0.0)
         ");
         $ins->execute([
-            ':tid'   => $telegramId,
-            ':cid'   => $chatId,
+            ':tid'   => $tid,
+            ':cid'   => $cid,
             ':fname' => $firstName !== '' ? $firstName : 'Player',
             ':uname' => $username,
         ]);
     }
 
-    $stmt->execute([':tid' => $telegramId]);
+    $stmt->execute([':tid' => $tid]);
     return $stmt->fetch() ?: [];
 }
