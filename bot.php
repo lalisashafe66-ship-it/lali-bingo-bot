@@ -165,7 +165,7 @@ function applyJoinReferralBonus(PDO $pdo, string $token, string $newUserId, stri
         $refAfter = round($refBefore + $actualBonus, 2);
         $newInvites = $refInvites + 1;
 
-        $pdo->prepare("UPDATE players SET balance = ?, invites_count = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
+        $pdo->prepare("UPDATE players SET balance = ?, invites_count = ? WHERE telegram_id = ?")
             ->execute([$refAfter, $newInvites, $referrerId]);
 
         $pdo->prepare("INSERT INTO referrals (referrer_id, referred_id, bonus_amount) VALUES (?, ?, ?)")
@@ -259,6 +259,9 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
         $playerId = preg_replace('/\D+/', '', (string)$tokens[2]) ?? '';
         $amount   = round((float)$tokens[3], 2);
     } else {
+        if (str_contains($data, ':') && count($tokens) >= 2 && ctype_digit((string)$tokens[1])) {
+            $recordId = (int)$tokens[1];
+        }
         if ($fallbackText !== '' && preg_match('/Amount[:\s*]*(\d+(?:\.\d{1,2})?)\s*ETB/i', $fallbackText, $m)) {
             $amount = round((float)$m[1], 2);
         }
@@ -276,7 +279,7 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
         }
         if ($amount <= 0 && count($numericTokens) > 0) {
             $lastNum = (float)end($numericTokens);
-            if ($lastNum > 0) {
+            if ($lastNum > 0 && $recordId === 0) {
                 $amount = round($lastNum, 2);
             }
         }
@@ -298,8 +301,8 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
 }
 
 /* =========================================================================
- * 1. HANDLE INLINE BUTTON CLICKS (DEPOSIT & WITHDRAWAL APPROVE / REJECT)
- * ========================================================================= */
+- 1. HANDLE INLINE BUTTON CLICKS (DEPOSIT & WITHDRAWAL APPROVE / REJECT)
+- ========================================================================= */
 if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $cb         = $update['callback_query'];
     $cbId       = (string)($cb['id'] ?? '');
@@ -337,28 +340,40 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
         $pdo->beginTransaction();
 
         if ($kind === 'deposit') {
-            if ($recId > 0 && tableExists($pdo, 'deposits')) {
-                $dStmt = $pdo->prepare("SELECT * FROM deposits WHERE id = ? LIMIT 1");
-                $dStmt->execute([$recId]);
-                $depRow = $dStmt->fetch(PDO::FETCH_ASSOC);
-                if ($depRow) {
-                    if ($targetPlayerId === '' && isset($depRow['telegram_id'])) {
-                        $targetPlayerId = (string)$depRow['telegram_id'];
+            $depTable = null;
+            $depRow = null;
+            if ($recId > 0) {
+                foreach (['transactions', 'deposits'] as $tbl) {
+                    if (tableExists($pdo, $tbl)) {
+                        $dStmt = $pdo->prepare("SELECT * FROM {$tbl} WHERE id = ? LIMIT 1");
+                        $dStmt->execute([$recId]);
+                        $found = $dStmt->fetch(PDO::FETCH_ASSOC);
+                        if ($found) {
+                            $depTable = $tbl;
+                            $depRow = $found;
+                            break;
+                        }
                     }
-                    if ($amount <= 0 && isset($depRow['amount'])) {
-                        $amount = round((float)$depRow['amount'], 2);
-                    }
-                    if (isset($depRow['status']) && $depRow['status'] !== 'pending') {
-                        $pdo->rollBack();
-                        tgPost($token, 'answerCallbackQuery', [
-                            'callback_query_id' => $cbId,
-                            'text'              => "Already {$depRow['status']}.",
-                            'show_alert'        => true,
-                        ]);
-                        http_response_code(200);
-                        echo "OK";
-                        exit;
-                    }
+                }
+            }
+
+            if ($depRow) {
+                if ($targetPlayerId === '' && isset($depRow['telegram_id'])) {
+                    $targetPlayerId = (string)$depRow['telegram_id'];
+                }
+                if ($amount <= 0 && isset($depRow['amount'])) {
+                    $amount = round((float)$depRow['amount'], 2);
+                }
+                if (isset($depRow['status']) && $depRow['status'] !== 'pending') {
+                    $pdo->rollBack();
+                    tgPost($token, 'answerCallbackQuery', [
+                        'callback_query_id' => $cbId,
+                        'text'              => "Already {$depRow['status']}.",
+                        'show_alert'        => true,
+                    ]);
+                    http_response_code(200);
+                    echo "OK";
+                    exit;
                 }
             }
 
@@ -384,11 +399,11 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 }
 
                 $after = round($before + $amount, 2);
-                $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
+                $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
                     ->execute([$after, $targetPlayerId]);
 
-                if ($recId > 0 && tableExists($pdo, 'deposits')) {
-                    $pdo->prepare("UPDATE deposits SET status = 'approved' WHERE id = ?")->execute([$recId]);
+                if ($depTable !== null && $recId > 0) {
+                    $pdo->prepare("UPDATE {$depTable} SET status = 'approved' WHERE id = ?")->execute([$recId]);
                 }
 
                 addLedger($pdo, $targetPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin");
@@ -400,8 +415,8 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                               . "Credited Amount: +" . number_format($amount, 2) . " ETB\n"
                               . "New Balance: " . number_format($after, 2) . " ETB";
             } else {
-                if ($recId > 0 && tableExists($pdo, 'deposits')) {
-                    $pdo->prepare("UPDATE deposits SET status = 'rejected' WHERE id = ?")->execute([$recId]);
+                if ($depTable !== null && $recId > 0) {
+                    $pdo->prepare("UPDATE {$depTable} SET status = 'rejected' WHERE id = ?")->execute([$recId]);
                 }
                 $toastText    = "Rejected deposit";
                 $statusLabel  = "\n\n❌ REJECTED by Admin";
@@ -457,7 +472,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 $before = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
                 $after  = round($before + $amount, 2);
 
-                $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
+                $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
                     ->execute([$after, $targetPlayerId]);
 
                 if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
@@ -513,8 +528,8 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 }
 
 /* =========================================================================
- * 2. HANDLE NORMAL MESSAGES, COMMANDS, REFERRALS & BOTTOM MENU BUTTONS
- * ========================================================================= */
+- 2. HANDLE NORMAL MESSAGES, COMMANDS, REFERRALS & BOTTOM MENU BUTTONS
+- ========================================================================= */
 $message = $update['message'] ?? $update['edited_message'] ?? null;
 if (!is_array($message)) {
     http_response_code(200);
