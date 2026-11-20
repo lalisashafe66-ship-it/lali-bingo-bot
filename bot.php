@@ -21,6 +21,7 @@ if (!is_array($update)) {
 
 $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: '9105830123:AAGh_IUoXNiUbLZX2f5BBUo7_woBuzn8zBU'));
 $adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
+$webAppUrl = 'https://lali-bingo-bot.onrender.com/index.php';
 
 if ($token === '') {
     error_log("SmartBingoHub_bot: TELEGRAM_BOT_TOKEN is empty");
@@ -97,13 +98,36 @@ function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId,
     return false;
 }
 
-/**
- * Parses callback_data across formats like:
- * - dep_approve:<id>:<telegram_id>:<amount>
- * - approve_deposit_<telegram_id>_<amount>
- * - dep_approve_<id>_<telegram_id>_<amount>
- * - wd_approve:<id>:<telegram_id>:<amount> / approve_wd_<telegram_id>_<amount>
- */
+function buildMainMenuKeyboard(string $webAppUrl, bool $isAdmin): array {
+    $rows = [
+        [
+            ['text' => 'Play Bingo', 'web_app' => ['url' => $webAppUrl]],
+            ['text' => 'My Balance'],
+        ],
+        [
+            ['text' => 'Deposit'],
+            ['text' => 'Withdraw'],
+        ],
+        [
+            ['text' => 'How to Play'],
+            ['text' => 'My ID'],
+        ],
+    ];
+
+    if ($isAdmin) {
+        $rows[] = [
+            ['text' => 'Admin Stats'],
+        ];
+    }
+
+    return [
+        'keyboard'          => $rows,
+        'resize_keyboard'   => true,
+        'is_persistent'     => true,
+        'input_field_placeholder' => 'Choose a menu or type /start...',
+    ];
+}
+
 function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
     $lower = strtolower(trim($data));
     if ($lower === '') return null;
@@ -249,7 +273,6 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                     }
                 }
 
-                // Add new deposit amount on top of existing player balance
                 $after = round($before + $amount, 2);
                 $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
                     ->execute([$after, $targetPlayerId]);
@@ -380,7 +403,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 }
 
 /* =========================================================================
- * 2. HANDLE NORMAL MESSAGES (/start, /myid)
+ * 2. HANDLE NORMAL MESSAGES, COMMANDS & BOTTOM MENU BUTTONS
  * ========================================================================= */
 $message = $update['message'] ?? $update['edited_message'] ?? null;
 if (!is_array($message)) {
@@ -401,33 +424,76 @@ if ($chatId === 0 || $userId === 0) {
     exit;
 }
 
+$isAdmin = ($adminId !== '' && (string)$userId === $adminId);
 $reply = null;
-$replyMarkup = null;
-$webAppUrl = 'https://lali-bingo-bot.onrender.com/index.php';
+$replyMarkup = buildMainMenuKeyboard($webAppUrl, $isAdmin);
 
 try {
+    $pdo = getBingoPdo();
     $player = registerOrGetUser($userId, $chatId, $firstName, $username);
     $balanceFormatted = number_format((float)($player['balance'] ?? 0.0), 2);
 
-    if ($text === '/start') {
-        $reply = "Welcome to SMART BINGO ({$firstName})!\n"
-               . "Balance: {$balanceFormatted} ETB\n"
-               . "Tap below to open the Bingo WebApp or send /myid.";
+    switch ($text) {
+        case '/start':
+        case '/menu':
+            $reply = "Welcome to SMART BINGO ({$firstName})!\n"
+                   . "Balance: {$balanceFormatted} ETB\n"
+                   . "Use the menu buttons below or tap Play Bingo to open the game.";
+            break;
 
-        $replyMarkup = [
-            'inline_keyboard' => [
-                [
-                    [
-                        'text'    => 'Play SMART BINGO',
-                        'web_app' => ['url' => $webAppUrl],
-                    ],
-                ],
-            ],
-        ];
-    } elseif ($text === '/myid') {
-        $reply = "Telegram User ID: {$userId}\n"
-               . "Chat ID: {$chatId}\n"
-               . "Balance: {$balanceFormatted} ETB";
+        case 'My Balance':
+        case '/balance':
+            $reply = "SMART BINGO — Account Balance\n\n"
+                   . "Player: {$firstName}\n"
+                   . "Balance: {$balanceFormatted} ETB";
+            break;
+
+        case 'Deposit':
+        case '/deposit':
+            $reply = "SMART BINGO — Deposit\n\n"
+                   . "Open Play Bingo -> Wallet -> Deposit, enter your ETB amount (min 10 ETB) and Telebirr/CBE transaction reference.\n"
+                   . "Once approved by admin, your balance updates automatically.";
+            break;
+
+        case 'Withdraw':
+        case '/withdraw':
+            $reply = "SMART BINGO — Withdraw\n\n"
+                   . "Available Balance: {$balanceFormatted} ETB\n"
+                   . "Open Play Bingo -> Wallet -> Withdraw to submit your Telebirr or CBE payout request.";
+            break;
+
+        case 'How to Play':
+        case '/help':
+            $reply = "SMART BINGO — Game Rules\n\n"
+                   . "• Pick 1 to 3 cartelas during the lobby countdown.\n"
+                   . "• All waiting players start together when the countdown ends.\n"
+                   . "• Up to 2 players can win together and split the 80% Derash pool equally.\n"
+                   . "• Late joiners while a game is active wait for the next round.";
+            break;
+
+        case 'My ID':
+        case '/myid':
+            $reply = "Telegram User ID: {$userId}\n"
+                   . "Chat ID: {$chatId}\n"
+                   . "Balance: {$balanceFormatted} ETB";
+            break;
+
+        case 'Admin Stats':
+        case '/stats':
+            if ($isAdmin) {
+                $pCount = (int)$pdo->query("SELECT COUNT(*) FROM players")->fetchColumn();
+                $rCount = (int)$pdo->query("SELECT COUNT(*) FROM rooms")->fetchColumn();
+                $wPending = tableExists($pdo, 'withdrawals')
+                    ? (int)$pdo->query("SELECT COUNT(*) FROM withdrawals WHERE status = 'pending'")->fetchColumn()
+                    : 0;
+                $reply = "SMART BINGO — Admin Overview\n\n"
+                       . "• Registered Players: {$pCount}\n"
+                       . "• Total Rooms: {$rCount}\n"
+                       . "• Pending Withdrawals: {$wPending}";
+            } else {
+                $reply = "This menu is for admins only.";
+            }
+            break;
     }
 } catch (Throwable $e) {
     error_log("SmartBingoHub_bot DB error: " . $e->getMessage());
@@ -435,14 +501,11 @@ try {
 }
 
 if ($reply !== null) {
-    $payloadData = [
-        'chat_id' => $chatId,
-        'text'    => $reply,
-    ];
-    if ($replyMarkup !== null) {
-        $payloadData['reply_markup'] = $replyMarkup;
-    }
-    tgPost($token, 'sendMessage', $payloadData);
+    tgPost($token, 'sendMessage', [
+        'chat_id'      => $chatId,
+        'text'         => $reply,
+        'reply_markup' => $replyMarkup,
+    ]);
 }
 
 http_response_code(200);
