@@ -125,12 +125,10 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
         $playerId = preg_replace('/\D+/', '', (string)$tokens[2]) ?? '';
         $amount   = round((float)$tokens[3], 2);
     } else {
-        // Prefer explicit "Amount: <X> ETB" from the notification text first
         if ($fallbackText !== '' && preg_match('/Amount[:\s*]*(\d+(?:\.\d{1,2})?)\s*ETB/i', $fallbackText, $m)) {
             $amount = round((float)$m[1], 2);
         }
 
-        // Extract Telegram ID (6+ digits) and fallback numeric amount
         $numericTokens = [];
         foreach ($tokens as $tok) {
             if (preg_match('/^\d+(?:\.\d+)?$/', $tok)) {
@@ -244,13 +242,14 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                         ->execute([$targetPlayerId, $targetPlayerId]);
                     $before = 0.0;
                 } else {
-                    $before = (float)$pRow['balance'];
+                    $before = round((float)$pRow['balance'], 2);
                     if (trim((string)($pRow['chat_id'] ?? '')) === '') {
                         $pdo->prepare("UPDATE players SET chat_id = ? WHERE telegram_id = ?")
                             ->execute([$targetPlayerId, $targetPlayerId]);
                     }
                 }
 
+                // Add new deposit amount on top of existing player balance
                 $after = round($before + $amount, 2);
                 $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
                     ->execute([$after, $targetPlayerId]);
@@ -261,9 +260,10 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 
                 addLedger($pdo, $targetPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin");
                 $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
-                $toastText    = "Approved +{$amtFormatted} ETB";
-                $statusLabel  = "\n\n✅ APPROVED (+{$amtFormatted} ETB)";
+                $toastText    = "Approved +{$amtFormatted} ETB (Total: " . number_format($after, 2) . " ETB)";
+                $statusLabel  = "\n\n✅ APPROVED (+{$amtFormatted} ETB) | New Balance: " . number_format($after, 2) . " ETB";
                 $playerNotify = "SMART BINGO — Deposit Approved\n\n"
+                              . "Previous Balance: " . number_format($before, 2) . " ETB\n"
                               . "Credited Amount: +" . number_format($amount, 2) . " ETB\n"
                               . "New Balance: " . number_format($after, 2) . " ETB";
             } else {
@@ -311,7 +311,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 }
                 $bStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ? LIMIT 1");
                 $bStmt->execute([$targetPlayerId]);
-                $curBal = (float)($bStmt->fetchColumn() ?: 0.0);
+                $curBal = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
 
                 $toastText    = "Approved withdrawal";
                 $statusLabel  = "\n\n✅ WITHDRAWAL APPROVED";
@@ -321,7 +321,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
             } else {
                 $bStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ? LIMIT 1");
                 $bStmt->execute([$targetPlayerId]);
-                $before = (float)($bStmt->fetchColumn() ?: 0.0);
+                $before = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
                 $after  = round($before + $amount, 2);
 
                 $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
@@ -336,8 +336,9 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 $toastText    = "Rejected & refunded {$amtFormatted} ETB";
                 $statusLabel  = "\n\n❌ WITHDRAWAL REJECTED & REFUNDED";
                 $playerNotify = "SMART BINGO — Withdrawal Rejected\n\n"
-                              . "Your withdrawal of " . number_format($amount, 2) . " ETB was rejected and refunded to your balance.\n"
-                              . "Current Balance: " . number_format($after, 2) . " ETB";
+                              . "Previous Balance: " . number_format($before, 2) . " ETB\n"
+                              . "Refunded Amount: +" . number_format($amount, 2) . " ETB\n"
+                              . "New Balance: " . number_format($after, 2) . " ETB";
             }
         }
 
