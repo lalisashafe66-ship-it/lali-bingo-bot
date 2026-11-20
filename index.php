@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Future Bingo — Play &amp; Win</title>
+  <title>Smart Bingo — Play &amp; Win</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
@@ -420,7 +420,7 @@
   <header class="top-bar">
     <div class="brand-pill">
       <span class="brand-dot"></span>
-      <span>Future Bingo</span>
+      <span>Smart Bingo</span>
     </div>
     <button type="button" class="balance-pill" id="balance-display" onclick="switchTab('wallet')">0.00 ETB</button>
   </header>
