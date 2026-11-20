@@ -602,7 +602,7 @@ try {
                        . "📱 Telebirr: 0917461538\n"
                        . "💵 Minimum / Xiqqaa / ዝቅተኛ: 10 ETB\n\n"
                        . "🇪🇹 [Afaan Oromoo]\n"
-                       . "Maallaqa (yoo xiqqaate 10 ETB/minumum) herrega armaan olii keessaa tokkotti ergaa. Erga ergitanii booda Play Bingo -> Wallet -> Deposit tuqaa, hamma birrii galchaa, akkasumas ergaa SMS/ragaa kaffaltii guutuu maxxansaa.\n\n"
+                       . "Maallaqa (yoo xiqqaate 10 ETB/minimum) herrega armaan olii keessaa tokkotti ergaa. Erga ergitanii booda Play Bingo -> Wallet -> Deposit tuqaa, hamma birrii galchaa, akkasumas ergaa SMS/ragaa kaffaltii guutuu maxxansaa.\n\n"
                        . "🇪🇹 [አማርኛ]\n"
                        . "ቢያንስ 10 ብር ከላይ ባሉት ሂሳቦች በአንዱ ያስተላልፉ። ከላኩ በኋላ Play Bingo -> Wallet -> Deposit ይንኩ፣ የብር መጠን ያስገቡ እና ሙሉ የክፍያ SMS/ደረሰኝ መልዕክት ይለጥፉ።\n\n"
                        . "🇬🇧 [English]\n"
