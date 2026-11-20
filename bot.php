@@ -248,7 +248,8 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
         } else {
             tgPost($token, 'answerCallbackQuery', [
                 'callback_query_id' => $cbId,
-                'text'              => 'Unknown action.',
+                'text'              => 'Data: ' . substr($data, 0, 150),
+                'show_alert'        => true,
             ]);
             http_response_code(200);
             echo "OK";
