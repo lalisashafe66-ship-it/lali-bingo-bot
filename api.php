@@ -155,6 +155,31 @@ function hasWinningLine(array $board, array $calledSet): ?array {
     return null;
 }
 
+function resolvePlayerDisplayName(PDO $pdo, string $telegramId, string $roomFirstName = ''): string {
+    $name = trim($roomFirstName);
+    if ($name !== '' && strcasecmp($name, 'Player') !== 0) {
+        return $name;
+    }
+
+    if ($telegramId !== '') {
+        $stmt = $pdo->prepare("SELECT first_name, username FROM players WHERE telegram_id = ? LIMIT 1");
+        $stmt->execute([$telegramId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            $pFirst = trim((string)($row['first_name'] ?? ''));
+            $pUser  = trim((string)($row['username'] ?? ''));
+            if ($pFirst !== '' && strcasecmp($pFirst, 'Player') !== 0) {
+                return $pFirst;
+            }
+            if ($pUser !== '') {
+                return ltrim($pUser, '@');
+            }
+        }
+    }
+
+    return $name !== '' ? $name : 'Player';
+}
+
 function recordNonWinningPlayers(PDO $pdo, int $roomId, string $gameLabel, array $winnerIds): void {
     $rpStmt = $pdo->prepare("SELECT telegram_id, COALESCE(SUM(stake_paid), 0) AS player_stake FROM room_players WHERE room_id = ? GROUP BY telegram_id");
     $rpStmt->execute([$roomId]);
@@ -172,7 +197,6 @@ function recordNonWinningPlayers(PDO $pdo, int $roomId, string $gameLabel, array
             continue;
         }
 
-        // Avoid duplicate loss log for the same room
         $dupStmt = $pdo->prepare("SELECT id FROM balance_ledger WHERE telegram_id = ? AND room_id = ? AND type = 'loss_settled' LIMIT 1");
         $dupStmt->execute([$tid, $roomId]);
         if ($dupStmt->fetchColumn()) {
@@ -205,7 +229,6 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
             return $room;
         }
 
-        // Deduplicate by telegram_id and cap at maximum 2 co-winners
         $deduped = [];
         $seenIds = [];
         foreach ($winners as $w) {
@@ -214,6 +237,7 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
                 continue;
             }
             $seenIds[$tid] = true;
+            $w['name'] = resolvePlayerDisplayName($pdo, $tid, (string)($w['name'] ?? ''));
             $deduped[] = $w;
             if (count($deduped) >= 2) {
                 break;
@@ -313,11 +337,9 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
         shuffle($pool);
     }
 
-    // Slower ball calling interval (2.2 seconds per call) when players are active
     $drawIntervalSec = 2.2;
     $maxRoundSec = 150;
 
-    // All players in the waiting lobby start together once countdown ends
     if ($status === 'waiting' && $now >= $startsAt) {
         $status = 'active';
         $startedAt = $now;
@@ -355,9 +377,10 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             $winLine = hasWinningLine($board, $calledSet);
             if ($winLine !== null) {
                 $seenWinnerIds[$tid] = true;
+                $displayName = resolvePlayerDisplayName($pdo, $tid, (string)($entry['first_name'] ?? ''));
                 $autoWinners[] = [
                     'telegram_id'    => $tid,
-                    'name'           => $entry['first_name'] ?: 'Player',
+                    'name'           => $displayName,
                     'cartela_number' => $cn,
                     'board'          => $board,
                     'winning_line'   => $winLine,
@@ -365,7 +388,6 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             }
         }
 
-        // End round as soon as winner(s) achieve Bingo on this draw; split pool equally if co-winners tie on the same draw
         if (count($autoWinners) > 0) {
             return finalizeRoomWinners($pdo, $room, $autoWinners);
         }
@@ -476,7 +498,6 @@ elseif ($action === 'get_room_state') {
 
     $payload = buildRoomPayload($pdo, $room);
 
-    // If the active round just finished, open a fresh waiting round with countdown so players can join next round
     if ($payload['status'] === 'finished' && $stake > 0) {
         $now = time();
         $code = generateGameCode(5);
@@ -503,7 +524,8 @@ elseif ($action === 'get_room_state') {
 }
 elseif ($action === 'join_room') {
     $telegramId = trim((string)($_POST['telegram_id'] ?? ''));
-    $firstName = trim((string)($_POST['first_name'] ?? 'Player'));
+    $rawFirstName = trim((string)($_POST['first_name'] ?? ''));
+    $rawUsername = ltrim(trim((string)($_POST['username'] ?? '')), '@');
     $stake = (float)($_POST['stake'] ?? $_POST['fee'] ?? 0);
     $cartelasRaw = $_POST['cartela_numbers'] ?? '';
 
@@ -538,7 +560,6 @@ elseif ($action === 'join_room') {
 
     $pdo->beginTransaction();
     try {
-        // Check if a round for this stake is currently active (in progress)
         $activeStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'active' ORDER BY id DESC LIMIT 1");
         $activeStmt->execute([$stake]);
         $activeRoom = $activeStmt->fetch(PDO::FETCH_ASSOC);
@@ -557,18 +578,31 @@ elseif ($action === 'join_room') {
             }
         }
 
-        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ?");
+        $stmt = $pdo->prepare("SELECT balance, first_name, username FROM players WHERE telegram_id = ?");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        $effectiveName = ($rawFirstName !== '' && strcasecmp($rawFirstName, 'Player') !== 0)
+            ? $rawFirstName
+            : ($rawUsername !== '' ? $rawUsername : ($rawFirstName !== '' ? $rawFirstName : 'Player'));
+
         if (!$player) {
-            $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, ?, 'WebUser', 50.00)");
-            $ins->execute([$telegramId, $firstName ?: 'Player']);
+            $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, username, phone, balance) VALUES (?, ?, ?, 'WebUser', 50.00)");
+            $ins->execute([$telegramId, $effectiveName, $rawUsername]);
             $currentBalance = 50.00;
         } else {
             $currentBalance = (float)$player['balance'];
-            if ($firstName !== '' && $player['first_name'] !== $firstName) {
-                $pdo->prepare("UPDATE players SET first_name = ? WHERE telegram_id = ?")->execute([$firstName, $telegramId]);
+            $existingFirst = trim((string)($player['first_name'] ?? ''));
+            if ($rawFirstName !== '' && strcasecmp($rawFirstName, 'Player') !== 0 && $existingFirst !== $rawFirstName) {
+                $pdo->prepare("UPDATE players SET first_name = ? WHERE telegram_id = ?")->execute([$rawFirstName, $telegramId]);
+                $effectiveName = $rawFirstName;
+            } elseif ($existingFirst !== '' && strcasecmp($existingFirst, 'Player') !== 0) {
+                $effectiveName = $existingFirst;
+            } elseif ($rawUsername !== '') {
+                $effectiveName = $rawUsername;
+            }
+            if ($rawUsername !== '') {
+                $pdo->prepare("UPDATE players SET username = ? WHERE telegram_id = ?")->execute([$rawUsername, $telegramId]);
             }
         }
 
@@ -596,7 +630,6 @@ elseif ($action === 'join_room') {
             $roomId = (int)$room['id'];
         }
 
-        // If countdown already reached zero right as this request arrived, start round and block late entry
         $preCheckPayload = buildRoomPayload($pdo, $room);
         if ($preCheckPayload['status'] === 'active') {
             $pdo->commit();
@@ -626,7 +659,7 @@ elseif ($action === 'join_room') {
 
         $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, first_name, player_number, stake_paid) VALUES (?, ?, ?, ?, ?)");
         foreach ($cartelaNumbers as $cn) {
-            $logRoom->execute([$roomId, $telegramId, $firstName ?: 'Player', $cn, $stake]);
+            $logRoom->execute([$roomId, $telegramId, $effectiveName, $cn, $stake]);
         }
 
         $pdo->commit();
