@@ -130,7 +130,6 @@ function applyJoinReferralBonus(PDO $pdo, string $token, string $newUserId, stri
 
     $pdo->beginTransaction();
     try {
-        // Only apply once per new user
         $chk = $pdo->prepare("SELECT id FROM referrals WHERE referred_id = ? LIMIT 1");
         $chk->execute([$newUserId]);
         if ($chk->fetchColumn()) {
@@ -546,7 +545,6 @@ try {
     $balanceFormatted = number_format((float)($player['balance'] ?? 0.0), 2);
     $invitesCount = (int)($player['invites_count'] ?? 0);
 
-    // Handle /start with optional referral payload: /start ref_<id> or /start <id>
     if (preg_match('/^\/start(?:\s+(.+))?$/i', $text, $startMatch)) {
         $startPayload = trim((string)($startMatch[1] ?? ''));
         $refBonusNote = '';
@@ -599,11 +597,16 @@ try {
 
             case 'Deposit':
             case '/deposit':
-                $reply = "SMART BINGO — Deposit Accounts\n\n"
-                       . "Transfer your deposit (minimum 10 ETB) to either account below:\n"
-                       . "• CBE Bank: 1000171689116 (LALISA SHAFE)\n"
-                       . "• Telebirr: 0917461538\n\n"
-                       . "After sending, tap Play Bingo -> Wallet -> Deposit, enter your ETB amount, and paste your full payment SMS or receipt message for admin approval.";
+                $reply = "SMART BINGO — Deposit Accounts / Herrega Kaffaltii / የክፍያ ሂሳቦች\n\n"
+                       . "🏦 CBE Bank: 1000171689116 (LALISA SHAFE)\n"
+                       . "📱 Telebirr: 0917461538\n"
+                       . "💵 Minimum / Xiqqaa / ዝቅተኛ: 10 ETB\n\n"
+                       . "🇪🇹 [Afaan Oromoo]\n"
+                       . "Maallaqa (xiqqaate 10 ETB) herrega armaan olii keessaa tokkotti ergaa. Erga ergitanii booda Play Bingo -> Wallet -> Deposit tuqaa, hamma birrii galchaa, akkasumas ergaa SMS/ragaa kaffaltii guutuu maxxansaa.\n\n"
+                       . "🇪🇹 [አማርኛ]\n"
+                       . "ቢያንስ 10 ብር ከላይ ባሉት ሂሳቦች በአንዱ ያስተላልፉ። ከላኩ በኋላ Play Bingo -> Wallet -> Deposit ይንኩ፣ የብር መጠን ያስገቡ እና ሙሉ የክፍያ SMS/ደረሰኝ መልዕክት ይለጥፉ።\n\n"
+                       . "🇬🇧 [English]\n"
+                       . "Transfer your deposit (minimum 10 ETB) to either account above. Then tap Play Bingo -> Wallet -> Deposit, enter your ETB amount, and paste your full payment SMS or receipt message for admin approval.";
                 break;
 
             case 'Withdraw':
