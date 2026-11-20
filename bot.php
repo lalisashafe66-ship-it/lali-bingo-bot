@@ -121,9 +121,9 @@ function buildMainMenuKeyboard(string $webAppUrl, bool $isAdmin): array {
     }
 
     return [
-        'keyboard'          => $rows,
-        'resize_keyboard'   => true,
-        'is_persistent'     => true,
+        'keyboard'                => $rows,
+        'resize_keyboard'         => true,
+        'is_persistent'           => true,
         'input_field_placeholder' => 'Choose a menu or type /start...',
     ];
 }
@@ -450,9 +450,11 @@ try {
 
         case 'Deposit':
         case '/deposit':
-            $reply = "SMART BINGO — Deposit\n\n"
-                   . "Open Play Bingo -> Wallet -> Deposit, enter your ETB amount (min 10 ETB) and Telebirr/CBE transaction reference.\n"
-                   . "Once approved by admin, your balance updates automatically.";
+            $reply = "SMART BINGO — Deposit Accounts\n\n"
+                   . "Transfer your deposit (minimum 10 ETB) to either account below:\n"
+                   . "• CBE Bank: 1000171689116 (LALISA SHAFE)\n"
+                   . "• Telebirr: 0917461538\n\n"
+                   . "After sending, tap Play Bingo -> Wallet -> Deposit, enter your ETB amount, and paste your full payment SMS or receipt message for admin approval.";
             break;
 
         case 'Withdraw':
