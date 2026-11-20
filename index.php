@@ -1195,6 +1195,23 @@
         .catch(() => alert('Network error while joining table.'));
     }
 
+    function extractTxRefFromMessage(rawText) {
+      if (!rawText) return '';
+      const trimmed = rawText.trim();
+      const patterns = [
+        /\b(?:transaction\s*(?:id|no|number)|tx\s*ref|ref(?:erence)?\s*(?:id|no)?|receipt\s*(?:no)?|ft)\s*[:#-]?\s*([A-Z0-9]{6,25})\b/i,
+        /\b([A-Z]{2,6}[0-9]{4,}[A-Z0-9]{0,12})\b/,
+        /\b([A-Z0-9]{8,20})\b/
+      ];
+      for (const re of patterns) {
+        const match = trimmed.match(re);
+        if (match && match[1]) {
+          return match[1].toUpperCase();
+        }
+      }
+      return trimmed.slice(0, 32).toUpperCase();
+    }
+
     function startInstantDeposit() {
       const amountStr = prompt('Enter deposit amount in ETB (minimum 10):', '50');
       if (!amountStr) return;
@@ -1204,13 +1221,23 @@
         return;
       }
 
-      const txRef = prompt('Enter your Telebirr or CBE Transaction ID / Receipt Reference:');
-      if (!txRef || !txRef.trim()) return;
+      const fullMsg = prompt(
+        'Paste the FULL SMS or payment message from Telebirr or CBE (no need to type only the short code):',
+        ''
+      );
+      if (!fullMsg || !fullMsg.trim()) {
+        alert('Please paste your payment message.');
+        return;
+      }
+
+      const cleanMessage = fullMsg.trim();
+      const extractedRef = extractTxRefFromMessage(cleanMessage);
 
       const formData = new FormData();
       formData.append('telegram_id', telegramId);
       formData.append('amount', amountNum.toFixed(2));
-      formData.append('tx_ref', txRef.trim());
+      formData.append('tx_ref', extractedRef);
+      formData.append('full_message', cleanMessage);
 
       fetch('verify_payment.php', { method: 'POST', body: formData })
         .then(async res => {
@@ -1220,9 +1247,9 @@
         .then(data => {
           if (data.success) {
             if (data.new_balance !== undefined) updateBalanceUI(data.new_balance);
-            alert(data.message || 'Deposit request submitted!');
+            alert(data.message || 'Full payment message submitted for admin approval!');
           } else {
-            alert(data.message || data.error || 'Transaction ID not found or already claimed.');
+            alert(data.message || data.error || 'Could not submit payment message.');
           }
         })
         .catch(err => alert('Network error: ' + err.message));
