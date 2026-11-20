@@ -116,7 +116,6 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
     $kind = $isWithdraw ? 'withdrawal' : 'deposit';
 
     $tokens = preg_split('/[:|_ -]+/', trim($data)) ?: [];
-    $nums = [];
     $recordId = 0;
     $playerId = '';
     $amount = 0.0;
@@ -126,25 +125,32 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
         $playerId = preg_replace('/\D+/', '', (string)$tokens[2]) ?? '';
         $amount   = round((float)$tokens[3], 2);
     } else {
+        // Prefer explicit "Amount: <X> ETB" from the notification text first
+        if ($fallbackText !== '' && preg_match('/Amount[:\s*]*(\d+(?:\.\d{1,2})?)\s*ETB/i', $fallbackText, $m)) {
+            $amount = round((float)$m[1], 2);
+        }
+
+        // Extract Telegram ID (6+ digits) and fallback numeric amount
+        $numericTokens = [];
         foreach ($tokens as $tok) {
-            if (is_numeric($tok)) {
-                $nums[] = $tok;
+            if (preg_match('/^\d+(?:\.\d+)?$/', $tok)) {
+                $numericTokens[] = $tok;
             }
         }
-        foreach ($nums as $n) {
+        foreach ($numericTokens as $n) {
             if (strlen((string)$n) >= 6 && $playerId === '') {
                 $playerId = (string)$n;
-            } elseif ($amount <= 0 && (float)$n > 0) {
-                $amount = round((float)$n, 2);
             }
         }
-        if ($amount <= 0 && $fallbackText !== '') {
-            if (preg_match('/(\d+(?:\.\d{1,2})?)\s*ETB/i', $fallbackText, $m)) {
-                $amount = round((float)$m[1], 2);
+        if ($amount <= 0 && count($numericTokens) > 0) {
+            $lastNum = (float)end($numericTokens);
+            if ($lastNum > 0) {
+                $amount = round($lastNum, 2);
             }
         }
+
         if ($playerId === '' && $fallbackText !== '') {
-            if (preg_match('/\((\d{5,})\)/', $fallbackText, $m) || preg_match('/ID[:\s]*(\d{5,})/i', $fallbackText, $m)) {
+            if (preg_match('/\((\d{5,})\)/', $fallbackText, $m) || preg_match('/ID[:\s*]*(\d{5,})/i', $fallbackText, $m)) {
                 $playerId = (string)$m[1];
             }
         }
@@ -254,8 +260,9 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 }
 
                 addLedger($pdo, $targetPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin");
-                $toastText    = "Approved +{$amount} ETB";
-                $statusLabel  = "\n\n✅ APPROVED (+{$amount} ETB)";
+                $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
+                $toastText    = "Approved +{$amtFormatted} ETB";
+                $statusLabel  = "\n\n✅ APPROVED (+{$amtFormatted} ETB)";
                 $playerNotify = "SMART BINGO — Deposit Approved\n\n"
                               . "Credited Amount: +" . number_format($amount, 2) . " ETB\n"
                               . "New Balance: " . number_format($after, 2) . " ETB";
@@ -325,7 +332,8 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 }
 
                 addLedger($pdo, $targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal rejected & refunded");
-                $toastText    = "Rejected & refunded {$amount} ETB";
+                $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
+                $toastText    = "Rejected & refunded {$amtFormatted} ETB";
                 $statusLabel  = "\n\n❌ WITHDRAWAL REJECTED & REFUNDED";
                 $playerNotify = "SMART BINGO — Withdrawal Rejected\n\n"
                               . "Your withdrawal of " . number_format($amount, 2) . " ETB was rejected and refunded to your balance.\n"
