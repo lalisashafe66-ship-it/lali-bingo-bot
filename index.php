@@ -20,7 +20,7 @@
       --line-border: rgba(255, 255, 255, 0.08);
     }
 
-    * {
+    *, *::before, *::after {
       box-sizing: border-box;
       -webkit-tap-highlight-color: transparent;
     }
@@ -465,7 +465,7 @@
   <!-- SCREEN 2: LOBBY WAITING -->
   <section id="screen-wait-active" class="container d-none">
     <h1 class="section-title">Game In Progress</h1>
-    <p class="section-sub">Waiting for the current round to finish before joining the next lobby.</p>
+    <p class="section-sub" id="wait-active-banner">you are visiting now, please wait for the next cartella to start the game</p>
     <div class="card-panel">
       <div style="display:flex;justify-content:space-between;font-size:0.86rem;margin-bottom:8px;">
         <span>Game <strong id="wait-game-code">--</strong></span>
@@ -1010,8 +1010,12 @@
       leaveToSetup();
     }
 
-    function renderWaitActiveScreen(room) {
+    function renderWaitActiveScreen(room, customMsg = '') {
       showOnlyScreen('wait-active');
+      const bannerEl = document.getElementById('wait-active-banner');
+      if (bannerEl) {
+        bannerEl.textContent = customMsg || 'you are visiting now, please wait for the next cartella to start the game';
+      }
       document.getElementById('wait-game-code').textContent = room.game_code || '--';
       document.getElementById('wait-derash').textContent = Number(room.derash || 0).toFixed(2);
       document.getElementById('wait-calls').textContent = room.calls_count ?? 0;
@@ -1097,7 +1101,8 @@
               } else {
                 stopRoomPolling();
                 currentRoomId = null;
-                alert('Round ended with no winner.');
+                selectedCartelaNumbers = [];
+                alert('Round ended with no winner. Starting next round.');
                 leaveToSetup();
               }
             }
@@ -1126,9 +1131,9 @@
         .catch(() => {});
     }
 
-    function startWaitForActiveGame(room) {
+    function startWaitForActiveGame(room, noticeMsg = '') {
       currentRoomId = room.room_id;
-      renderWaitActiveScreen(room);
+      renderWaitActiveScreen(room, noticeMsg);
       stopRoomPolling();
       roomPollInterval = setInterval(() => {
         fetch(`api.php?action=get_room_state&room_id=${encodeURIComponent(room.room_id)}`)
@@ -1136,10 +1141,11 @@
           .then(data => {
             if (!data.success || !data.room) return;
             if (data.room.status === 'active') {
-              renderWaitActiveScreen(data.room);
+              renderWaitActiveScreen(data.room, noticeMsg);
             } else if (data.room.status === 'finished') {
               stopRoomPolling();
               currentRoomId = null;
+              selectedCartelaNumbers = [];
               alert('Current game finished! You can now pick your cartelas for the next round.');
               leaveToSetup();
             }
@@ -1166,7 +1172,10 @@
         .then(res => res.json())
         .then(data => {
           if (data.already_started && data.room) {
-            startWaitForActiveGame(data.room);
+            const msg = data.error || 'you are visiting now, please wait for the next cartella to start the game';
+            sounds.errorBuzz();
+            alert(msg);
+            startWaitForActiveGame(data.room, msg);
             return;
           }
           if (!data.success) {
