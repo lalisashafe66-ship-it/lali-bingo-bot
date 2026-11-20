@@ -606,7 +606,7 @@ try {
                        . "🇪🇹 [አማርኛ]\n"
                        . "ቢያንስ 10 ብር ከላይ ባሉት ሂሳቦች በአንዱ ያስተላልፉ። ከላኩ በኋላ Play Bingo -> Wallet -> Deposit ይንኩ፣ የብር መጠን ያስገቡ እና ሙሉ የክፍያ SMS/ደረሰኝ መልዕክት ይለጥፉ።\n\n"
                        . "🇬🇧 [English]\n"
-                       . "Transfer your deposit (minimum 10 ETB) to either account above. Then tap Play Bingo -> Wallet -> Deposit, enter your ETB amount, and paste your full payment SMS or receipt message for admin approval.";
+                       . "Transfer your deposit (minimum 10 ETB) to one of the above account (CBE ACCOUNT/TELEBIRR). Then tap Play Bingo -> Wallet -> Deposit, enter your ETB amount, and paste your full payment SMS or receipt message for admin approval.";
                 break;
 
             case 'Withdraw':
