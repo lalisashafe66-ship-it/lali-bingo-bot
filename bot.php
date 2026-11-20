@@ -536,6 +536,7 @@ if ($chatId === 0 || $userId === 0) {
 
 $isAdmin = ($adminId !== '' && (string)$userId === $adminId);
 $reply = null;
+$parseMode = '';
 $replyMarkup = buildMainMenuKeyboard($webAppUrl, $isAdmin);
 
 try {
@@ -597,16 +598,17 @@ try {
 
             case 'Deposit':
             case '/deposit':
-                $reply = "SMART BINGO — Deposit Accounts / Herrega Kaffaltii / የክፍያ ሂሳቦች\n\n"
-                       . "🏦 CBE Bank: 1000171689116 (LALISA SHAFE)\n"
-                       . "📱 Telebirr: 0917461538\n"
-                       . "💵 Minimum / Xiqqaa / ዝቅተኛ: 10 ETB\n\n"
-                       . "🇪🇹 [Afaan Oromoo]\n"
-                       . "Maallaqa (yoo xiqqaate 10 ETB/minimum) herrega armaan olii keessaa tokkotti ergaa. Erga ergitanii booda Play Bingo -> Wallet -> Deposit tuqaa, hamma birrii galchaa, akkasumas ergaa SMS/ragaa kaffaltii guutuu maxxansaa.\n\n"
-                       . "🇪🇹 [አማርኛ]\n"
-                       . "ቢያንስ 10 ብር ከላይ ባሉት ሂሳቦች በአንዱ ያስተላልፉ። ከላኩ በኋላ Play Bingo -> Wallet -> Deposit ይንኩ፣ የብር መጠን ያስገቡ እና ሙሉ የክፍያ SMS/ደረሰኝ መልዕክት ይለጥፉ።\n\n"
-                       . "🇬🇧 [English]\n"
-                       . "Transfer your deposit (minimum 10 ETB) to one of the above account (CBE ACCOUNT/TELEBIRR). Then tap Play Bingo -> Wallet -> Deposit, enter your ETB amount, and paste your full payment SMS or receipt message for admin approval.";
+                $parseMode = 'Markdown';
+                $reply = "*SMART BINGO — Deposit Accounts / Herrega Kaffaltii / የክፍያ ሂሳቦች*\n\n"
+                       . "*🏦 CBE Bank: 1000171689116 (LALISA SHAFE)*\n"
+                       . "*📱 Telebirr: 0917461538*\n"
+                       . "*💵 Minimum / Xiqqaa / ዝቅተኛ: 10 ETB*\n\n"
+                       . "*🇪🇹 [Afaan Oromoo]*\n"
+                       . "*Maallaqa (yoo xiqqaate 10 ETB/minumum) herrega armaan olii keessaa tokkotti ergaa. Erga ergitanii booda Play Bingo -> Wallet -> Deposit tuqaa, hamma birrii galchaa, akkasumas ergaa SMS/ragaa kaffaltii guutuu maxxansaa.*\n\n"
+                       . "*🇪🇹 [አማርኛ]*\n"
+                       . "*ቢያንስ 10 ብር ከላይ ባሉት ሂሳቦች በአንዱ ያስተላልፉ። ከላኩ በኋላ Play Bingo -> Wallet -> Deposit ይንኩ፣ የብር መጠን ያስገቡ እና ሙሉ የክፍያ SMS/ደረሰኝ መልዕክት ይለጥፉ。*\n\n"
+                       . "*🇬🇧 [English]*\n"
+                       . "*Transfer your deposit (minimum 10 ETB) to one of the above account (CBE ACCOUNT/TELEBIRR). Then tap Play Bingo -> Wallet -> Deposit, enter your ETB amount, and paste your full payment SMS or receipt message for admin approval.*";
                 break;
 
             case 'Withdraw':
@@ -662,11 +664,15 @@ try {
 }
 
 if ($reply !== null) {
-    tgPost($token, 'sendMessage', [
+    $payload = [
         'chat_id'      => $chatId,
         'text'         => $reply,
         'reply_markup' => $replyMarkup,
-    ]);
+    ];
+    if ($parseMode !== '') {
+        $payload['parse_mode'] = $parseMode;
+    }
+    tgPost($token, 'sendMessage', $payload);
 }
 
 http_response_code(200);
