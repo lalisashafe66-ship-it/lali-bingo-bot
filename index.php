@@ -386,6 +386,14 @@
       text-align: center;
     }
 
+    .winner-top-name {
+      font-size: 1.15rem;
+      font-weight: 900;
+      color: #ffffff;
+      margin-top: 6px;
+      letter-spacing: 0.2px;
+    }
+
     .bottom-nav {
       position: fixed;
       bottom: 0;
@@ -626,6 +634,7 @@
   <div id="winner-modal" class="modal-backdrop-custom d-none">
     <div class="modal-box-custom">
       <div style="color:var(--accent-gold);font-weight:900;font-size:1.2rem;letter-spacing:1px;">BINGO!</div>
+      <div id="winner-top-name" class="winner-top-name"></div>
       <div id="winner-list-banner" style="background:#e67e00;border-radius:10px;padding:10px;margin:10px 0;font-weight:700;"></div>
       <div id="winner-board-title" style="font-size:0.85rem;font-weight:700;color:var(--accent-gold);margin-bottom:6px;">Board #--</div>
       <div class="bingo-5col" style="margin-bottom:4px;">
@@ -890,8 +899,8 @@
       if (!soundEnabled || !('speechSynthesis' in window)) return;
       window.speechSynthesis.cancel();
       const ut = new SpeechSynthesisUtterance(`${letter} ${number}`);
-      ut.rate = 1.05;
-      ut.pitch = 1.1;
+      ut.rate = 0.95;
+      ut.pitch = 1.05;
       window.speechSynthesis.speak(ut);
     }
 
@@ -979,15 +988,33 @@
       sounds.winFanfare();
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
+      const topNameEl = document.getElementById('winner-top-name');
       const banner = document.getElementById('winner-list-banner');
+      const didIWin = Array.isArray(winners) && winners.some(w => String(w.telegram_id) === String(telegramId));
+      const myEntry = Array.isArray(winners) ? winners.find(w => String(w.telegram_id) === String(telegramId)) : null;
+
       if (!winners || winners.length === 0) {
+        if (topNameEl) topNameEl.textContent = '';
         banner.innerHTML = `<div>Round Ended</div>`;
       } else {
-        banner.innerHTML = winners.map(w => `
-          <div style="margin-bottom:4px;">
-            <span>${w.name || 'Player'}</span> has won <strong>${Number(w.prize || 0).toFixed(2)} ETB</strong>
-          </div>
-        `).join('');
+        const winnerNamesOnly = winners.map(w => w.name || 'Player').join(', ');
+        if (topNameEl) {
+          topNameEl.textContent = didIWin ? `Congratulation ${winnerNamesOnly}` : winnerNamesOnly;
+        }
+
+        banner.innerHTML = winners.map(w => {
+          const wName = w.name || 'Player';
+          const wPrize = Number(w.prize || 0).toFixed(2);
+          if (didIWin) {
+            return `
+              <div style="margin-bottom:4px;">
+                <div>Congratulation ${wName}</div>
+                <div style="font-size:0.88rem;opacity:0.95;">Won ${wPrize} ETB</div>
+              </div>
+            `;
+          }
+          return `<div style="margin-bottom:4px;">${wName}</div>`;
+        }).join('');
       }
 
       const firstWinner = (winners && winners.length > 0) ? winners[0] : null;
@@ -1013,13 +1040,11 @@
         grid.appendChild(cell);
       });
 
-      const didIWin = Array.isArray(winners) && winners.some(w => String(w.telegram_id) === String(telegramId));
-      const myEntry = Array.isArray(winners) ? winners.find(w => String(w.telegram_id) === String(telegramId)) : null;
       gameHistory.unshift({
         code: currentGameCode,
         board: activeCartelaNumber,
         won: didIWin,
-        status: didIWin ? `Won +${Number(myEntry.prize || 0).toFixed(2)} ETB` : 'Finished'
+        status: didIWin ? `Won +${Number((myEntry && myEntry.prize) || 0).toFixed(2)} ETB` : 'Finished'
       });
 
       document.getElementById('winner-modal').classList.remove('d-none');
@@ -1133,7 +1158,7 @@
       };
 
       tick();
-      roomPollInterval = setInterval(tick, 1200);
+      roomPollInterval = setInterval(tick, 1500);
     }
 
     function pollSetupRoomStatus() {
