@@ -28,7 +28,7 @@ $telegramId = (string)($message['from']['id'] ?? $callbackQuery['from']['id'] ??
 
 $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
 $appUrl = rtrim((string)(getenv('APP_URL') ?: 'https://lali-bingo-bot.onrender.com'), '/');
-$botUsername = ltrim((string)(getenv('BOT_USERNAME') ?: 'Future_Bingo_bot'), '@');
+$botUsername = ltrim((string)(getenv('BOT_USERNAME') ?: 'Anbesa_Bingo_bot'), '@');
 $ADMIN_ID = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
 
 function tgRequest(string $method, array $params) {
