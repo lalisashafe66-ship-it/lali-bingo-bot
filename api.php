@@ -155,55 +155,154 @@ function hasWinningLine(array $board, array $calledSet): ?array {
     return null;
 }
 
+function recordNonWinningPlayers(PDO $pdo, int $roomId, string $gameLabel, array $winnerIds): void {
+    $rpStmt = $pdo->prepare("SELECT telegram_id, COALESCE(SUM(stake_paid), 0) AS player_stake FROM room_players WHERE room_id = ? GROUP BY telegram_id");
+    $rpStmt->execute([$roomId]);
+    $players = $rpStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $winnerMap = array_flip(array_map('strval', $winnerIds));
+
+    foreach ($players as $p) {
+        $tid = (string)$p['telegram_id'];
+        if (isset($winnerMap[$tid])) {
+            continue;
+        }
+        $stakeLost = round((float)($p['player_stake'] ?? 0), 2);
+        if ($stakeLost <= 0) {
+            continue;
+        }
+
+        // Avoid duplicate loss log for the same room
+        $dupStmt = $pdo->prepare("SELECT id FROM balance_ledger WHERE telegram_id = ? AND room_id = ? AND type = 'loss_settled' LIMIT 1");
+        $dupStmt->execute([$tid, $roomId]);
+        if ($dupStmt->fetchColumn()) {
+            continue;
+        }
+
+        $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+        $balStmt->execute([$tid]);
+        $curBal = round((float)($balStmt->fetchColumn() ?: 0), 2);
+        logBalanceChange($pdo, $tid, $roomId, 'loss_settled', -$stakeLost, $curBal, $curBal, "Lost Game {$gameLabel} (stake {$stakeLost} ETB already deducted)");
+    }
+}
+
 function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
     $roomId = (int)$room['id'];
+    $gameLabel = (string)($room['game_code'] ?: $roomId);
 
-    // Cap at maximum 2 winners
-    $winners = array_slice($winners, 0, 2);
+    $pdo->beginTransaction();
+    try {
+        $curStmt = $pdo->prepare("SELECT status, winners_json FROM rooms WHERE id = ? LIMIT 1");
+        $curStmt->execute([$roomId]);
+        $curRow = $curStmt->fetch(PDO::FETCH_ASSOC);
 
-    $stakesStmt = $pdo->prepare("SELECT COALESCE(SUM(stake_paid), 0) AS total_stakes FROM room_players WHERE room_id = ?");
-    $stakesStmt->execute([$roomId]);
-    $totalStakes = (float)($stakesStmt->fetchColumn() ?: 0);
-    $totalDerash = round($totalStakes * 0.80, 2);
-
-    $winnerCount = max(1, count($winners));
-    $sharePerWinner = round($totalDerash / $winnerCount, 2);
-
-    foreach ($winners as &$w) {
-        $w['prize'] = $sharePerWinner;
-    }
-    unset($w);
-
-    foreach ($winners as $w) {
-        $wTid = (string)$w['telegram_id'];
-        $wName = $w['name'];
-        $checkLog = $pdo->prepare("SELECT id, prize FROM game_winners WHERE room_id = ? AND telegram_id = ? LIMIT 1");
-        $checkLog->execute([$roomId, $wTid]);
-        $prevWin = $checkLog->fetch(PDO::FETCH_ASSOC);
-
-        if (!$prevWin) {
-            $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
-            $balStmt->execute([$wTid]);
-            $before = (float)($balStmt->fetchColumn() ?: 0);
-            $after = round($before + $sharePerWinner, 2);
-
-            $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
-                ->execute([$after, $wTid]);
-            $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)")
-                ->execute([$roomId, $wTid, $wName, $sharePerWinner]);
-            logBalanceChange($pdo, $wTid, $roomId, 'win_payout', $sharePerWinner, $before, $after, "Won Game " . ($room['game_code'] ?? $roomId));
+        if ($curRow && $curRow['status'] === 'finished') {
+            $existingWinners = json_decode((string)($curRow['winners_json'] ?? '[]'), true);
+            if (!is_array($existingWinners)) $existingWinners = [];
+            $pdo->commit();
+            $room['status'] = 'finished';
+            $room['winners_json'] = json_encode($existingWinners);
+            return $room;
         }
+
+        // Deduplicate by telegram_id and cap at maximum 2 co-winners
+        $deduped = [];
+        $seenIds = [];
+        foreach ($winners as $w) {
+            $tid = (string)($w['telegram_id'] ?? '');
+            if ($tid === '' || isset($seenIds[$tid])) {
+                continue;
+            }
+            $seenIds[$tid] = true;
+            $deduped[] = $w;
+            if (count($deduped) >= 2) {
+                break;
+            }
+        }
+
+        $stakesStmt = $pdo->prepare("SELECT COALESCE(SUM(stake_paid), 0) AS total_stakes FROM room_players WHERE room_id = ?");
+        $stakesStmt->execute([$roomId]);
+        $totalStakes = (float)($stakesStmt->fetchColumn() ?: 0);
+        $totalDerash = round($totalStakes * 0.80, 2);
+
+        $winnerCount = count($deduped);
+        $sharePerWinner = ($winnerCount > 0) ? round($totalDerash / $winnerCount, 2) : 0.0;
+
+        foreach ($deduped as &$w) {
+            $w['prize'] = $sharePerWinner;
+        }
+        unset($w);
+
+        $winnerIds = [];
+        foreach ($deduped as $w) {
+            $wTid = (string)$w['telegram_id'];
+            $wName = (string)($w['name'] ?? 'Player');
+            $winnerIds[] = $wTid;
+
+            $checkLog = $pdo->prepare("SELECT id, prize FROM game_winners WHERE room_id = ? AND telegram_id = ? LIMIT 1");
+            $checkLog->execute([$roomId, $wTid]);
+            $prevWin = $checkLog->fetch(PDO::FETCH_ASSOC);
+
+            if (!$prevWin) {
+                $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+                $balStmt->execute([$wTid]);
+                $before = round((float)($balStmt->fetchColumn() ?: 0), 2);
+                $after = round($before + $sharePerWinner, 2);
+
+                $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
+                    ->execute([$after, $wTid]);
+                $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)")
+                    ->execute([$roomId, $wTid, $wName, $sharePerWinner]);
+                logBalanceChange($pdo, $wTid, $roomId, 'win_payout', $sharePerWinner, $before, $after, "Won Game {$gameLabel}");
+            }
+        }
+
+        recordNonWinningPlayers($pdo, $roomId, $gameLabel, $winnerIds);
+
+        $encodedWinners = json_encode($deduped);
+        $pdo->prepare("UPDATE rooms SET status = 'finished', winners_json = ? WHERE id = ?")
+            ->execute([$encodedWinners, $roomId]);
+
+        $pdo->commit();
+
+        $room['status'] = 'finished';
+        $room['winners_json'] = $encodedWinners;
+        return $room;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("finalizeRoomWinners error on room {$roomId}: " . $e->getMessage());
+        return $room;
     }
+}
 
-    $pdo->prepare("UPDATE rooms SET status = 'finished', winners_json = ? WHERE id = ?")
-        ->execute([json_encode($winners), $roomId]);
+function finishRoomWithNoWinner(PDO $pdo, array $room): array {
+    $roomId = (int)$room['id'];
+    $gameLabel = (string)($room['game_code'] ?: $roomId);
 
-    $room['status'] = 'finished';
-    $room['winners_json'] = json_encode($winners);
+    $pdo->beginTransaction();
+    try {
+        recordNonWinningPlayers($pdo, $roomId, $gameLabel, []);
+        $pdo->prepare("UPDATE rooms SET status = 'finished', winners_json = '[]' WHERE id = ?")
+            ->execute([$roomId]);
+        $pdo->commit();
+        $room['status'] = 'finished';
+        $room['winners_json'] = '[]';
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("finishRoomWithNoWinner error on room {$roomId}: " . $e->getMessage());
+    }
     return $room;
 }
 
 function syncRoomLifecycle(PDO $pdo, array $room): array {
+    if (($room['status'] ?? '') === 'finished') {
+        return $room;
+    }
+
     $now = time();
     $status = $room['status'];
     $startsAt = (int)($room['starts_at'] ?? (($room['created_at'] ?? $now) + 15));
@@ -214,8 +313,9 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
         shuffle($pool);
     }
 
-    $drawIntervalSec = 0.8;
-    $maxRoundSec = 60;
+    // Slower ball calling interval (2.2 seconds per call) when players are active
+    $drawIntervalSec = 2.2;
+    $maxRoundSec = 150;
 
     // All players in the waiting lobby start together once countdown ends
     if ($status === 'waiting' && $now >= $startsAt) {
@@ -243,12 +343,6 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
         $rpStmt->execute([$room['id']]);
         $entries = $rpStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $uniquePlayers = [];
-        foreach ($entries as $e) {
-            $uniquePlayers[(string)$e['telegram_id']] = true;
-        }
-        $targetWinners = (count($uniquePlayers) >= 2) ? 2 : 1;
-
         $autoWinners = [];
         $seenWinnerIds = [];
         foreach ($entries as $entry) {
@@ -271,17 +365,13 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             }
         }
 
-        if (count($autoWinners) >= $targetWinners) {
+        // End round as soon as winner(s) achieve Bingo on this draw; split pool equally if co-winners tie on the same draw
+        if (count($autoWinners) > 0) {
             return finalizeRoomWinners($pdo, $room, $autoWinners);
         }
 
         if ($elapsed >= $maxRoundSec || count($called) >= 75) {
-            if (count($autoWinners) > 0) {
-                return finalizeRoomWinners($pdo, $room, $autoWinners);
-            }
-            $pdo->prepare("UPDATE rooms SET status = 'finished' WHERE id = ?")
-                ->execute([$room['id']]);
-            $room['status'] = 'finished';
+            return finishRoomWithNoWinner($pdo, $room);
         }
     }
 
@@ -318,7 +408,7 @@ function buildRoomPayload(PDO $pdo, array $room): array {
     $lobbySecondsLeft = max(0, $startsAt - $now);
 
     $startedAt = (int)($room['started_at'] ?? $now);
-    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 60 - ($now - $startedAt)) : 0;
+    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 150 - ($now - $startedAt)) : 0;
 
     return [
         'room_id'            => (int)$room['id'],
