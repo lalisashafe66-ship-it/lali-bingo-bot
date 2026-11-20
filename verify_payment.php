@@ -78,7 +78,7 @@ if (strlen($txRef) < 6 || !preg_match('/^[A-Z0-9_-]+$/', $txRef)) {
 }
 
 $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
-$ADMIN_ID = "730967613";
+$ADMIN_ID = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
 
 try {
     $pdo = getBingoPdo();
@@ -113,7 +113,7 @@ try {
     $stmtPlayer = $pdo->prepare("SELECT first_name, phone FROM players WHERE telegram_id = ?");
     $stmtPlayer->execute([$telegramId]);
     $player = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
-    $playerName = $player['first_name'] ?? 'Player';
+    $playerName = htmlspecialchars((string)($player['first_name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
 
     // Insert as 'pending' — credited only when approved in bot.php
     $insertTx = $pdo->prepare("INSERT INTO transactions (telegram_id, tx_reference, amount, source, status) VALUES (?, ?, ?, 'webapp_manual', 'pending')");
