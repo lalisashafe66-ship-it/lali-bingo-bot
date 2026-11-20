@@ -609,6 +609,16 @@
         </div>
         <input type="checkbox" id="profile-sound-toggle" checked onchange="toggleSound()" style="width:20px;height:20px;accent-color:var(--accent-gold);" />
       </div>
+
+      <div style="text-align:left;background:rgba(245,183,0,0.08);border:1px solid rgba(245,183,0,0.3);padding:12px;border-radius:12px;margin-top:12px;">
+        <div style="font-weight:800;font-size:0.9rem;color:var(--accent-gold);margin-bottom:4px;">Invite &amp; Share Promotion</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:8px;">
+          Share your invite link when friends join SMART BINGO.
+        </div>
+        <button type="button" class="btn-gold" style="padding:9px 12px;font-size:0.86rem;" onclick="shareInviteLink()">
+          Copy Invite Link
+        </button>
+      </div>
     </div>
   </section>
 
@@ -660,7 +670,19 @@
       return localStorage.getItem('Smart_bingo_tg_id') || '730967613';
     }
 
+    function getReferrerId() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const rawParam = urlParams.get('start') || urlParams.get('ref') || (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
+      const cleaned = rawParam.replace(/^ref[_-]?/i, '').replace(/\D+/g, '');
+      if (cleaned) {
+        localStorage.setItem('Smart_bingo_ref_id', cleaned);
+        return cleaned;
+      }
+      return localStorage.getItem('Smart_bingo_ref_id') || '';
+    }
+
     const telegramId = getUserId();
+    const referrerId = getReferrerId();
     const user = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
     const playerName = user && user.first_name ? user.first_name : 'Player';
 
@@ -1167,6 +1189,9 @@
       formData.append('first_name', playerName);
       formData.append('stake', selectedStake);
       formData.append('cartela_numbers', selectedCartelaNumbers.join(','));
+      if (referrerId) {
+        formData.append('referrer_id', referrerId);
+      }
 
       fetch('api.php', { method: 'POST', body: formData })
         .then(res => res.json())
@@ -1289,6 +1314,20 @@
           }
         })
         .catch(err => alert('Network error: ' + err.message));
+    }
+
+    function shareInviteLink() {
+      const link = `https://t.me/SmartBingoHub_bot?start=ref_${encodeURIComponent(telegramId)}`;
+      const shareText = `Join me on Smart Bingo! Play cartelas together and win prizes: ${link}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(shareText).then(() => {
+          alert(`Invite link copied!\n\n${link}`);
+        }).catch(() => {
+          prompt('Copy your invite link:', link);
+        });
+      } else {
+        prompt('Copy your invite link:', link);
+      }
     }
 
     setInterval(syncBalance, 5000);
