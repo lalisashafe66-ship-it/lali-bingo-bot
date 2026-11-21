@@ -120,6 +120,111 @@ function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId,
     return false;
 }
 
+/**
+ * Give a bonus to a player on demand and send them a Telegram notification.
+ */
+function creditManualBonus(PDO $pdo, string $token, string $targetPlayerId, float $amount, string $note = 'Special Bonus', bool $notifyUser = true): array {
+    $targetPlayerId = preg_replace('/\D+/', '', $targetPlayerId) ?? '';
+    $amount = round($amount, 2);
+    if ($targetPlayerId === '' || $amount <= 0) {
+        return ['ok' => false, 'error' => 'Invalid player ID or amount'];
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ? LIMIT 1");
+        $stmt->execute([$targetPlayerId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, invites_count) VALUES (?, ?, 'Player', 0.00, 0)")
+                ->execute([$targetPlayerId, $targetPlayerId]);
+            $before = 0.00;
+            $playerName = 'Player';
+        } else {
+            $before = round((float)($row['balance'] ?? 0.00), 2);
+            $playerName = trim((string)($row['first_name'] ?? 'Player')) ?: 'Player';
+        }
+
+        $after = round($before + $amount, 2);
+        $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
+            ->execute([$after, $targetPlayerId]);
+
+        addLedger($pdo, $targetPlayerId, null, 'bonus', $amount, $before, $after, $note);
+        $pdo->commit();
+
+        $notified = false;
+        if ($notifyUser) {
+            $msg = "SMART BINGO — Bonus Notification!\n\n"
+                 . "Player: {$playerName}\n"
+                 . "Bonus Received: +" . number_format($amount, 2) . " ETB\n"
+                 . "New Balance: " . number_format($after, 2) . " ETB\n"
+                 . "Reason: {$note}";
+            $notified = sendPlayerNotification($pdo, $token, $targetPlayerId, $msg);
+        }
+
+        return [
+            'ok'          => true,
+            'player_id'   => $targetPlayerId,
+            'bonus'       => $amount,
+            'new_balance' => $after,
+            'notified'    => $notified,
+        ];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("creditManualBonus error ({$targetPlayerId}): " . $e->getMessage());
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function buildBonusHistoryText(PDO $pdo, string $telegramId, string $firstName, float $currentBalance): string {
+    $balStr = number_format($currentBalance, 2);
+
+    if (!tableExists($pdo, 'balance_ledger')) {
+        return "SMART BINGO — Bonus Notifications\n\n"
+             . "Player: {$firstName}\n"
+             . "Current Balance: {$balStr} ETB\n"
+             . "No bonus history available yet.";
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT amount, type, note, created_at
+        FROM balance_ledger
+        WHERE telegram_id = ? AND (type LIKE '%bonus%' OR amount > 0)
+        ORDER BY id DESC
+        LIMIT 5
+    ");
+    $stmt->execute([$telegramId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$rows) {
+        return "SMART BINGO — Bonus Notifications\n\n"
+             . "Player: {$firstName}\n"
+             . "Current Balance: {$balStr} ETB\n\n"
+             . "No bonuses received yet. When a bonus is sent to you, you will receive a notification here.";
+    }
+
+    $lines = [
+        "SMART BINGO — Bonus Notifications",
+        "",
+        "Player: {$firstName}",
+        "Current Balance: {$balStr} ETB",
+        "",
+        "Recent Bonuses:",
+    ];
+
+    foreach ($rows as $r) {
+        $amt = number_format((float)($r['amount'] ?? 0), 2);
+        $note = trim((string)($r['note'] ?? 'Bonus'));
+        $date = trim((string)($r['created_at'] ?? ''));
+        $lines[] = "• +{$amt} ETB — {$note}" . ($date !== '' ? " ({$date})" : '');
+    }
+
+    return implode("\n", $lines);
+}
+
 function applyJoinReferralBonus(PDO $pdo, string $token, string $newUserId, string $newUserName, string $referrerId, float $bonusAmount): array {
     $referrerId = preg_replace('/\D+/', '', $referrerId) ?? '';
     if ($referrerId === '' || $referrerId === $newUserId) {
@@ -217,9 +322,10 @@ function buildMainMenuKeyboard(string $webAppUrl, bool $isAdmin): array {
         ],
         [
             ['text' => 'Share & Invite'],
-            ['text' => 'How to Play'],
+            ['text' => 'Bonus Alerts'],
         ],
         [
+            ['text' => 'How to Play'],
             ['text' => 'My ID'],
         ],
     ];
@@ -558,7 +664,8 @@ try {
     $pdo = getBingoPdo();
     ensureReferralSchema($pdo);
     $player = registerOrGetUser($userId, $chatId, $firstName, $username);
-    $balanceFormatted = number_format((float)($player['balance'] ?? 0.0), 2);
+    $balanceNum = (float)($player['balance'] ?? 0.0);
+    $balanceFormatted = number_format($balanceNum, 2);
     $invitesCount = (int)($player['invites_count'] ?? 0);
 
     if (preg_match('/^\/start(?:\s+(.+))?$/i', $text, $startMatch)) {
@@ -582,12 +689,33 @@ try {
                . "Your Invite Link: {$inviteLink}"
                . $refBonusNote . "\n\n"
                . "Tap Play Bingo below or use the menu buttons.";
+    } elseif ($isAdmin && preg_match('/^\/givebonus\s+(\d+)\s+(\d+(?:\.\d{1,2})?)(?:\s+(.+))?$/i', $text, $bMatch)) {
+        $targetId  = (string)$bMatch[1];
+        $bonusAmt  = (float)$bMatch[2];
+        $bonusNote = trim((string)($bMatch[3] ?? 'Bonus from Admin'));
+
+        $res = creditManualBonus($pdo, $token, $targetId, $bonusAmt, $bonusNote, true);
+        if (!empty($res['ok'])) {
+            $sentStatus = !empty($res['notified']) ? 'Yes' : 'Failed (check user chat)';
+            $reply = "Bonus Credited!\n\n"
+                   . "• Player ID: {$targetId}\n"
+                   . "• Bonus Added: +" . number_format($bonusAmt, 2) . " ETB\n"
+                   . "• New Balance: " . number_format((float)$res['new_balance'], 2) . " ETB\n"
+                   . "• User Notified: {$sentStatus}";
+        } else {
+            $reply = "Could not send bonus: " . ($res['error'] ?? 'Unknown error');
+        }
     } else {
         switch ($text) {
             case '/menu':
                 $reply = "SMART BINGO Menu ({$firstName})\n"
                        . "Balance: {$balanceFormatted} ETB\n"
                        . "Tap Play Bingo or choose a menu option below.";
+                break;
+
+            case 'Bonus Alerts':
+            case '/bonus':
+                $reply = buildBonusHistoryText($pdo, (string)$userId, $firstName, $balanceNum);
                 break;
 
             case 'Share & Invite':
@@ -666,7 +794,8 @@ try {
                            . "• Registered Players: {$pCount}\n"
                            . "• Total Rooms: {$rCount}\n"
                            . "• Join Referrals: {$refTotal}\n"
-                           . "• Pending Withdrawals: {$wPending}";
+                           . "• Pending Withdrawals: {$wPending}\n\n"
+                           . "Tip: Send /givebonus <telegram_id> <amount> [note] to send a bonus & notify a player.";
                 } else {
                     $reply = "This menu is for admins only.";
                 }
