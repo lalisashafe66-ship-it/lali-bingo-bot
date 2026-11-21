@@ -1,6 +1,49 @@
 <?php
 declare(strict_types=1);
 
+function resolveBingoDbPath(): string
+{
+    $candidates = [];
+
+    $envPath = trim((string)(getenv('BINGO_DB_PATH') ?: ''));
+    if ($envPath !== '') {
+        $candidates[] = $envPath;
+    }
+
+    if (is_dir('/var/data')) {
+        $candidates[] = '/var/data/smart_bingo.sqlite';
+    }
+
+    if (is_dir('/tmp')) {
+        $candidates[] = '/tmp/smart_bingo.sqlite';
+    }
+
+    $candidates[] = __DIR__ . '/smart_bingo.sqlite';
+
+    $chosenPath = '';
+    foreach ($candidates as $candidate) {
+        $dir = dirname($candidate);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        if (is_dir($dir) && is_writable($dir)) {
+            $chosenPath = $candidate;
+            break;
+        }
+    }
+
+    if ($chosenPath === '') {
+        $chosenPath = __DIR__ . '/smart_bingo.sqlite';
+    }
+
+    $tmpDb = '/tmp/smart_bingo.sqlite';
+    if ($chosenPath !== $tmpDb && is_file($tmpDb) && !is_file($chosenPath)) {
+        @copy($tmpDb, $chosenPath);
+    }
+
+    return $chosenPath;
+}
+
 function getBingoPdo(): PDO
 {
     static $pdo = null;
@@ -8,13 +51,15 @@ function getBingoPdo(): PDO
         return $pdo;
     }
 
-    $dbDir = is_dir('/tmp') ? '/tmp' : __DIR__;
-    $dbPath = rtrim($dbDir, '/') . '/smart_bingo.sqlite';
+    $dbPath = resolveBingoDbPath();
 
     $pdo = new PDO('sqlite:' . $dbPath, null, null, [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
+
+    $pdo->exec("PRAGMA journal_mode = WAL;");
+    $pdo->exec("PRAGMA busy_timeout = 5000;");
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS players (
