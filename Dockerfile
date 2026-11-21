@@ -1,8 +1,11 @@
 FROM php:8.2-apache
 
-# Install SQLite extensions
-RUN apt-get update && apt-get install -y libsqlite3-dev \
-    && docker-php-ext-install pdo pdo_sqlite
+# Install SQLite and PostgreSQL extensions
+RUN apt-get update && apt-get install -y \
+    libsqlite3-dev \
+    libpq-dev \
+    && docker-php-ext-install pdo pdo_sqlite pdo_pgsql pgsql \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy custom Apache configuration
 COPY 000-default.conf /etc/apache2/sites-available/000-default.conf
