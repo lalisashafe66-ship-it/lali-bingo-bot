@@ -278,6 +278,78 @@ function recordNonWinningPlayers(PDO $pdo, int $roomId, string $gameLabel, array
     }
 }
 
+function sendWinnerCongratulations(
+    PDO $pdo,
+    int $roomId,
+    string $gameLabel,
+    array $winners,
+    float $totalDerash,
+    float $sharePerWinner
+): void {
+    if (count($winners) === 0) {
+        return;
+    }
+
+    $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
+    $adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
+    if ($token === '') {
+        return;
+    }
+
+    $safeGame = htmlspecialchars($gameLabel, ENT_QUOTES, 'UTF-8');
+    $shareStr = number_format($sharePerWinner, 2);
+    $poolStr  = number_format($totalDerash, 2);
+
+    $winnerNamesEscaped = [];
+    foreach ($winners as $w) {
+        $winnerNamesEscaped[] = htmlspecialchars((string)($w['name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
+    }
+    $namesHeadline = implode(' &amp; ', $winnerNamesEscaped);
+
+    $isSplit = count($winners) > 1;
+    $summaryLine = $isSplit
+        ? "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line together (max 2 co-winners) in Game <b>#{$safeGame}</b> and share the <b>{$poolStr} ETB</b> pool equally: <b>{$shareStr} ETB each</b>!"
+        : "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line first in Game <b>#{$safeGame}</b> and won <b>{$shareStr} ETB</b>!";
+
+    foreach ($winners as $w) {
+        $tid = trim((string)($w['telegram_id'] ?? ''));
+        if ($tid === '') {
+            continue;
+        }
+        $pName = htmlspecialchars((string)($w['name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
+        $cartelaNo = (int)($w['cartela_number'] ?? 0);
+        $cartelaLine = $cartelaNo > 0 ? "\n• <b>Winning Cartela:</b> #{$cartelaNo}" : "";
+        $splitLine = $isSplit ? "\n• <b>Shared Pool:</b> {$poolStr} ETB (split between 2 winners)" : "";
+
+        $msg = "🏆 <b>BINGO LINE CLOSED — CONGRATULATIONS!</b>\n\n"
+             . "Congratulations, <b>{$pName}</b>! 🎉\n"
+             . "You completed a winning line in Game <b>#{$safeGame}</b>!{$cartelaLine}\n"
+             . "• <b>Prize Won:</b> <b>+{$shareStr} ETB</b>{$splitLine}";
+
+        sendTelegramMessage($token, $tid, $msg);
+    }
+
+    $rpStmt = $pdo->prepare("SELECT DISTINCT telegram_id FROM room_players WHERE room_id = ?");
+    $rpStmt->execute([$roomId]);
+    $roomPlayerIds = $rpStmt->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
+
+    $winnerIdSet = array_flip(array_map(fn($w) => (string)($w['telegram_id'] ?? ''), $winners));
+    $roomNotice = "🛑 <b>Round Ended — Line Closed!</b>\n\n"
+                . "{$summaryLine}";
+
+    foreach ($roomPlayerIds as $pid) {
+        $pidStr = trim((string)$pid);
+        if ($pidStr === '' || isset($winnerIdSet[$pidStr])) {
+            continue;
+        }
+        sendTelegramMessage($token, $pidStr, $roomNotice);
+    }
+
+    if ($adminId !== '') {
+        sendTelegramMessage($token, $adminId, "📊 <b>Game #{$safeGame} Finished</b>\n\n{$summaryLine}");
+    }
+}
+
 function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
     $roomId = (int)$room['id'];
     $gameLabel = (string)($room['game_code'] ?: $roomId);
@@ -356,6 +428,8 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
             ->execute([$encodedWinners, $roomId]);
 
         $pdo->commit();
+
+        sendWinnerCongratulations($pdo, $roomId, $gameLabel, $deduped, $totalDerash, $sharePerWinner);
 
         $room['status'] = 'finished';
         $room['winners_json'] = $encodedWinners;
