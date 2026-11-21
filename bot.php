@@ -120,6 +120,26 @@ function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId,
     return false;
 }
 
+function buildBonusAlertKeyboard(string $targetSpec = 'all'): array {
+    $cleanTarget = strtolower(trim($targetSpec));
+    if ($cleanTarget !== 'all') {
+        $cleanTarget = preg_replace('/\D+/', '', $cleanTarget) ?? 'all';
+        if ($cleanTarget === '') {
+            $cleanTarget = 'all';
+        }
+    }
+
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => '+10 ETB Bonus', 'callback_data' => "bonus_alert:10:{$cleanTarget}"],
+                ['text' => '+20 ETB Bonus', 'callback_data' => "bonus_alert:20:{$cleanTarget}"],
+                ['text' => '+50 ETB Bonus', 'callback_data' => "bonus_alert:50:{$cleanTarget}"],
+            ],
+        ],
+    ];
+}
+
 /**
  * Notify the player on Telegram first, then deposit/credit the bonus amount
  * into their account balance and record it in balance_ledger.
@@ -401,6 +421,13 @@ function buildMainMenuKeyboard(string $webAppUrl, bool $isAdmin): array {
 }
 
 function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
+    if (preg_match('/^open_bonus_menu:([a-zA-Z0-9_-]+)$/i', trim($data), $openMatch)) {
+        return [
+            'kind'   => 'open_bonus_menu',
+            'target' => strtolower((string)$openMatch[1]),
+        ];
+    }
+
     // Format for 10/20/50 bonus alert buttons: "bonus_alert:10:123456789" or "bonus_alert:20:all"
     if (preg_match('/^bonus_alert:(10|20|50):([a-zA-Z0-9_-]+)$/i', trim($data), $bMatch)) {
         return [
@@ -500,6 +527,31 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     try {
         if ($parsed === null) {
             throw new RuntimeException('Unrecognized callback action: ' . $data);
+        }
+
+        if ($parsed['kind'] === 'open_bonus_menu') {
+            $target = (string)$parsed['target'];
+            $targetLabel = ($target === 'all') ? 'ALL Players' : "Player ID {$target}";
+            tgPost($token, 'answerCallbackQuery', [
+                'callback_query_id' => $cbId,
+                'text'              => 'Select 10, 20, or 50 ETB bonus alert',
+                'show_alert'        => false,
+            ]);
+
+            if ($adminMsgId > 0) {
+                tgPost($token, 'editMessageText', [
+                    'chat_id'      => $adminChat,
+                    'message_id'   => $adminMsgId,
+                    'text'         => "SMART BINGO — Select Bonus Alert Amount\n\n"
+                                    . "Target: {$targetLabel}\n"
+                                    . "Tapping an amount notifies on Telegram first and deposits the bonus into balance:",
+                    'reply_markup' => buildBonusAlertKeyboard($target),
+                ]);
+            }
+
+            http_response_code(200);
+            echo "OK";
+            exit;
         }
 
         if ($parsed['kind'] === 'bonus_alert') {
@@ -825,20 +877,12 @@ try {
             $reply = "Could not send bonus alert: " . ($res['error'] ?? 'Unknown error');
         }
     } elseif ($isAdmin && preg_match('/^\/bonusmenu(?:\s+([a-zA-Z0-9_-]+))?$/i', $text, $menuBonusMatch)) {
-        $targetSpec = strtolower(trim((string)($menuBonusMatch[1] ?? (string)$userId)));
+        $targetSpec = strtolower(trim((string)($menuBonusMatch[1] ?? 'all')));
         $targetLabel = ($targetSpec === 'all') ? 'ALL Players' : "Player ID {$targetSpec}";
         $reply = "SMART BINGO — Select Bonus Alert Amount\n\n"
                . "Target: {$targetLabel}\n"
                . "Tapping an amount notifies on Telegram first and deposits the bonus into balance:";
-        $inlineMarkup = [
-            'inline_keyboard' => [
-                [
-                    ['text' => '+10 ETB Bonus', 'callback_data' => "bonus_alert:10:{$targetSpec}"],
-                    ['text' => '+20 ETB Bonus', 'callback_data' => "bonus_alert:20:{$targetSpec}"],
-                    ['text' => '+50 ETB Bonus', 'callback_data' => "bonus_alert:50:{$targetSpec}"],
-                ],
-            ],
-        ];
+        $inlineMarkup = buildBonusAlertKeyboard($targetSpec);
     } else {
         switch ($text) {
             case '/menu':
@@ -929,9 +973,16 @@ try {
                            . "• Total Rooms: {$rCount}\n"
                            . "• Join Referrals: {$refTotal}\n"
                            . "• Pending Withdrawals: {$wPending}\n\n"
-                           . "Bonus Alerts (10 / 20 / 50 ETB):\n"
+                           . "Tap below to open 10 / 20 / 50 ETB Bonus Alerts for all players, or use:\n"
                            . "• /bonusmenu <telegram_id or all>\n"
                            . "• /bonus10 | /bonus20 | /bonus50 <telegram_id or all> [note]";
+                    $inlineMarkup = [
+                        'inline_keyboard' => [
+                            [
+                                ['text' => '🎁 Bonus Alert Menu (ALL)', 'callback_data' => 'open_bonus_menu:all'],
+                            ],
+                        ],
+                    ];
                 } else {
                     $reply = "This menu is for admins only.";
                 }
