@@ -53,13 +53,49 @@ function tgPost(string $token, string $method, array $payload): array {
     return is_array($decoded) ? $decoded : ['ok' => false, 'raw' => $resp];
 }
 
+function isPostgresPdo(PDO $pdo): bool {
+    return strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) === 'pgsql';
+}
+
 function tableExists(PDO $pdo, string $table): bool {
+    if (isPostgresPdo($pdo)) {
+        $stmt = $pdo->prepare("
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$table]);
+        return (bool)$stmt->fetchColumn();
+    }
+
     $stmt = $pdo->prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?");
     $stmt->execute([$table]);
     return (bool)$stmt->fetchColumn();
 }
 
 function ensureReferralSchema(PDO $pdo): void {
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+    $checked = true;
+
+    if (isPostgresPdo($pdo)) {
+        $pdo->exec("ALTER TABLE players ADD COLUMN IF NOT EXISTS referred_by TEXT");
+        $pdo->exec("ALTER TABLE players ADD COLUMN IF NOT EXISTS invites_count INTEGER NOT NULL DEFAULT 0");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS referrals (
+                id SERIAL PRIMARY KEY,
+                referrer_id TEXT NOT NULL,
+                referred_id TEXT NOT NULL UNIQUE,
+                bonus_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+        return;
+    }
+
     $cols = $pdo->query("PRAGMA table_info(players)")->fetchAll(PDO::FETCH_COLUMN, 1);
     if (!in_array('referred_by', $cols, true)) {
         $pdo->exec("ALTER TABLE players ADD COLUMN referred_by TEXT");
@@ -211,7 +247,7 @@ function resolveBonusTargetPlayerIds(PDO $pdo, string $target): array {
     }
 
     if ($target === 'zero') {
-        $stmt = $pdo->query("SELECT telegram_id FROM players WHERE ROUND(COALESCE(balance, 0), 2) = 0.00");
+        $stmt = $pdo->query("SELECT telegram_id FROM players WHERE ROUND(COALESCE(balance, 0)::numeric, 2) = 0.00");
         return $stmt->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
     }
 
@@ -219,7 +255,7 @@ function resolveBonusTargetPlayerIds(PDO $pdo, string $target): array {
         $hasRoomPlayers = tableExists($pdo, 'room_players');
         $hasLedger      = tableExists($pdo, 'balance_ledger');
 
-        $sql = "SELECT p.telegram_id FROM players p WHERE ROUND(COALESCE(p.balance, 0), 2) = 0.00";
+        $sql = "SELECT p.telegram_id FROM players p WHERE ROUND(COALESCE(p.balance, 0)::numeric, 2) = 0.00";
         if ($hasRoomPlayers) {
             $sql .= " AND NOT EXISTS (SELECT 1 FROM room_players rp WHERE rp.telegram_id = p.telegram_id)";
         }
@@ -229,7 +265,8 @@ function resolveBonusTargetPlayerIds(PDO $pdo, string $target): array {
 
         $ids = $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
         if (!$ids) {
-            $fb = $pdo->query("SELECT telegram_id FROM players WHERE ROUND(COALESCE(balance, 0), 2) = 0.00 ORDER BY rowid DESC LIMIT 5");
+            $orderCol = isPostgresPdo($pdo) ? 'telegram_id DESC' : 'rowid DESC';
+            $fb = $pdo->query("SELECT telegram_id FROM players WHERE ROUND(COALESCE(balance, 0)::numeric, 2) = 0.00 ORDER BY {$orderCol} LIMIT 5");
             $ids = $fb->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
         }
         return $ids;
