@@ -7,10 +7,10 @@ header('Access-Control-Allow-Methods: GET, POST');
 
 require_once __DIR__ . '/db.php';
 
-function notifyAdminWithdrawal(string $token, string $chatId, string $message): void {
+function sendTelegramMessage(string $token, string $chatId, string $message): bool {
     if ($token === '' || $chatId === '') {
-        error_log("SMART BINGO withdrawal notify: missing TELEGRAM_BOT_TOKEN or ADMIN_ID.");
-        return;
+        error_log("SMART BINGO notify: missing TELEGRAM_BOT_TOKEN or chat_id.");
+        return false;
     }
 
     $params = [
@@ -31,23 +31,30 @@ function notifyAdminWithdrawal(string $token, string $chatId, string $message): 
         ]);
         $res = curl_exec($ch);
         if ($res === false) {
-            error_log("Telegram withdrawal cURL error: " . curl_error($ch));
-        } else {
-            error_log("Telegram withdrawal resp: " . $res);
+            error_log("Telegram sendMessage cURL error: " . curl_error($ch));
+            curl_close($ch);
+            return false;
         }
+        error_log("Telegram sendMessage resp: " . $res);
         curl_close($ch);
-    } else {
-        $ctx = stream_context_create([
-            'http' => [
-                'method'  => 'POST',
-                'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
-                'content' => http_build_query($params),
-                'timeout' => 10,
-            ],
-        ]);
-        $res = @file_get_contents($url, false, $ctx);
-        error_log("Telegram withdrawal fallback resp: " . var_export($res, true));
+        return true;
     }
+
+    $ctx = stream_context_create([
+        'http' => [
+            'method'  => 'POST',
+            'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+            'content' => http_build_query($params),
+            'timeout' => 10,
+        ],
+    ]);
+    $res = @file_get_contents($url, false, $ctx);
+    error_log("Telegram sendMessage fallback resp: " . var_export($res, true));
+    return $res !== false;
+}
+
+function notifyAdminWithdrawal(string $token, string $chatId, string $message): void {
+    sendTelegramMessage($token, $chatId, $message);
 }
 
 try {
@@ -84,6 +91,67 @@ try {
 function logBalanceChange(PDO $pdo, string $telegramId, ?int $roomId, string $type, float $amount, float $before, float $after, string $note = ''): void {
     $stmt = $pdo->prepare("INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note) VALUES (?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([$telegramId, $roomId, $type, $amount, $before, $after, $note]);
+}
+
+function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $note = 'Bonus from Admin', bool $notifyUser = true): array {
+    $amount = round($amount, 2);
+    $telegramId = trim($telegramId);
+
+    if ($telegramId === '' || $amount <= 0) {
+        return ['success' => false, 'error' => 'Invalid Telegram ID or bonus amount.'];
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ? LIMIT 1");
+        $stmt->execute([$telegramId]);
+        $player = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$player) {
+            $pdo->rollBack();
+            return ['success' => false, 'error' => 'Player record not found.'];
+        }
+
+        $before = round((float)$player['balance'], 2);
+        $after  = round($before + $amount, 2);
+
+        $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
+            ->execute([$after, $telegramId]);
+
+        logBalanceChange($pdo, $telegramId, null, 'bonus', $amount, $before, $after, $note);
+        $pdo->commit();
+
+        $notified = false;
+        if ($notifyUser) {
+            $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
+            $safeName = htmlspecialchars((string)($player['first_name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
+            $safeNote = htmlspecialchars($note, ENT_QUOTES, 'UTF-8');
+            $formattedAmt = number_format($amount, 2);
+            $formattedBal = number_format($after, 2);
+
+            $userMsg = "🎁 <b>Bonus Received (SMART BINGO)!</b>\n\n" .
+                       "• <b>Player:</b> {$safeName}\n" .
+                       "• <b>Bonus Amount:</b> <b>+{$formattedAmt} ETB</b>\n" .
+                       "• <b>New Balance:</b> <b>{$formattedBal} ETB</b>\n" .
+                       "• <b>Note:</b> {$safeNote}";
+
+            $notified = sendTelegramMessage($token, $telegramId, $userMsg);
+        }
+
+        return [
+            'success'     => true,
+            'telegram_id' => $telegramId,
+            'bonus_added' => $amount,
+            'new_balance' => $after,
+            'notified'    => $notified,
+        ];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("givePlayerBonus error: " . $e->getMessage());
+        return ['success' => false, 'error' => 'Bonus transaction error: ' . $e->getMessage()];
+    }
 }
 
 function generateGameCode(int $length = 5): string {
@@ -464,12 +532,11 @@ if ($action === 'get_balance') {
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($player) {
-        $balance = (float)$player['balance'];
+        $balance = round((float)$player['balance'], 2);
     } else {
-        $initialBal = 50.00;
+        $initialBal = 0.00;
         $stmtIns = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', ?)");
         $stmtIns->execute([$telegramId, $initialBal]);
-        logBalanceChange($pdo, $telegramId, null, 'welcome_bonus', $initialBal, 0.00, $initialBal, 'Initial player registration');
         $balance = $initialBal;
     }
 
@@ -587,11 +654,12 @@ elseif ($action === 'join_room') {
             : ($rawUsername !== '' ? $rawUsername : ($rawFirstName !== '' ? $rawFirstName : 'Player'));
 
         if (!$player) {
-            $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, username, phone, balance) VALUES (?, ?, ?, 'WebUser', 50.00)");
-            $ins->execute([$telegramId, $effectiveName, $rawUsername]);
-            $currentBalance = 50.00;
+            $initialBal = 0.00;
+            $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, username, phone, balance) VALUES (?, ?, ?, 'WebUser', ?)");
+            $ins->execute([$telegramId, $effectiveName, $rawUsername, $initialBal]);
+            $currentBalance = $initialBal;
         } else {
-            $currentBalance = (float)$player['balance'];
+            $currentBalance = round((float)$player['balance'], 2);
             $existingFirst = trim((string)($player['first_name'] ?? ''));
             if ($rawFirstName !== '' && strcasecmp($rawFirstName, 'Player') !== 0 && $existingFirst !== $rawFirstName) {
                 $pdo->prepare("UPDATE players SET first_name = ? WHERE telegram_id = ?")->execute([$rawFirstName, $telegramId]);
@@ -737,6 +805,15 @@ elseif ($action === 'request_withdrawal') {
         error_log("request_withdrawal error: " . $e->getMessage());
         echo json_encode(['success' => false, 'error' => 'Withdrawal error: ' . $e->getMessage()]);
     }
+}
+elseif ($action === 'give_bonus') {
+    $telegramId = trim((string)($_POST['telegram_id'] ?? $_GET['telegram_id'] ?? ''));
+    $amount     = (float)($_POST['amount'] ?? $_GET['amount'] ?? 0);
+    $note       = trim((string)($_POST['note'] ?? $_GET['note'] ?? 'Bonus from Admin'));
+    $notifyUser = filter_var($_POST['notify_user'] ?? $_GET['notify_user'] ?? true, FILTER_VALIDATE_BOOLEAN);
+
+    $result = givePlayerBonus($pdo, $telegramId, $amount, $note, $notifyUser);
+    echo json_encode($result);
 }
 else {
     echo json_encode(['success' => false, 'error' => 'Invalid action']);
