@@ -1019,23 +1019,23 @@
         if (topNameEl) topNameEl.textContent = '';
         banner.innerHTML = `<div>Round Ended</div>`;
       } else {
-        const winnerNamesOnly = winners.map(w => (w.name && w.name !== 'Player') ? w.name : playerName).join(', ');
+        const cappedWinners = winners.slice(0, 2);
+        const winnerNamesOnly = cappedWinners.map(w => (w.name && w.name !== 'Player') ? w.name : playerName).join(' & ');
+        const isSharedWin = cappedWinners.length > 1;
         if (topNameEl) {
-          topNameEl.textContent = didIWin ? `Congratulation ${winnerNamesOnly}` : winnerNamesOnly;
+          topNameEl.textContent = `Congratulation ${winnerNamesOnly}`;
         }
 
-        banner.innerHTML = winners.map(w => {
+        banner.innerHTML = cappedWinners.map(w => {
           const wName = (w.name && w.name !== 'Player') ? w.name : playerName;
           const wPrize = Number(w.prize || 0).toFixed(2);
-          if (didIWin) {
-            return `
-              <div style="margin-bottom:4px;">
-                <div>Congratulation ${wName}</div>
-                <div style="font-size:0.88rem;opacity:0.95;">Won ${wPrize} ETB</div>
-              </div>
-            `;
-          }
-          return `<div style="margin-bottom:4px;">${wName}</div>`;
+          const shareNote = isSharedWin ? ` (Shared ${cappedWinners.length} ways)` : '';
+          return `
+            <div style="margin-bottom:4px;">
+              <div>Congratulation ${wName}</div>
+              <div style="font-size:0.88rem;opacity:0.95;">Won ${wPrize} ETB${shareNote}</div>
+            </div>
+          `;
         }).join('');
       }
 
