@@ -120,6 +120,32 @@ function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId,
     return false;
 }
 
+function notifyAdminReferral(
+    PDO $pdo,
+    string $token,
+    string $adminId,
+    string $referrerId,
+    string $referrerName,
+    string $newUserId,
+    string $newUserName,
+    float $bonusAmount,
+    float $refNewBalance,
+    int $newInvites
+): void {
+    if ($adminId === '') {
+        return;
+    }
+
+    $msg = "SMART BINGO — New Player Invite!\n\n"
+         . "• Inviter: {$referrerName} (ID: {$referrerId})\n"
+         . "• New Friend: {$newUserName} (ID: {$newUserId})\n"
+         . "• Inviter Total Invites: {$newInvites}\n"
+         . "• Referral Bonus: +" . number_format($bonusAmount, 2) . " ETB\n"
+         . "• Inviter New Balance: " . number_format($refNewBalance, 2) . " ETB";
+
+    sendPlayerNotification($pdo, $token, $adminId, $msg);
+}
+
 function normalizeBonusTarget(string $targetSpec): string {
     $clean = strtolower(trim($targetSpec));
     if (in_array($clean, ['all', 'new', 'newcomers', 'zero'], true)) {
@@ -307,7 +333,15 @@ function sendBonusAlertToTarget(PDO $pdo, string $token, string $targetSpec, flo
     ];
 }
 
-function applyJoinReferralBonus(PDO $pdo, string $token, string $newUserId, string $newUserName, string $referrerId, float $bonusAmount): array {
+function applyJoinReferralBonus(
+    PDO $pdo,
+    string $token,
+    string $adminId,
+    string $newUserId,
+    string $newUserName,
+    string $referrerId,
+    float $bonusAmount
+): array {
     $referrerId = preg_replace('/\D+/', '', $referrerId) ?? '';
     if ($referrerId === '' || $referrerId === $newUserId) {
         return ['awarded' => false, 'reason' => 'invalid_or_self'];
@@ -332,7 +366,7 @@ function applyJoinReferralBonus(PDO $pdo, string $token, string $newUserId, stri
             return ['awarded' => false, 'reason' => 'existing_referrer'];
         }
 
-        $pRefStmt = $pdo->prepare("SELECT balance, invites_count FROM players WHERE telegram_id = ? LIMIT 1");
+        $pRefStmt = $pdo->prepare("SELECT balance, invites_count, first_name FROM players WHERE telegram_id = ? LIMIT 1");
         $pRefStmt->execute([$referrerId]);
         $refRow = $pRefStmt->fetch(PDO::FETCH_ASSOC);
         if (!$refRow) {
@@ -340,9 +374,11 @@ function applyJoinReferralBonus(PDO $pdo, string $token, string $newUserId, stri
                 ->execute([$referrerId, $referrerId]);
             $refBefore = 0.00;
             $refInvites = 0;
+            $referrerName = 'Player';
         } else {
             $refBefore = round((float)($refRow['balance'] ?? 0.00), 2);
             $refInvites = (int)($refRow['invites_count'] ?? 0);
+            $referrerName = trim((string)($refRow['first_name'] ?? 'Player')) ?: 'Player';
         }
 
         $pdo->prepare("UPDATE players SET referred_by = ? WHERE telegram_id = ?")
@@ -381,6 +417,19 @@ function applyJoinReferralBonus(PDO $pdo, string $token, string $newUserId, stri
                  . "New Balance: " . number_format($refAfter, 2) . " ETB";
             sendPlayerNotification($pdo, $token, $referrerId, $msg);
         }
+
+        notifyAdminReferral(
+            $pdo,
+            $token,
+            $adminId,
+            $referrerId,
+            $referrerName,
+            $newUserId,
+            $newUserName,
+            $actualBonus,
+            $refAfter,
+            $newInvites
+        );
 
         return ['awarded' => true, 'bonus' => $actualBonus, 'new_balance' => $refAfter];
     } catch (Throwable $e) {
@@ -887,7 +936,7 @@ try {
             $cleanRef = preg_replace('/^ref[_-]?/i', '', $startPayload) ?? '';
             $cleanRef = preg_replace('/\D+/', '', $cleanRef) ?? '';
             if ($cleanRef !== '' && $cleanRef !== (string)$userId) {
-                $bonusRes = applyJoinReferralBonus($pdo, $token, (string)$userId, $firstName, $cleanRef, $referralBonusEtb);
+                $bonusRes = applyJoinReferralBonus($pdo, $token, $adminId, (string)$userId, $firstName, $cleanRef, $referralBonusEtb);
                 if (!empty($bonusRes['awarded']) && $referralBonusEtb > 0) {
                     $refBonusNote = "\n🎁 Join promotion active! Your inviter received +" . number_format($referralBonusEtb, 2) . " ETB.";
                 }
