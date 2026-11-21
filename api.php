@@ -7,6 +7,39 @@ header('Access-Control-Allow-Methods: GET, POST');
 
 require_once __DIR__ . '/db.php';
 
+function isPgsql(PDO $pdo): bool {
+    return strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) === 'pgsql';
+}
+
+function getColumnNames(PDO $pdo, string $table): array {
+    if (!preg_match('/^[a-zA-Z0-9_]+$/', $table)) {
+        return [];
+    }
+
+    if (isPgsql($pdo)) {
+        $stmt = $pdo->prepare("
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = ?
+        ");
+        $stmt->execute([$table]);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
+    }
+
+    return $pdo->query("PRAGMA table_info({$table})")->fetchAll(PDO::FETCH_COLUMN, 1) ?: [];
+}
+
+function lastInsertIdCompat(PDO $pdo, string $sequenceOrTable): int {
+    if (isPgsql($pdo)) {
+        $val = $pdo->lastInsertId($sequenceOrTable);
+        if ($val !== false && $val !== '') {
+            return (int)$val;
+        }
+        return (int)$pdo->lastInsertId();
+    }
+    return (int)$pdo->lastInsertId();
+}
+
 function sendTelegramMessage(string $token, string $chatId, string $message): bool {
     if ($token === '' || $chatId === '') {
         error_log("SMART BINGO notify: missing TELEGRAM_BOT_TOKEN or chat_id.");
@@ -59,10 +92,17 @@ function notifyAdminWithdrawal(string $token, string $chatId, string $message): 
 
 try {
     $pdo = getBingoPdo();
+    $pgsql = isPgsql($pdo);
 
-    // Safe column migrations for existing SQLite files
-    $existingCols = $pdo->query("PRAGMA table_info(rooms)")->fetchAll(PDO::FETCH_COLUMN, 1);
-    $migrations = [
+    $existingCols = getColumnNames($pdo, 'rooms');
+    $roomMigrations = $pgsql ? [
+        'game_code'           => "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS game_code TEXT",
+        'starts_at'           => "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS starts_at BIGINT",
+        'started_at'          => "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS started_at BIGINT",
+        'draw_pool_json'      => "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS draw_pool_json TEXT",
+        'called_numbers_json' => "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS called_numbers_json TEXT DEFAULT '[]'",
+        'winners_json'        => "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS winners_json TEXT DEFAULT '[]'",
+    ] : [
         'game_code'           => "ALTER TABLE rooms ADD COLUMN game_code TEXT",
         'starts_at'           => "ALTER TABLE rooms ADD COLUMN starts_at INTEGER",
         'started_at'          => "ALTER TABLE rooms ADD COLUMN started_at INTEGER",
@@ -70,20 +110,27 @@ try {
         'called_numbers_json' => "ALTER TABLE rooms ADD COLUMN called_numbers_json TEXT DEFAULT '[]'",
         'winners_json'        => "ALTER TABLE rooms ADD COLUMN winners_json TEXT DEFAULT '[]'",
     ];
-    foreach ($migrations as $col => $sql) {
+
+    foreach ($roomMigrations as $col => $sql) {
         if (!in_array($col, $existingCols, true)) {
             $pdo->exec($sql);
         }
     }
 
-    $rpCols = $pdo->query("PRAGMA table_info(room_players)")->fetchAll(PDO::FETCH_COLUMN, 1);
+    $rpCols = getColumnNames($pdo, 'room_players');
     if (!in_array('first_name', $rpCols, true)) {
-        $pdo->exec("ALTER TABLE room_players ADD COLUMN first_name TEXT");
+        $pdo->exec($pgsql
+            ? "ALTER TABLE room_players ADD COLUMN IF NOT EXISTS first_name TEXT"
+            : "ALTER TABLE room_players ADD COLUMN first_name TEXT"
+        );
     }
     if (!in_array('stake_paid', $rpCols, true)) {
-        $pdo->exec("ALTER TABLE room_players ADD COLUMN stake_paid REAL DEFAULT 0");
+        $pdo->exec($pgsql
+            ? "ALTER TABLE room_players ADD COLUMN IF NOT EXISTS stake_paid DOUBLE PRECISION DEFAULT 0"
+            : "ALTER TABLE room_players ADD COLUMN stake_paid REAL DEFAULT 0"
+        );
     }
-} catch (PDOException $e) {
+} catch (Throwable $e) {
     echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
     exit;
 }
@@ -95,7 +142,7 @@ function logBalanceChange(PDO $pdo, string $telegramId, ?int $roomId, string $ty
 
 function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $note = 'Bonus from Admin', bool $notifyUser = true): array {
     $amount = round($amount, 2);
-    $telegramId = trim($telegramId);
+    $telegramId = preg_replace('/\D+/', '', trim($telegramId)) ?? '';
 
     if ($telegramId === '' || $amount <= 0) {
         return ['success' => false, 'error' => 'Invalid Telegram ID or bonus amount.'];
@@ -103,7 +150,7 @@ function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $no
 
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -115,7 +162,7 @@ function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $no
         $before = round((float)$player['balance'], 2);
         $after  = round($before + $amount, 2);
 
-        $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
+        $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")
             ->execute([$after, $telegramId]);
 
         logBalanceChange($pdo, $telegramId, null, 'bonus', $amount, $before, $after, $note);
@@ -129,7 +176,7 @@ function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $no
             $formattedAmt = number_format($amount, 2);
             $formattedBal = number_format($after, 2);
 
-            $userMsg = "🎁 <b>Bonus Received (SMART BINGO)!</b>\n\n" .
+            $userMsg = "🎁 <b>Bonus Deposited (SMART BINGO)!</b>\n\n" .
                        "• <b>Player:</b> {$safeName}\n" .
                        "• <b>Bonus Amount:</b> <b>+{$formattedAmt} ETB</b>\n" .
                        "• <b>New Balance:</b> <b>{$formattedBal} ETB</b>\n" .
@@ -230,7 +277,7 @@ function resolvePlayerDisplayName(PDO $pdo, string $telegramId, string $roomFirs
     }
 
     if ($telegramId !== '') {
-        $stmt = $pdo->prepare("SELECT first_name, username FROM players WHERE telegram_id = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT first_name, username FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $stmt->execute([$telegramId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row) {
@@ -265,13 +312,13 @@ function recordNonWinningPlayers(PDO $pdo, int $roomId, string $gameLabel, array
             continue;
         }
 
-        $dupStmt = $pdo->prepare("SELECT id FROM balance_ledger WHERE telegram_id = ? AND room_id = ? AND type = 'loss_settled' LIMIT 1");
+        $dupStmt = $pdo->prepare("SELECT id FROM balance_ledger WHERE CAST(telegram_id AS TEXT) = ? AND room_id = ? AND type = 'loss_settled' LIMIT 1");
         $dupStmt->execute([$tid, $roomId]);
         if ($dupStmt->fetchColumn()) {
             continue;
         }
 
-        $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+        $balStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ?");
         $balStmt->execute([$tid]);
         $curBal = round((float)($balStmt->fetchColumn() ?: 0), 2);
         logBalanceChange($pdo, $tid, $roomId, 'loss_settled', -$stakeLost, $curBal, $curBal, "Lost Game {$gameLabel} (stake {$stakeLost} ETB already deducted)");
@@ -403,17 +450,17 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
             $wName = (string)($w['name'] ?? 'Player');
             $winnerIds[] = $wTid;
 
-            $checkLog = $pdo->prepare("SELECT id, prize FROM game_winners WHERE room_id = ? AND telegram_id = ? LIMIT 1");
+            $checkLog = $pdo->prepare("SELECT id, prize FROM game_winners WHERE room_id = ? AND CAST(telegram_id AS TEXT) = ? LIMIT 1");
             $checkLog->execute([$roomId, $wTid]);
             $prevWin = $checkLog->fetch(PDO::FETCH_ASSOC);
 
             if (!$prevWin) {
-                $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+                $balStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ?");
                 $balStmt->execute([$wTid]);
                 $before = round((float)($balStmt->fetchColumn() ?: 0), 2);
                 $after = round($before + $sharePerWinner, 2);
 
-                $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
+                $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")
                     ->execute([$after, $wTid]);
                 $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)")
                     ->execute([$roomId, $wTid, $wName, $sharePerWinner]);
@@ -601,7 +648,7 @@ if ($action === 'get_balance') {
         exit;
     }
 
-    $stmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
+    $stmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
     $stmt->execute([$telegramId]);
     $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -646,7 +693,7 @@ elseif ($action === 'get_room_state') {
         shuffle($pool);
         $insRoom = $pdo->prepare("INSERT INTO rooms (game_code, stake, status, created_at, starts_at, draw_pool_json, called_numbers_json, winners_json) VALUES (?, ?, 'waiting', ?, ?, ?, '[]', '[]')");
         $insRoom->execute([$code, $stake, $now, $now + 15, json_encode($pool)]);
-        $newRoomId = (int)$pdo->lastInsertId();
+        $newRoomId = lastInsertIdCompat($pdo, 'rooms_id_seq');
         $newStmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
         $newStmt->execute([$newRoomId]);
         $newRoom = $newStmt->fetch(PDO::FETCH_ASSOC);
@@ -719,7 +766,7 @@ elseif ($action === 'join_room') {
             }
         }
 
-        $stmt = $pdo->prepare("SELECT balance, first_name, username FROM players WHERE telegram_id = ?");
+        $stmt = $pdo->prepare("SELECT balance, first_name, username FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -736,7 +783,7 @@ elseif ($action === 'join_room') {
             $currentBalance = round((float)$player['balance'], 2);
             $existingFirst = trim((string)($player['first_name'] ?? ''));
             if ($rawFirstName !== '' && strcasecmp($rawFirstName, 'Player') !== 0 && $existingFirst !== $rawFirstName) {
-                $pdo->prepare("UPDATE players SET first_name = ? WHERE telegram_id = ?")->execute([$rawFirstName, $telegramId]);
+                $pdo->prepare("UPDATE players SET first_name = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$rawFirstName, $telegramId]);
                 $effectiveName = $rawFirstName;
             } elseif ($existingFirst !== '' && strcasecmp($existingFirst, 'Player') !== 0) {
                 $effectiveName = $existingFirst;
@@ -744,7 +791,7 @@ elseif ($action === 'join_room') {
                 $effectiveName = $rawUsername;
             }
             if ($rawUsername !== '') {
-                $pdo->prepare("UPDATE players SET username = ? WHERE telegram_id = ?")->execute([$rawUsername, $telegramId]);
+                $pdo->prepare("UPDATE players SET username = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$rawUsername, $telegramId]);
             }
         }
 
@@ -765,7 +812,7 @@ elseif ($action === 'join_room') {
             shuffle($pool);
             $insRoom = $pdo->prepare("INSERT INTO rooms (game_code, stake, status, created_at, starts_at, draw_pool_json, called_numbers_json, winners_json) VALUES (?, ?, 'waiting', ?, ?, ?, '[]', '[]')");
             $insRoom->execute([$code, $stake, $now, $now + 15, json_encode($pool)]);
-            $roomId = (int)$pdo->lastInsertId();
+            $roomId = lastInsertIdCompat($pdo, 'rooms_id_seq');
             $roomStmt->execute([$stake]);
             $room = $roomStmt->fetch(PDO::FETCH_ASSOC);
         } else {
@@ -796,7 +843,7 @@ elseif ($action === 'join_room') {
         }
 
         $newBalance = round($currentBalance - $totalFee, 2);
-        $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")->execute([$newBalance, $telegramId]);
+        $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$newBalance, $telegramId]);
         logBalanceChange($pdo, $telegramId, $roomId, 'stake_deduct', -$totalFee, $currentBalance, $newBalance, "Joined Game " . ($room['game_code'] ?? $roomId) . " (" . count($cartelaNumbers) . " cartela)");
 
         $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, first_name, player_number, stake_paid) VALUES (?, ?, ?, ?, ?)");
@@ -816,7 +863,7 @@ elseif ($action === 'join_room') {
             'new_balance'     => $newBalance,
             'room'            => $payload,
         ]);
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         echo json_encode(['success' => false, 'error' => 'Transaction error: ' . $e->getMessage()]);
     }
@@ -829,7 +876,7 @@ elseif ($action === 'request_withdrawal') {
 
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ?");
+        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -849,7 +896,7 @@ elseif ($action === 'request_withdrawal') {
 
         $newBalance = round($currentBal - $amount, 2);
 
-        $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")->execute([$newBalance, $telegramId]);
+        $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$newBalance, $telegramId]);
         $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')")->execute([$telegramId, $amount, $method, $account]);
         logBalanceChange($pdo, $telegramId, null, 'withdrawal', -$amount, $currentBal, $newBalance, "Withdrawal via {$method} ({$account})");
 
@@ -874,7 +921,7 @@ elseif ($action === 'request_withdrawal') {
             'new_balance' => $newBalance,
             'message'     => 'Withdrawal request submitted! Admin has been notified.',
         ]);
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         error_log("request_withdrawal error: " . $e->getMessage());
         echo json_encode(['success' => false, 'error' => 'Withdrawal error: ' . $e->getMessage()]);
