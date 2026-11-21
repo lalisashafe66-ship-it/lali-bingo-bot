@@ -79,6 +79,47 @@ function ensureReferralSchema(PDO $pdo): void {
     ");
 }
 
+function buildRecentInvitesText(PDO $pdo, int $limit = 10): string {
+    ensureReferralSchema($pdo);
+    $limit = max(1, min(25, $limit));
+
+    $sql = "
+        SELECT
+            r.referrer_id,
+            r.referred_id,
+            r.bonus_amount,
+            r.created_at,
+            COALESCE(NULLIF(TRIM(p_ref.first_name), ''), 'Player') AS referrer_name,
+            COALESCE(NULLIF(TRIM(p_new.first_name), ''), 'Player') AS referred_name
+        FROM referrals r
+        LEFT JOIN players p_ref ON p_ref.telegram_id = r.referrer_id
+        LEFT JOIN players p_new ON p_new.telegram_id = r.referred_id
+        ORDER BY r.id DESC
+        LIMIT {$limit}
+    ";
+    $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$rows) {
+        return "SMART BINGO — Recent Invites\n\nNo invites recorded yet.";
+    }
+
+    $lines = ["SMART BINGO — Recent Invites (Last " . count($rows) . ")\n"];
+    foreach ($rows as $idx => $r) {
+        $num = $idx + 1;
+        $refName = (string)($r['referrer_name'] ?? 'Player');
+        $refId   = (string)($r['referrer_id'] ?? '');
+        $newName = (string)($r['referred_name'] ?? 'Player');
+        $newId   = (string)($r['referred_id'] ?? '');
+        $bonus   = number_format((float)($r['bonus_amount'] ?? 0), 2);
+        $created = (string)($r['created_at'] ?? '');
+
+        $lines[] = "{$num}. {$refName} ({$refId}) -> {$newName} ({$newId}) | +{$bonus} ETB"
+                 . ($created !== '' ? " [{$created}]" : '');
+    }
+
+    return implode("\n", $lines);
+}
+
 function addLedger(PDO $pdo, string $telegramId, ?int $roomId, string $type, float $amount, float $before, float $after, string $note): void {
     if (!tableExists($pdo, 'balance_ledger')) return;
     $stmt = $pdo->prepare("INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note) VALUES (?, ?, ?, ?, ?, ?, ?)");
@@ -475,6 +516,10 @@ function buildMainMenuKeyboard(string $webAppUrl, bool $isAdmin): array {
 }
 
 function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
+    if (trim($data) === 'admin_recent_invites') {
+        return ['kind' => 'recent_invites'];
+    }
+
     if (preg_match('/^open_bonus_menu:([a-zA-Z0-9_-]+)$/i', trim($data), $openMatch)) {
         return [
             'kind'   => 'open_bonus_menu',
@@ -559,7 +604,7 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
 }
 
 /* =========================================================================
-- 1. HANDLE INLINE BUTTON CLICKS (BONUS ALERTS, DEPOSIT & WITHDRAWAL)
+- 1. HANDLE INLINE BUTTON CLICKS (BONUS ALERTS, INVITES, DEPOSIT & WITHDRAWAL)
 - ========================================================================= */
 if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $cb         = $update['callback_query'];
@@ -587,6 +632,34 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     try {
         if ($parsed === null) {
             throw new RuntimeException('Unrecognized callback action: ' . $data);
+        }
+
+        if ($parsed['kind'] === 'recent_invites') {
+            $invitesText = buildRecentInvitesText($pdo, 10);
+            tgPost($token, 'answerCallbackQuery', [
+                'callback_query_id' => $cbId,
+                'text'              => 'Loaded recent invites',
+                'show_alert'        => false,
+            ]);
+
+            if ($adminMsgId > 0) {
+                tgPost($token, 'editMessageText', [
+                    'chat_id'      => $adminChat,
+                    'message_id'   => $adminMsgId,
+                    'text'         => $invitesText,
+                    'reply_markup' => [
+                        'inline_keyboard' => [
+                            [
+                                ['text' => '🎁 Bonus Alert Menu', 'callback_data' => 'open_bonus_menu:picker'],
+                            ],
+                        ],
+                    ],
+                ]);
+            }
+
+            http_response_code(200);
+            echo "OK";
+            exit;
         }
 
         if ($parsed['kind'] === 'open_bonus_menu') {
@@ -949,6 +1022,9 @@ try {
                . "Your Invite Link: {$inviteLink}"
                . $refBonusNote . "\n\n"
                . "Tap Play Bingo below or use the menu buttons.";
+    } elseif ($isAdmin && preg_match('/^\/invites(?:\s+(\d+))?$/i', $text, $invMatch)) {
+        $lim = isset($invMatch[1]) ? (int)$invMatch[1] : 10;
+        $reply = buildRecentInvitesText($pdo, $lim);
     } elseif ($isAdmin && preg_match('/^\/bonus(10|20|50)\s+([a-zA-Z0-9_-]+)(?:\s+(.+))?$/i', $text, $quickBonusMatch)) {
         $amt = (float)$quickBonusMatch[1];
         $targetSpec = (string)$quickBonusMatch[2];
@@ -1086,13 +1162,15 @@ try {
                            . "• Total Rooms: {$rCount}\n"
                            . "• Join Referrals: {$refTotal}\n"
                            . "• Pending Withdrawals: {$wPending}\n\n"
-                           . "Tap below to choose player criteria & send 10 / 20 / 50 ETB Bonus Alerts, or use:\n"
+                           . "Tap below to manage Bonus Alerts or view Recent Invites, or use:\n"
+                           . "• /invites [limit]\n"
                            . "• /bonusmenu [all|new|zero|<telegram_id>]\n"
                            . "• /bonus10 | /bonus20 | /bonus50 <all|new|zero|<telegram_id>> [note]";
                     $inlineMarkup = [
                         'inline_keyboard' => [
                             [
                                 ['text' => '🎁 Bonus Alert Menu', 'callback_data' => 'open_bonus_menu:picker'],
+                                ['text' => '📋 Recent Invites', 'callback_data' => 'admin_recent_invites'],
                             ],
                         ],
                     ];
