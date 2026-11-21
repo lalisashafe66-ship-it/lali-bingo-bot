@@ -131,9 +131,9 @@ function normalizeBonusTarget(string $targetSpec): string {
 
 function formatBonusTargetLabel(string $target): string {
     return match ($target) {
-        'all'  => 'All Registered Players',
-        'new'  => 'Newcomers (0.00 Bal & No Prior Rounds)',
-        'zero' => 'Zero-Balance Players (0.00 ETB)',
+        'all'   => 'All Registered Players',
+        'new'   => 'Newcomers (0.00 Bal & No Prior Rounds)',
+        'zero'  => 'Zero-Balance Players (0.00 ETB)',
         default => "Specific Player ID: {$target}",
     };
 }
@@ -162,7 +162,6 @@ function resolveBonusTargetPlayerIds(PDO $pdo, string $target): array {
 
         $ids = $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
         if (!$ids) {
-            // Fallback to newest 5 players with 0.00 balance if all players have prior activity
             $fb = $pdo->query("SELECT telegram_id FROM players WHERE ROUND(COALESCE(balance, 0), 2) = 0.00 ORDER BY rowid DESC LIMIT 5");
             $ids = $fb->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
         }
@@ -202,10 +201,6 @@ function buildBonusAlertKeyboard(string $targetSpec = 'all'): array {
     ];
 }
 
-/**
- * Notify the player on Telegram first, then deposit/credit the bonus amount
- * into their account balance and record it in balance_ledger.
- */
 function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, float $amount, string $note = 'Admin Bonus Alert'): array {
     $targetPlayerId = preg_replace('/\D+/', '', $targetPlayerId) ?? '';
     $amount = round($amount, 2);
@@ -226,7 +221,6 @@ function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, 
     $amtStr = number_format($amount, 2);
     $afterStr = number_format($projectedAfter, 2);
 
-    // 1. Alert the player on Telegram first
     $alertMsg = "SMART BINGO — Bonus Alert!\n\n"
               . "Player: {$playerName}\n"
               . "Bonus Alert Amount: +{$amtStr} ETB\n"
@@ -235,7 +229,6 @@ function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, 
 
     $notified = sendPlayerNotification($pdo, $token, $targetPlayerId, $alertMsg);
 
-    // 2. Deposit/credit the bonus into player's balance inside a transaction
     $pdo->beginTransaction();
     try {
         $stmt->execute([$targetPlayerId]);
@@ -447,7 +440,6 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
         ];
     }
 
-    // Format for 10/20/50 bonus alert buttons: "bonus_alert:10:all" or "bonus_alert:20:new"
     if (preg_match('/^bonus_alert:(10|20|50):([a-zA-Z0-9_-]+)$/i', trim($data), $bMatch)) {
         return [
             'kind'   => 'bonus_alert',
