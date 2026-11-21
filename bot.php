@@ -121,18 +121,41 @@ function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId,
 }
 
 /**
- * Give a bonus to a player on demand and send them a Telegram notification.
+ * Notify the player on Telegram first, then deposit/credit the bonus amount
+ * into their account balance and record it in balance_ledger.
  */
-function creditManualBonus(PDO $pdo, string $token, string $targetPlayerId, float $amount, string $note = 'Special Bonus', bool $notifyUser = true): array {
+function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, float $amount, string $note = 'Admin Bonus Alert'): array {
     $targetPlayerId = preg_replace('/\D+/', '', $targetPlayerId) ?? '';
     $amount = round($amount, 2);
+
     if ($targetPlayerId === '' || $amount <= 0) {
-        return ['ok' => false, 'error' => 'Invalid player ID or amount'];
+        return ['ok' => false, 'error' => 'Invalid player ID or bonus amount'];
     }
 
+    $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ? LIMIT 1");
+    $stmt->execute([$targetPlayerId]);
+    $existingRow = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $playerName = $existingRow
+        ? (trim((string)($existingRow['first_name'] ?? 'Player')) ?: 'Player')
+        : 'Player';
+    $projectedBefore = $existingRow ? round((float)($existingRow['balance'] ?? 0.00), 2) : 0.00;
+    $projectedAfter  = round($projectedBefore + $amount, 2);
+    $amtStr = number_format($amount, 2);
+    $afterStr = number_format($projectedAfter, 2);
+
+    // 1. Alert the player on Telegram first
+    $alertMsg = "SMART BINGO — Bonus Alert!\n\n"
+              . "Player: {$playerName}\n"
+              . "Bonus Alert Amount: +{$amtStr} ETB\n"
+              . "Reason: {$note}\n\n"
+              . "Your +{$amtStr} ETB bonus is being deposited into your balance (New Balance: {$afterStr} ETB).";
+
+    $notified = sendPlayerNotification($pdo, $token, $targetPlayerId, $alertMsg);
+
+    // 2. Deposit/credit the bonus into player's balance inside a transaction
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ? LIMIT 1");
         $stmt->execute([$targetPlayerId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -140,28 +163,16 @@ function creditManualBonus(PDO $pdo, string $token, string $targetPlayerId, floa
             $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, invites_count) VALUES (?, ?, 'Player', 0.00, 0)")
                 ->execute([$targetPlayerId, $targetPlayerId]);
             $before = 0.00;
-            $playerName = 'Player';
         } else {
             $before = round((float)($row['balance'] ?? 0.00), 2);
-            $playerName = trim((string)($row['first_name'] ?? 'Player')) ?: 'Player';
         }
 
         $after = round($before + $amount, 2);
-        $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
+        $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
             ->execute([$after, $targetPlayerId]);
 
-        addLedger($pdo, $targetPlayerId, null, 'bonus', $amount, $before, $after, $note);
+        addLedger($pdo, $targetPlayerId, null, 'bonus_deposit', $amount, $before, $after, "{$note} (+{$amtStr} ETB bonus alert)");
         $pdo->commit();
-
-        $notified = false;
-        if ($notifyUser) {
-            $msg = "SMART BINGO — Bonus Notification!\n\n"
-                 . "Player: {$playerName}\n"
-                 . "Bonus Received: +" . number_format($amount, 2) . " ETB\n"
-                 . "New Balance: " . number_format($after, 2) . " ETB\n"
-                 . "Reason: {$note}";
-            $notified = sendPlayerNotification($pdo, $token, $targetPlayerId, $msg);
-        }
 
         return [
             'ok'          => true,
@@ -174,9 +185,54 @@ function creditManualBonus(PDO $pdo, string $token, string $targetPlayerId, floa
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
-        error_log("creditManualBonus error ({$targetPlayerId}): " . $e->getMessage());
+        error_log("notifyAndDepositBonus error ({$targetPlayerId}): " . $e->getMessage());
         return ['ok' => false, 'error' => $e->getMessage()];
     }
+}
+
+function sendBonusAlertToTarget(PDO $pdo, string $token, string $targetSpec, float $amount, string $note = 'Admin Bonus Alert'): array {
+    $allowedAmounts = [10.00, 20.00, 50.00];
+    $amount = round($amount, 2);
+    if (!in_array($amount, $allowedAmounts, true)) {
+        return ['ok' => false, 'error' => 'Bonus alert amount must be 10, 20, or 50 ETB.'];
+    }
+
+    $targetSpec = strtolower(trim($targetSpec));
+    if ($targetSpec === 'all') {
+        $ids = $pdo->query("SELECT telegram_id FROM players")->fetchAll(PDO::FETCH_COLUMN, 0);
+        if (!$ids) {
+            return ['ok' => false, 'error' => 'No registered players found.'];
+        }
+
+        $successCount = 0;
+        $notifiedCount = 0;
+        foreach ($ids as $pid) {
+            $res = notifyAndDepositBonus($pdo, $token, (string)$pid, $amount, $note);
+            if (!empty($res['ok'])) {
+                $successCount++;
+                if (!empty($res['notified'])) {
+                    $notifiedCount++;
+                }
+            }
+        }
+
+        return [
+            'ok'             => true,
+            'mode'           => 'all',
+            'amount'         => $amount,
+            'credited_count' => $successCount,
+            'notified_count' => $notifiedCount,
+        ];
+    }
+
+    $cleanId = preg_replace('/\D+/', '', $targetSpec) ?? '';
+    if ($cleanId === '') {
+        return ['ok' => false, 'error' => 'Provide a valid Telegram ID or "all".'];
+    }
+
+    $res = notifyAndDepositBonus($pdo, $token, $cleanId, $amount, $note);
+    $res['mode'] = 'single';
+    return $res;
 }
 
 function buildBonusHistoryText(PDO $pdo, string $telegramId, string $firstName, float $currentBalance): string {
@@ -203,7 +259,7 @@ function buildBonusHistoryText(PDO $pdo, string $telegramId, string $firstName, 
         return "SMART BINGO — Bonus Notifications\n\n"
              . "Player: {$firstName}\n"
              . "Current Balance: {$balStr} ETB\n\n"
-             . "No bonuses received yet. When a bonus is sent to you, you will receive a notification here.";
+             . "No bonuses received yet. When a bonus alert is sent to you, you will receive a notification here and it will be deposited into your balance.";
     }
 
     $lines = [
@@ -212,7 +268,7 @@ function buildBonusHistoryText(PDO $pdo, string $telegramId, string $firstName, 
         "Player: {$firstName}",
         "Current Balance: {$balStr} ETB",
         "",
-        "Recent Bonuses:",
+        "Recent Bonuses (Deposited):",
     ];
 
     foreach ($rows as $r) {
@@ -345,6 +401,15 @@ function buildMainMenuKeyboard(string $webAppUrl, bool $isAdmin): array {
 }
 
 function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
+    // Format for 10/20/50 bonus alert buttons: "bonus_alert:10:123456789" or "bonus_alert:20:all"
+    if (preg_match('/^bonus_alert:(10|20|50):([a-zA-Z0-9_-]+)$/i', trim($data), $bMatch)) {
+        return [
+            'kind'       => 'bonus_alert',
+            'amount'     => round((float)$bMatch[1], 2),
+            'target'     => strtolower((string)$bMatch[2]),
+        ];
+    }
+
     $lower = strtolower(trim($data));
     if ($lower === '') return null;
 
@@ -407,7 +472,7 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
 }
 
 /* =========================================================================
-- 1. HANDLE INLINE BUTTON CLICKS (DEPOSIT & WITHDRAWAL APPROVE / REJECT)
+- 1. HANDLE INLINE BUTTON CLICKS (BONUS ALERTS, DEPOSIT & WITHDRAWAL)
 - ========================================================================= */
 if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $cb         = $update['callback_query'];
@@ -421,7 +486,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     if ($adminId !== '' && $fromId !== $adminId) {
         tgPost($token, 'answerCallbackQuery', [
             'callback_query_id' => $cbId,
-            'text'              => 'Only the admin can approve or reject requests.',
+            'text'              => 'Only the admin can perform this action.',
             'show_alert'        => true,
         ]);
         http_response_code(200);
@@ -435,6 +500,49 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     try {
         if ($parsed === null) {
             throw new RuntimeException('Unrecognized callback action: ' . $data);
+        }
+
+        if ($parsed['kind'] === 'bonus_alert') {
+            $bonusAmt = (float)$parsed['amount'];
+            $target   = (string)$parsed['target'];
+            $res = sendBonusAlertToTarget($pdo, $token, $target, $bonusAmt, 'Admin Bonus Alert');
+
+            if (empty($res['ok'])) {
+                throw new RuntimeException((string)($res['error'] ?? 'Bonus alert failed'));
+            }
+
+            $amtStr = number_format($bonusAmt, 2);
+            if (($res['mode'] ?? 'single') === 'all') {
+                $cCount = (int)($res['credited_count'] ?? 0);
+                $nCount = (int)($res['notified_count'] ?? 0);
+                $toastText = "Sent +{$amtStr} ETB to {$cCount} players";
+                $statusLine = "\n\n✅ BONUS ALERT SENT & DEPOSITED (+{$amtStr} ETB to ALL)\n• Credited: {$cCount} players\n• Telegram Notified: {$nCount} players";
+            } else {
+                $pid = (string)($res['player_id'] ?? $target);
+                $newBalStr = number_format((float)($res['new_balance'] ?? 0), 2);
+                $notifiedFlag = !empty($res['notified']) ? 'Yes' : 'Check user /start';
+                $toastText = "Alerted & deposited +{$amtStr} ETB";
+                $statusLine = "\n\n✅ BONUS ALERT SENT & DEPOSITED\n• Player ID: {$pid}\n• Deposited: +{$amtStr} ETB\n• New Balance: {$newBalStr} ETB\n• Notified: {$notifiedFlag}";
+            }
+
+            tgPost($token, 'answerCallbackQuery', [
+                'callback_query_id' => $cbId,
+                'text'              => $toastText,
+                'show_alert'        => false,
+            ]);
+
+            if ($adminMsgId > 0) {
+                tgPost($token, 'editMessageText', [
+                    'chat_id'      => $adminChat,
+                    'message_id'   => $adminMsgId,
+                    'text'         => ($origText !== '' ? $origText : 'Bonus Alert') . $statusLine,
+                    'reply_markup' => ['inline_keyboard' => []],
+                ]);
+            }
+
+            http_response_code(200);
+            echo "OK";
+            exit;
         }
 
         $kind           = $parsed['kind'];
@@ -658,6 +766,7 @@ if ($chatId === 0 || $userId === 0) {
 $isAdmin = ($adminId !== '' && (string)$userId === $adminId);
 $reply = null;
 $parseMode = '';
+$inlineMarkup = null;
 $replyMarkup = buildMainMenuKeyboard($webAppUrl, $isAdmin);
 
 try {
@@ -689,22 +798,47 @@ try {
                . "Your Invite Link: {$inviteLink}"
                . $refBonusNote . "\n\n"
                . "Tap Play Bingo below or use the menu buttons.";
-    } elseif ($isAdmin && preg_match('/^\/givebonus\s+(\d+)\s+(\d+(?:\.\d{1,2})?)(?:\s+(.+))?$/i', $text, $bMatch)) {
-        $targetId  = (string)$bMatch[1];
-        $bonusAmt  = (float)$bMatch[2];
-        $bonusNote = trim((string)($bMatch[3] ?? 'Bonus from Admin'));
+    } elseif ($isAdmin && preg_match('/^\/bonus(10|20|50)\s+([a-zA-Z0-9_-]+)(?:\s+(.+))?$/i', $text, $quickBonusMatch)) {
+        $amt = (float)$quickBonusMatch[1];
+        $targetSpec = (string)$quickBonusMatch[2];
+        $note = trim((string)($quickBonusMatch[3] ?? 'Admin Bonus Alert'));
 
-        $res = creditManualBonus($pdo, $token, $targetId, $bonusAmt, $bonusNote, true);
+        $res = sendBonusAlertToTarget($pdo, $token, $targetSpec, $amt, $note);
         if (!empty($res['ok'])) {
-            $sentStatus = !empty($res['notified']) ? 'Yes' : 'Failed (check user chat)';
-            $reply = "Bonus Credited!\n\n"
-                   . "• Player ID: {$targetId}\n"
-                   . "• Bonus Added: +" . number_format($bonusAmt, 2) . " ETB\n"
-                   . "• New Balance: " . number_format((float)$res['new_balance'], 2) . " ETB\n"
-                   . "• User Notified: {$sentStatus}";
+            $amtStr = number_format($amt, 2);
+            if (($res['mode'] ?? 'single') === 'all') {
+                $reply = "Bonus Alert Sent & Deposited!\n\n"
+                       . "• Amount: +{$amtStr} ETB\n"
+                       . "• Target: ALL Players\n"
+                       . "• Balance Deposited: {$res['credited_count']} players\n"
+                       . "• Telegram Notified: {$res['notified_count']} players";
+            } else {
+                $pid = (string)($res['player_id'] ?? $targetSpec);
+                $notifiedFlag = !empty($res['notified']) ? 'Yes' : 'Failed (check user /start)';
+                $reply = "Bonus Alert Sent & Deposited!\n\n"
+                       . "• Player ID: {$pid}\n"
+                       . "• Bonus Deposited: +{$amtStr} ETB\n"
+                       . "• New Balance: " . number_format((float)($res['new_balance'] ?? 0), 2) . " ETB\n"
+                       . "• Telegram Notified: {$notifiedFlag}";
+            }
         } else {
-            $reply = "Could not send bonus: " . ($res['error'] ?? 'Unknown error');
+            $reply = "Could not send bonus alert: " . ($res['error'] ?? 'Unknown error');
         }
+    } elseif ($isAdmin && preg_match('/^\/bonusmenu(?:\s+([a-zA-Z0-9_-]+))?$/i', $text, $menuBonusMatch)) {
+        $targetSpec = strtolower(trim((string)($menuBonusMatch[1] ?? (string)$userId)));
+        $targetLabel = ($targetSpec === 'all') ? 'ALL Players' : "Player ID {$targetSpec}";
+        $reply = "SMART BINGO — Select Bonus Alert Amount\n\n"
+               . "Target: {$targetLabel}\n"
+               . "Tapping an amount notifies on Telegram first and deposits the bonus into balance:";
+        $inlineMarkup = [
+            'inline_keyboard' => [
+                [
+                    ['text' => '+10 ETB Bonus', 'callback_data' => "bonus_alert:10:{$targetSpec}"],
+                    ['text' => '+20 ETB Bonus', 'callback_data' => "bonus_alert:20:{$targetSpec}"],
+                    ['text' => '+50 ETB Bonus', 'callback_data' => "bonus_alert:50:{$targetSpec}"],
+                ],
+            ],
+        ];
     } else {
         switch ($text) {
             case '/menu':
@@ -795,7 +929,9 @@ try {
                            . "• Total Rooms: {$rCount}\n"
                            . "• Join Referrals: {$refTotal}\n"
                            . "• Pending Withdrawals: {$wPending}\n\n"
-                           . "Tip: Send /givebonus <telegram_id> <amount> [note] to send a bonus & notify a player.";
+                           . "Bonus Alerts (10 / 20 / 50 ETB):\n"
+                           . "• /bonusmenu <telegram_id or all>\n"
+                           . "• /bonus10 | /bonus20 | /bonus50 <telegram_id or all> [note]";
                 } else {
                     $reply = "This menu is for admins only.";
                 }
@@ -811,7 +947,7 @@ if ($reply !== null) {
     $payload = [
         'chat_id'      => $chatId,
         'text'         => $reply,
-        'reply_markup' => $replyMarkup,
+        'reply_markup' => $inlineMarkup ?? $replyMarkup,
     ];
     if ($parseMode !== '') {
         $payload['parse_mode'] = $parseMode;
