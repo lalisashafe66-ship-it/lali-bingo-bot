@@ -163,7 +163,7 @@ function addLedger(PDO $pdo, string $telegramId, ?int $roomId, string $type, flo
 }
 
 function getPlayerChatTarget(PDO $pdo, string $telegramId): string {
-    $stmt = $pdo->prepare("SELECT chat_id FROM players WHERE telegram_id = ? LIMIT 1");
+    $stmt = $pdo->prepare("SELECT chat_id FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
     $stmt->execute([$telegramId]);
     $chatId = trim((string)($stmt->fetchColumn() ?: ''));
     return $chatId !== '' ? $chatId : $telegramId;
@@ -313,30 +313,17 @@ function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, 
         return ['ok' => false, 'error' => 'Invalid player ID or bonus amount'];
     }
 
-    $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE telegram_id = ? LIMIT 1");
-    $stmt->execute([$targetPlayerId]);
-    $existingRow = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    $playerName = $existingRow
-        ? (trim((string)($existingRow['first_name'] ?? 'Player')) ?: 'Player')
-        : 'Player';
-    $projectedBefore = $existingRow ? round((float)($existingRow['balance'] ?? 0.00), 2) : 0.00;
-    $projectedAfter  = round($projectedBefore + $amount, 2);
-    $amtStr = number_format($amount, 2);
-    $afterStr = number_format($projectedAfter, 2);
-
-    $alertMsg = "SMART BINGO — Bonus Alert!\n\n"
-              . "Player: {$playerName}\n"
-              . "Bonus Alert Amount: +{$amtStr} ETB\n"
-              . "Reason: {$note}\n\n"
-              . "Your +{$amtStr} ETB bonus is being deposited into your balance (New Balance: {$afterStr} ETB).";
-
-    $notified = sendPlayerNotification($pdo, $token, $targetPlayerId, $alertMsg);
+    ensureReferralSchema($pdo);
 
     $pdo->beginTransaction();
     try {
+        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $stmt->execute([$targetPlayerId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $playerName = $row
+            ? (trim((string)($row['first_name'] ?? 'Player')) ?: 'Player')
+            : 'Player';
 
         if (!$row) {
             $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, invites_count) VALUES (?, ?, 'Player', 0.00, 0)")
@@ -347,11 +334,22 @@ function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, 
         }
 
         $after = round($before + $amount, 2);
-        $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?")
+        $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE CAST(telegram_id AS TEXT) = ?")
             ->execute([$after, $targetPlayerId]);
+
+        $amtStr   = number_format($amount, 2);
+        $afterStr = number_format($after, 2);
 
         addLedger($pdo, $targetPlayerId, null, 'bonus_deposit', $amount, $before, $after, "{$note} (+{$amtStr} ETB bonus alert)");
         $pdo->commit();
+
+        $alertMsg = "SMART BINGO — Bonus Alert!\n\n"
+                  . "Player: {$playerName}\n"
+                  . "Bonus Alert Amount: +{$amtStr} ETB\n"
+                  . "Reason: {$note}\n\n"
+                  . "Your +{$amtStr} ETB bonus has been deposited into your balance (New Balance: {$afterStr} ETB).";
+
+        $notified = sendPlayerNotification($pdo, $token, $targetPlayerId, $alertMsg);
 
         return [
             'ok'          => true,
