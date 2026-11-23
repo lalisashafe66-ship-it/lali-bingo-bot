@@ -135,9 +135,7 @@
       background: rgba(245, 183, 0, 0.12);
     }
 
-    .table-card input[type="radio"] {
-      display: none;
-    }
+    .table-card input[type="radio"] { display: none; }
 
     .table-big-amt {
       font-size: 2.1rem;
@@ -170,9 +168,7 @@
       flex-shrink: 0;
     }
 
-    .table-card.selected .radio-ring {
-      border-color: var(--accent-gold);
-    }
+    .table-card.selected .radio-ring { border-color: var(--accent-gold); }
 
     .table-card.selected .radio-ring::after {
       content: "";
@@ -330,6 +326,13 @@
       border-radius: 12px;
       font-weight: 700;
       cursor: pointer;
+    }
+
+    .lobby-actions-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 8px;
     }
 
     .caller-card {
@@ -605,27 +608,6 @@
       margin: 0 auto 10px;
     }
 
-    .stat-row-3 {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-    }
-
-    .stat-box {
-      background: rgba(0, 0, 0, 0.22);
-      border-radius: 12px;
-      padding: 10px 6px;
-    }
-
-    .stat-box .num {
-      display: block;
-      font-weight: 900;
-      font-size: 1.05rem;
-      color: var(--accent-gold);
-    }
-
-    .stat-box .lbl { font-size: 0.72rem; color: var(--text-muted); }
-
     .modal-backdrop-custom {
       position: fixed;
       inset: 0;
@@ -718,7 +700,7 @@
   <section id="screen-game" class="container">
     <h1 class="section-title">Choose a table</h1>
     <p class="section-sub">
-      Pick a stake, then choose up to 3 cartelas. The first cartela with a full line wins. Winner takes 80% of all stakes (20% admin fee).
+      Pick a stake, then choose up to 3 cartelas. First closed line wins 80% of all stakes (20% admin fee).
     </p>
 
     <label class="table-card selected" style="border-left:6px solid #22c55e;" onclick="selectTable(10, this)">
@@ -813,7 +795,10 @@
       <div style="font-weight:800;font-size:0.88rem;margin-bottom:6px;">Your Reserved Cartelas</div>
       <div id="lobby-cartelas-preview" class="mini-preview-strip"></div>
     </div>
-    <button type="button" class="btn-secondary-dark" style="width:100%;padding:11px;" onclick="leaveToSetup()">Leave Lobby</button>
+    <div class="lobby-actions-row">
+      <button type="button" class="btn-gold" style="padding:11px;" onclick="playAgainQuick()">Play Again</button>
+      <button type="button" class="btn-secondary-dark" style="padding:11px;" onclick="leaveToSetup()">Leave Lobby</button>
+    </div>
   </section>
 
   <!-- SCREEN 4: ACTIVE PLAYROOM -->
@@ -906,12 +891,12 @@
     </div>
   </section>
 
-  <!-- WINNER MODAL (MATCHING BINGO / NAME / PRIZE / WINNING CARTELA) -->
+  <!-- WINNER MODAL WITH PLAY AGAIN + LEAVE LOBBY -->
   <div id="winner-modal" class="modal-backdrop-custom d-none">
     <div class="modal-box-custom">
       <div style="color:var(--text-muted);font-weight:800;font-size:0.95rem;">Bingo</div>
       <div id="winner-top-name" class="winner-top-name">Winner</div>
-      <div id="winner-list-banner" style="color:var(--accent-gold);font-weight:900;font-size:1.15rem;margin-top:2px;">0 ETB each</div>
+      <div id="winner-list-banner" style="color:var(--accent-gold);font-weight:900;font-size:1.15rem;margin-top:2px;">0 ETB</div>
 
       <div class="winning-board-card">
         <div class="top-stripe"></div>
@@ -929,7 +914,10 @@
         <div id="winner-board-grid" class="bingo-5col"></div>
       </div>
 
-      <button type="button" class="btn-gold" onclick="playAgainFromModal()">Play Again</button>
+      <div class="lobby-actions-row">
+        <button type="button" class="btn-gold" style="padding:11px;" onclick="playAgainFromModal()">Play Again</button>
+        <button type="button" class="btn-secondary-dark" style="padding:11px;" onclick="leaveLobbyFromModal()">Leave Lobby</button>
+      </div>
     </div>
   </div>
 
@@ -1005,6 +993,7 @@
     let balance = 0.00;
     let selectedStake = 10;
     let selectedCartelaNumbers = [];
+    let lastJoinedCartelas = [];
     let takenCartelas = [];
     let currentRoomId = null;
     let currentGameCode = '--';
@@ -1161,6 +1150,25 @@
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       switchTab('game');
       pollSetupRoomStatus();
+    }
+
+    function playAgainQuick() {
+      stopRoomPolling();
+      currentRoomId = null;
+      if (lastJoinedCartelas.length > 0) {
+        selectedCartelaNumbers = lastJoinedCartelas.filter(n => !takenCartelas.includes(n)).slice(0, 3);
+      }
+      if (selectedCartelaNumbers.length === 0) {
+        for (let n = 1; n <= 400; n++) {
+          if (!takenCartelas.includes(n)) {
+            selectedCartelaNumbers = [n];
+            break;
+          }
+        }
+      }
+      showOnlyScreen('game');
+      buildCartelaPickerGrid();
+      joinSelectedTable();
     }
 
     function switchTab(tab) {
@@ -1322,11 +1330,11 @@
       } else {
         const capped = winners.slice(0, 2);
         const names = capped.map(w => (w.name && w.name !== 'Player') ? w.name : playerName).join(' & ');
-        const prizeAmt = Number(capped[0].prize || 0).toFixed(0);
+        const prizeAmt = Number(capped[0].prize || 0).toFixed(2);
         topNameEl.textContent = names;
         banner.textContent = capped.length > 1
-          ? `${prizeAmt} ETB each (2 winners)`
-          : `${prizeAmt} ETB`;
+          ? `${prizeAmt} ETB each (80% pool)`
+          : `${prizeAmt} ETB (80% pool)`;
       }
 
       const firstWinner = (winners && winners.length > 0) ? winners[0] : null;
@@ -1354,7 +1362,7 @@
 
       gameHistory.unshift({
         code: currentGameCode,
-        board: activeCartelaNumber,
+        board: firstWinner ? firstWinner.cartela_number : activeCartelaNumber,
         won: didIWin,
         status: didIWin ? `Won +${Number((myEntry && myEntry.prize) || 0).toFixed(2)} ETB` : 'Finished'
       });
@@ -1364,7 +1372,11 @@
 
     function playAgainFromModal() {
       document.getElementById('winner-modal').classList.add('d-none');
-      currentRoomId = null;
+      playAgainQuick();
+    }
+
+    function leaveLobbyFromModal() {
+      document.getElementById('winner-modal').classList.add('d-none');
       selectedCartelaNumbers = [];
       leaveToSetup();
     }
@@ -1392,7 +1404,7 @@
       const latest = arr.length > 0 ? arr[arr.length - 1] : null;
 
       document.getElementById('play-game-code').textContent = currentGameCode;
-      document.getElementById('play-derash').textContent = Math.round(currentDerash);
+      document.getElementById('play-derash').textContent = currentDerash.toFixed(0);
       document.getElementById('play-calls').textContent = `${arr.length}/75`;
       document.getElementById('play-cartelas-count').textContent = `${Math.max(1, selectedCartelaNumbers.length)}`;
       document.getElementById('active-cartela-badge').textContent = `#${activeCartelaNumber}`;
@@ -1453,14 +1465,7 @@
               }
               renderPlayroomScreen(room);
             } else if (room.status === 'finished') {
-              if (room.winners && room.winners.length > 0) {
-                openWinnerModal(room.room_id, room.winners, room);
-              } else {
-                stopRoomPolling();
-                currentRoomId = null;
-                selectedCartelaNumbers = [];
-                leaveToSetup();
-              }
+              openWinnerModal(room.room_id, room.winners || [], room);
             }
           })
           .catch(() => {});
@@ -1500,7 +1505,9 @@
             if (!data.success || !data.room) return;
             if (data.room.status === 'active') {
               renderWaitActiveScreen(data.room, noticeMsg);
-            } else if (data.room.status === 'finished' || data.room.status === 'waiting') {
+            } else if (data.room.status === 'finished') {
+              openWinnerModal(data.room.room_id, data.room.winners || [], data.room);
+            } else if (data.room.status === 'waiting') {
               stopRoomPolling();
               currentRoomId = null;
               selectedCartelaNumbers = [];
@@ -1543,6 +1550,7 @@
             return;
           }
 
+          lastJoinedCartelas = [...selectedCartelaNumbers];
           if (data.new_balance !== undefined) updateBalanceUI(data.new_balance);
           card = [];
           marked = Array(25).fill(false);
