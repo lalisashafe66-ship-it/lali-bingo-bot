@@ -70,6 +70,12 @@ function getBingoPdo(): PDO
             $user    = urldecode((string)($parts['user'] ?? ''));
             $pass    = urldecode((string)($parts['pass'] ?? ''));
             $sslmode = 'require';
+            if (!empty($parts['query'])) {
+                parse_str((string)$parts['query'], $queryParams);
+                if (!empty($queryParams['sslmode'])) {
+                    $sslmode = (string)$queryParams['sslmode'];
+                }
+            }
         }
 
         $dsn = sprintf(
@@ -265,6 +271,7 @@ function registerOrGetUser(int $telegramId, int $chatId, string $firstName, stri
     $pdo = getBingoPdo();
     $tid = (string)$telegramId;
     $cid = (string)$chatId;
+    $now = gmdate('Y-m-d H:i:s');
 
     $stmt = $pdo->prepare("SELECT * FROM players WHERE telegram_id = :tid LIMIT 1");
     $stmt->execute([':tid' => $tid]);
@@ -276,25 +283,27 @@ function registerOrGetUser(int $telegramId, int $chatId, string $firstName, stri
             SET chat_id = :cid,
                 first_name = :fname,
                 username = :uname,
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = :now
             WHERE telegram_id = :tid
         ");
         $upd->execute([
             ':cid'   => $cid,
             ':fname' => $firstName !== '' ? $firstName : $existing['first_name'],
             ':uname' => $username,
+            ':now'   => $now,
             ':tid'   => $tid,
         ]);
     } else {
         $ins = $pdo->prepare("
-            INSERT INTO players (telegram_id, chat_id, first_name, username, phone, balance)
-            VALUES (:tid, :cid, :fname, :uname, '', 0.0)
+            INSERT INTO players (telegram_id, chat_id, first_name, username, phone, balance, created_at, updated_at)
+            VALUES (:tid, :cid, :fname, :uname, '', 0.0, :now, :now)
         ");
         $ins->execute([
             ':tid'   => $tid,
             ':cid'   => $cid,
             ':fname' => $firstName !== '' ? $firstName : 'Player',
             ':uname' => $username,
+            ':now'   => $now,
         ]);
     }
 
