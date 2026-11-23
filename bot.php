@@ -19,7 +19,7 @@ if (!is_array($update)) {
     exit;
 }
 
-$token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: '9105830123:AAGh_IUoXNiUbLZX2f5BBUo7_woBuzn8zBU'));
+$token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
 $adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
 $botUsername = 'SmartBingoHub_bot';
 $webAppUrl = 'https://lali-bingo-bot.onrender.com/index.php';
@@ -128,8 +128,8 @@ function buildRecentInvitesText(PDO $pdo, int $limit = 10): string {
             COALESCE(NULLIF(TRIM(p_ref.first_name), ''), 'Player') AS referrer_name,
             COALESCE(NULLIF(TRIM(p_new.first_name), ''), 'Player') AS referred_name
         FROM referrals r
-        LEFT JOIN players p_ref ON p_ref.telegram_id = r.referrer_id
-        LEFT JOIN players p_new ON p_new.telegram_id = r.referred_id
+        LEFT JOIN players p_ref ON CAST(p_ref.telegram_id AS TEXT) = CAST(r.referrer_id AS TEXT)
+        LEFT JOIN players p_new ON CAST(p_new.telegram_id AS TEXT) = CAST(r.referred_id AS TEXT)
         ORDER BY r.id DESC
         LIMIT {$limit}
     ";
@@ -246,27 +246,34 @@ function resolveBonusTargetPlayerIds(PDO $pdo, string $target): array {
         return $pdo->query("SELECT telegram_id FROM players")->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
     }
 
+    $zeroExpr = isPostgresPdo($pdo)
+        ? "ROUND(COALESCE(balance, 0)::numeric, 2) = 0.00"
+        : "ROUND(COALESCE(balance, 0), 2) = 0.00";
+
     if ($target === 'zero') {
-        $stmt = $pdo->query("SELECT telegram_id FROM players WHERE ROUND(COALESCE(balance, 0)::numeric, 2) = 0.00");
+        $stmt = $pdo->query("SELECT telegram_id FROM players WHERE {$zeroExpr}");
         return $stmt->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
     }
 
     if ($target === 'new') {
         $hasRoomPlayers = tableExists($pdo, 'room_players');
         $hasLedger      = tableExists($pdo, 'balance_ledger');
+        $pZeroExpr      = isPostgresPdo($pdo)
+            ? "ROUND(COALESCE(p.balance, 0)::numeric, 2) = 0.00"
+            : "ROUND(COALESCE(p.balance, 0), 2) = 0.00";
 
-        $sql = "SELECT p.telegram_id FROM players p WHERE ROUND(COALESCE(p.balance, 0)::numeric, 2) = 0.00";
+        $sql = "SELECT p.telegram_id FROM players p WHERE {$pZeroExpr}";
         if ($hasRoomPlayers) {
-            $sql .= " AND NOT EXISTS (SELECT 1 FROM room_players rp WHERE rp.telegram_id = p.telegram_id)";
+            $sql .= " AND NOT EXISTS (SELECT 1 FROM room_players rp WHERE CAST(rp.telegram_id AS TEXT) = CAST(p.telegram_id AS TEXT))";
         }
         if ($hasLedger) {
-            $sql .= " AND NOT EXISTS (SELECT 1 FROM balance_ledger bl WHERE bl.telegram_id = p.telegram_id)";
+            $sql .= " AND NOT EXISTS (SELECT 1 FROM balance_ledger bl WHERE CAST(bl.telegram_id AS TEXT) = CAST(p.telegram_id AS TEXT))";
         }
 
         $ids = $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
         if (!$ids) {
             $orderCol = isPostgresPdo($pdo) ? 'telegram_id DESC' : 'rowid DESC';
-            $fb = $pdo->query("SELECT telegram_id FROM players WHERE ROUND(COALESCE(balance, 0)::numeric, 2) = 0.00 ORDER BY {$orderCol} LIMIT 5");
+            $fb = $pdo->query("SELECT telegram_id FROM players WHERE {$zeroExpr} ORDER BY {$orderCol} LIMIT 5");
             $ids = $fb->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
         }
         return $ids;
@@ -427,14 +434,14 @@ function applyJoinReferralBonus(
 
     $pdo->beginTransaction();
     try {
-        $chk = $pdo->prepare("SELECT id FROM referrals WHERE referred_id = ? LIMIT 1");
+        $chk = $pdo->prepare("SELECT id FROM referrals WHERE CAST(referred_id AS TEXT) = ? LIMIT 1");
         $chk->execute([$newUserId]);
         if ($chk->fetchColumn()) {
             $pdo->rollBack();
             return ['awarded' => false, 'reason' => 'already_referred'];
         }
 
-        $pNewStmt = $pdo->prepare("SELECT referred_by FROM players WHERE telegram_id = ? LIMIT 1");
+        $pNewStmt = $pdo->prepare("SELECT referred_by FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $pNewStmt->execute([$newUserId]);
         $existingRef = trim((string)($pNewStmt->fetchColumn() ?: ''));
         if ($existingRef !== '') {
@@ -442,7 +449,7 @@ function applyJoinReferralBonus(
             return ['awarded' => false, 'reason' => 'existing_referrer'];
         }
 
-        $pRefStmt = $pdo->prepare("SELECT balance, invites_count, first_name FROM players WHERE telegram_id = ? LIMIT 1");
+        $pRefStmt = $pdo->prepare("SELECT balance, invites_count, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $pRefStmt->execute([$referrerId]);
         $refRow = $pRefStmt->fetch(PDO::FETCH_ASSOC);
         if (!$refRow) {
@@ -457,14 +464,14 @@ function applyJoinReferralBonus(
             $referrerName = trim((string)($refRow['first_name'] ?? 'Player')) ?: 'Player';
         }
 
-        $pdo->prepare("UPDATE players SET referred_by = ? WHERE telegram_id = ?")
+        $pdo->prepare("UPDATE players SET referred_by = ? WHERE CAST(telegram_id AS TEXT) = ?")
             ->execute([$referrerId, $newUserId]);
 
         $actualBonus = ($bonusAmount > 0) ? $bonusAmount : 0.00;
         $refAfter = round($refBefore + $actualBonus, 2);
         $newInvites = $refInvites + 1;
 
-        $pdo->prepare("UPDATE players SET balance = ?, invites_count = ? WHERE telegram_id = ?")
+        $pdo->prepare("UPDATE players SET balance = ?, invites_count = ? WHERE CAST(telegram_id AS TEXT) = ?")
             ->execute([$refAfter, $newInvites, $referrerId]);
 
         $pdo->prepare("INSERT INTO referrals (referrer_id, referred_id, bonus_amount) VALUES (?, ?, ?)")
@@ -551,25 +558,28 @@ function buildMainMenuKeyboard(string $webAppUrl, bool $isAdmin): array {
 }
 
 function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
-    if (trim($data) === 'admin_recent_invites') {
+    $trimmed = trim($data);
+    if ($trimmed === '') return null;
+
+    if ($trimmed === 'admin_recent_invites') {
         return ['kind' => 'recent_invites'];
     }
 
-    if (preg_match('/^open_bonus_menu:([a-zA-Z0-9_-]+)$/i', trim($data), $openMatch)) {
+    if (preg_match('/^open_bonus_menu:([a-zA-Z0-9_-]+)$/i', $trimmed, $openMatch)) {
         return [
             'kind'   => 'open_bonus_menu',
             'target' => strtolower((string)$openMatch[1]),
         ];
     }
 
-    if (preg_match('/^bonus_pick_amt:(all|new|newcomers|zero|\d+)$/i', trim($data), $pickMatch)) {
+    if (preg_match('/^bonus_pick_amt:(all|new|newcomers|zero|\d+)$/i', $trimmed, $pickMatch)) {
         return [
             'kind'   => 'bonus_pick_amt',
             'target' => normalizeBonusTarget((string)$pickMatch[1]),
         ];
     }
 
-    if (preg_match('/^bonus_alert:(10|20|50):([a-zA-Z0-9_-]+)$/i', trim($data), $bMatch)) {
+    if (preg_match('/^bonus_alert:(10|20|50):([a-zA-Z0-9_-]+)$/i', $trimmed, $bMatch)) {
         return [
             'kind'   => 'bonus_alert',
             'amount' => round((float)$bMatch[1], 2),
@@ -577,9 +587,17 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
         ];
     }
 
-    $lower = strtolower(trim($data));
-    if ($lower === '') return null;
+    if (preg_match('/^(approve_tx|reject_tx):(\d+)$/i', $trimmed, $txMatch)) {
+        return [
+            'kind'       => 'deposit',
+            'is_approve' => strtolower((string)$txMatch[1]) === 'approve_tx',
+            'record_id'  => (int)$txMatch[2],
+            'player_id'  => '',
+            'amount'     => 0.0,
+        ];
+    }
 
+    $lower = strtolower($trimmed);
     $isApprove = str_contains($lower, 'approve') || str_starts_with($lower, 'app');
     $isReject  = str_contains($lower, 'reject')  || str_starts_with($lower, 'rej');
     if (!$isApprove && !$isReject) return null;
@@ -587,17 +605,17 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
     $isWithdraw = str_contains($lower, 'wd') || str_contains($lower, 'withdraw');
     $kind = $isWithdraw ? 'withdrawal' : 'deposit';
 
-    $tokens = preg_split('/[:|_ -]+/', trim($data)) ?: [];
+    $tokens = preg_split('/[:|_ -]+/', $trimmed) ?: [];
     $recordId = 0;
     $playerId = '';
     $amount = 0.0;
 
-    if (str_contains($data, ':') && count($tokens) >= 4) {
+    if (str_contains($trimmed, ':') && count($tokens) >= 4) {
         $recordId = (int)$tokens[1];
         $playerId = preg_replace('/\D+/', '', (string)$tokens[2]) ?? '';
         $amount   = round((float)$tokens[3], 2);
     } else {
-        if (str_contains($data, ':') && count($tokens) >= 2 && ctype_digit((string)$tokens[1])) {
+        if (str_contains($trimmed, ':') && count($tokens) >= 2 && ctype_digit((string)$tokens[1])) {
             $recordId = (int)$tokens[1];
         }
         if ($fallbackText !== '' && preg_match('/Amount[:\s*]*(\d+(?:\.\d{1,2})?)\s*ETB/i', $fallbackText, $m)) {
@@ -832,16 +850,17 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 
             if ($depRow) {
                 if ($targetPlayerId === '' && isset($depRow['telegram_id'])) {
-                    $targetPlayerId = (string)$depRow['telegram_id'];
+                    $targetPlayerId = trim((string)$depRow['telegram_id']);
                 }
                 if ($amount <= 0 && isset($depRow['amount'])) {
                     $amount = round((float)$depRow['amount'], 2);
                 }
-                if (isset($depRow['status']) && $depRow['status'] !== 'pending') {
+                $curStatus = strtolower(trim((string)($depRow['status'] ?? 'pending')));
+                if ($curStatus !== '' && $curStatus !== 'pending') {
                     $pdo->rollBack();
                     tgPost($token, 'answerCallbackQuery', [
                         'callback_query_id' => $cbId,
-                        'text'              => "Already {$depRow['status']}.",
+                        'text'              => "Already {$curStatus}.",
                         'show_alert'        => true,
                     ]);
                     http_response_code(200);
@@ -855,31 +874,33 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
             }
 
             if ($isApprove) {
-                $pStmt = $pdo->prepare("SELECT balance, chat_id FROM players WHERE telegram_id = ? LIMIT 1");
+                $pStmt = $pdo->prepare("SELECT telegram_id, balance, chat_id FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
                 $pStmt->execute([$targetPlayerId]);
                 $pRow = $pStmt->fetch(PDO::FETCH_ASSOC);
 
                 if (!$pRow) {
-                    $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance) VALUES (?, ?, 'Player', 0.0)")
+                    $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance) VALUES (?, ?, 'Player', 0.00)")
                         ->execute([$targetPlayerId, $targetPlayerId]);
-                    $before = 0.0;
+                    $before = 0.00;
+                    $canonicalPlayerId = $targetPlayerId;
                 } else {
-                    $before = round((float)$pRow['balance'], 2);
+                    $canonicalPlayerId = (string)$pRow['telegram_id'];
+                    $before = round((float)($pRow['balance'] ?? 0.00), 2);
                     if (trim((string)($pRow['chat_id'] ?? '')) === '') {
-                        $pdo->prepare("UPDATE players SET chat_id = ? WHERE telegram_id = ?")
-                            ->execute([$targetPlayerId, $targetPlayerId]);
+                        $pdo->prepare("UPDATE players SET chat_id = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                            ->execute([$targetPlayerId, $canonicalPlayerId]);
                     }
                 }
 
                 $after = round($before + $amount, 2);
-                $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
-                    ->execute([$after, $targetPlayerId]);
+                $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                    ->execute([$after, $canonicalPlayerId]);
 
                 if ($depTable !== null && $recId > 0) {
                     $pdo->prepare("UPDATE {$depTable} SET status = 'approved' WHERE id = ?")->execute([$recId]);
                 }
 
-                addLedger($pdo, $targetPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin");
+                addLedger($pdo, $canonicalPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin");
                 $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
                 $toastText    = "Approved +{$amtFormatted} ETB (Total: " . number_format($after, 2) . " ETB)";
                 $statusLabel  = "\n\n✅ APPROVED (+{$amtFormatted} ETB) | New Balance: " . number_format($after, 2) . " ETB";
@@ -903,16 +924,17 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 $wdRow = $wStmt->fetch(PDO::FETCH_ASSOC);
                 if ($wdRow) {
                     if ($targetPlayerId === '' && isset($wdRow['telegram_id'])) {
-                        $targetPlayerId = (string)$wdRow['telegram_id'];
+                        $targetPlayerId = trim((string)$wdRow['telegram_id']);
                     }
                     if ($amount <= 0 && isset($wdRow['amount'])) {
                         $amount = round((float)$wdRow['amount'], 2);
                     }
-                    if (isset($wdRow['status']) && $wdRow['status'] !== 'pending') {
+                    $curStatus = strtolower(trim((string)($wdRow['status'] ?? 'pending')));
+                    if ($curStatus !== '' && $curStatus !== 'pending') {
                         $pdo->rollBack();
                         tgPost($token, 'answerCallbackQuery', [
                             'callback_query_id' => $cbId,
-                            'text'              => "Already {$wdRow['status']}.",
+                            'text'              => "Already {$curStatus}.",
                             'show_alert'        => true,
                         ]);
                         http_response_code(200);
@@ -930,7 +952,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
                     $pdo->prepare("UPDATE withdrawals SET status = 'approved' WHERE id = ?")->execute([$recId]);
                 }
-                $bStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ? LIMIT 1");
+                $bStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
                 $bStmt->execute([$targetPlayerId]);
                 $curBal = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
 
@@ -940,12 +962,12 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                               . "Approved Amount: " . number_format($amount, 2) . " ETB\n"
                               . "Current Balance: " . number_format($curBal, 2) . " ETB";
             } else {
-                $bStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ? LIMIT 1");
+                $bStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
                 $bStmt->execute([$targetPlayerId]);
                 $before = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
                 $after  = round($before + $amount, 2);
 
-                $pdo->prepare("UPDATE players SET balance = ? WHERE telegram_id = ?")
+                $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")
                     ->execute([$after, $targetPlayerId]);
 
                 if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
