@@ -108,6 +108,32 @@
       line-height: 1.4;
     }
 
+    .onboarding-strip {
+      background: var(--bg-card);
+      border: 1px solid rgba(245, 183, 0, 0.35);
+      border-radius: 16px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .onboarding-step-text {
+      font-size: 0.82rem;
+      color: var(--text-main);
+      font-weight: 700;
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .onboarding-btns {
+      display: flex;
+      gap: 8px;
+    }
+
     .card-panel {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
@@ -700,8 +726,16 @@
   <section id="screen-game" class="container">
     <h1 class="section-title">Choose a table</h1>
     <p class="section-sub">
-      Pick a stake, then choose up to 3 cartelas. First closed line wins 80% of all stakes (20% admin fee).
+      Share with friends, deposit ETB, and pick up to 3 cartelas. 15s countdown starts once cartelas are held. First closed line wins 80% (20% admin fee); 2 co-winners split 80% equally.
     </p>
+
+    <div class="onboarding-strip">
+      <div class="onboarding-step-text">1. Share invite &bull; 2. Deposit ETB &bull; 3. Pick cartela</div>
+      <div class="onboarding-btns">
+        <button type="button" class="btn-secondary-dark" style="padding:7px 11px;font-size:0.78rem;" onclick="shareInviteLink()">Share</button>
+        <button type="button" class="btn-gold" style="width:auto;padding:7px 12px;font-size:0.78rem;" onclick="startInstantDeposit()">+ Deposit</button>
+      </div>
+    </div>
 
     <label class="table-card selected" style="border-left:6px solid #22c55e;" onclick="selectTable(10, this)">
       <input type="radio" name="stake" value="10" checked />
@@ -756,8 +790,8 @@
 
   <!-- SCREEN 2: LOBBY WAITING (ACTIVE GAME VISITOR) -->
   <section id="screen-wait-active" class="container d-none">
-    <h1 class="section-title">Game In Progress</h1>
-    <p class="section-sub" id="wait-active-banner">you are visiting now, please wait for the next cartella to start the game</p>
+    <h1 class="section-title">Next Round Queue</h1>
+    <p class="section-sub" id="wait-active-banner">Please wait until this game ends; you will start in the next round.</p>
 
     <div class="caller-card">
       <div class="featured-ball-ring">
@@ -778,7 +812,7 @@
     <div id="wait-master-grid" class="master-rows-wrap"></div>
   </section>
 
-  <!-- SCREEN 3: LOBBY COUNTDOWN -->
+  <!-- SCREEN 3: LOBBY 15s COUNTDOWN -->
   <section id="screen-lobby" class="container d-none">
     <h1 class="section-title">Starting Soon</h1>
     <div class="lobby-hero-card" style="margin-top:10px;">
@@ -1333,7 +1367,7 @@
         const prizeAmt = Number(capped[0].prize || 0).toFixed(2);
         topNameEl.textContent = names;
         banner.textContent = capped.length > 1
-          ? `${prizeAmt} ETB each (80% pool)`
+          ? `${prizeAmt} ETB each (shared 80% pool)`
           : `${prizeAmt} ETB (80% pool)`;
       }
 
@@ -1384,7 +1418,7 @@
     function renderWaitActiveScreen(room, customMsg = '') {
       showOnlyScreen('wait-active');
       document.getElementById('wait-active-banner').textContent =
-        customMsg || 'you are visiting now, please wait for the next cartella to start the game';
+        customMsg || 'Please wait until this game ends; you will start in the next round.';
       document.getElementById('wait-game-code').textContent = room.game_code || '--';
       document.getElementById('wait-derash').textContent = Number(room.derash || 0).toFixed(2);
       const arr = Array.isArray(room.called_numbers) ? room.called_numbers : [];
@@ -1496,7 +1530,7 @@
 
     function startWaitForActiveGame(room, noticeMsg = '') {
       currentRoomId = room.room_id;
-      renderWaitActiveScreen(room, noticeMsg);
+      renderWaitActiveScreen(room, noticeMsg || 'Please wait until this game ends; you will start in the next round.');
       stopRoomPolling();
       roomPollInterval = setInterval(() => {
         fetch(`api.php?action=get_room_state&room_id=${encodeURIComponent(room.room_id)}&stake=${encodeURIComponent(selectedStake)}`)
@@ -1504,10 +1538,8 @@
           .then(data => {
             if (!data.success || !data.room) return;
             if (data.room.status === 'active') {
-              renderWaitActiveScreen(data.room, noticeMsg);
-            } else if (data.room.status === 'finished') {
-              openWinnerModal(data.room.room_id, data.room.winners || [], data.room);
-            } else if (data.room.status === 'waiting') {
+              renderWaitActiveScreen(data.room, noticeMsg || 'Please wait until this game ends; you will start in the next round.');
+            } else if (data.room.status === 'finished' || data.room.status === 'waiting') {
               stopRoomPolling();
               currentRoomId = null;
               selectedCartelaNumbers = [];
@@ -1540,7 +1572,7 @@
         .then(data => {
           if (data.already_started && data.room) {
             sounds.errorBuzz();
-            startWaitForActiveGame(data.room, data.error || '');
+            startWaitForActiveGame(data.room, data.error || 'Please wait until this game ends; you will start in the next round.');
             return;
           }
           if (!data.success) {
