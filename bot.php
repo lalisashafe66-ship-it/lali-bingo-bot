@@ -85,38 +85,42 @@ function ensureReferralSchema(PDO $pdo): void {
     }
     $checked = true;
 
-    if (isPostgresPdo($pdo)) {
-        $pdo->exec("ALTER TABLE players ADD COLUMN IF NOT EXISTS referred_by TEXT");
-        $pdo->exec("ALTER TABLE players ADD COLUMN IF NOT EXISTS invites_count INTEGER NOT NULL DEFAULT 0");
+    try {
+        if (isPostgresPdo($pdo)) {
+            $pdo->exec("ALTER TABLE players ADD COLUMN IF NOT EXISTS referred_by TEXT");
+            $pdo->exec("ALTER TABLE players ADD COLUMN IF NOT EXISTS invites_count INTEGER NOT NULL DEFAULT 0");
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS referrals (
+                    id SERIAL PRIMARY KEY,
+                    referrer_id TEXT NOT NULL,
+                    referred_id TEXT NOT NULL UNIQUE,
+                    bonus_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            ");
+            return;
+        }
+
+        $cols = $pdo->query("PRAGMA table_info(players)")->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('referred_by', $cols, true)) {
+            $pdo->exec("ALTER TABLE players ADD COLUMN referred_by TEXT");
+        }
+        if (!in_array('invites_count', $cols, true)) {
+            $pdo->exec("ALTER TABLE players ADD COLUMN invites_count INTEGER NOT NULL DEFAULT 0");
+        }
+
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS referrals (
-                id SERIAL PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 referrer_id TEXT NOT NULL,
                 referred_id TEXT NOT NULL UNIQUE,
-                bonus_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+                bonus_amount REAL NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ");
-        return;
+    } catch (Throwable $schemaErr) {
+        error_log("ensureReferralSchema warning: " . $schemaErr->getMessage());
     }
-
-    $cols = $pdo->query("PRAGMA table_info(players)")->fetchAll(PDO::FETCH_COLUMN, 1);
-    if (!in_array('referred_by', $cols, true)) {
-        $pdo->exec("ALTER TABLE players ADD COLUMN referred_by TEXT");
-    }
-    if (!in_array('invites_count', $cols, true)) {
-        $pdo->exec("ALTER TABLE players ADD COLUMN invites_count INTEGER NOT NULL DEFAULT 0");
-    }
-
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS referrals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            referrer_id TEXT NOT NULL,
-            referred_id TEXT NOT NULL UNIQUE,
-            bonus_amount REAL NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-    ");
 }
 
 function buildRecentInvitesText(PDO $pdo, int $limit = 10): string {
@@ -161,12 +165,16 @@ function buildRecentInvitesText(PDO $pdo, int $limit = 10): string {
 }
 
 function addLedger(PDO $pdo, string $telegramId, ?int $roomId, string $type, float $amount, float $before, float $after, string $note): void {
-    if (!tableExists($pdo, 'balance_ledger')) return;
-    $stmt = $pdo->prepare("
-        INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ");
-    $stmt->execute([$telegramId, $roomId, $type, $amount, $before, $after, $note, nowTimestampText()]);
+    try {
+        if (!tableExists($pdo, 'balance_ledger')) return;
+        $stmt = $pdo->prepare("
+            INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([$telegramId, $roomId, $type, $amount, $before, $after, $note, nowTimestampText()]);
+    } catch (Throwable $ledgerErr) {
+        error_log("addLedger warning ({$telegramId}): " . $ledgerErr->getMessage());
+    }
 }
 
 function getPlayerChatTarget(PDO $pdo, string $telegramId): string {
@@ -320,33 +328,35 @@ function buildBonusAlertKeyboard(string $targetSpec = 'all'): array {
 }
 
 function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, float $amount, string $note = 'Admin Bonus Alert'): array {
-    $targetPlayerId = preg_replace('/\D+/', '', $targetPlayerId) ?? '';
+    $targetPlayerId = trim($targetPlayerId);
     $amount = round($amount, 2);
 
     if ($targetPlayerId === '' || $amount <= 0) {
         return ['ok' => false, 'error' => 'Invalid player ID or bonus amount'];
     }
 
-    ensureReferralSchema($pdo);
-
     while ($pdo->inTransaction()) {
-        $pdo->rollBack();
+        try {
+            $pdo->rollBack();
+        } catch (Throwable $ignoreRb) {
+            break;
+        }
     }
 
-    $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT telegram_id, balance, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $stmt->execute([$targetPlayerId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        $canonicalId = $row ? (string)$row['telegram_id'] : $targetPlayerId;
         $playerName = $row
             ? (trim((string)($row['first_name'] ?? 'Player')) ?: 'Player')
             : 'Player';
 
         $ts = nowTimestampText();
         if (!$row) {
-            $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, invites_count, created_at, updated_at) VALUES (?, ?, 'Player', 0.00, 0, ?, ?)")
-                ->execute([$targetPlayerId, $targetPlayerId, $ts, $ts]);
+            $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, created_at, updated_at) VALUES (?, ?, 'Player', 0.00, ?, ?)")
+                ->execute([$canonicalId, $canonicalId, $ts, $ts]);
             $before = 0.00;
         } else {
             $before = round((float)($row['balance'] ?? 0.00), 2);
@@ -354,13 +364,12 @@ function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, 
 
         $after = round($before + $amount, 2);
         $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
-            ->execute([$after, $ts, $targetPlayerId]);
+            ->execute([$after, $ts, $canonicalId]);
 
         $amtStr   = number_format($amount, 2);
         $afterStr = number_format($after, 2);
 
-        addLedger($pdo, $targetPlayerId, null, 'bonus_deposit', $amount, $before, $after, "{$note} (+{$amtStr} ETB bonus alert)");
-        $pdo->commit();
+        addLedger($pdo, $canonicalId, null, 'bonus_deposit', $amount, $before, $after, "{$note} (+{$amtStr} ETB bonus alert)");
 
         $alertMsg = "SMART BINGO — Bonus Alert!\n\n"
                   . "Player: {$playerName}\n"
@@ -368,19 +377,16 @@ function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, 
                   . "Reason: {$note}\n\n"
                   . "Your +{$amtStr} ETB bonus has been deposited into your balance (New Balance: {$afterStr} ETB).";
 
-        $notified = sendPlayerNotification($pdo, $token, $targetPlayerId, $alertMsg);
+        $notified = sendPlayerNotification($pdo, $token, $canonicalId, $alertMsg);
 
         return [
             'ok'          => true,
-            'player_id'   => $targetPlayerId,
+            'player_id'   => $canonicalId,
             'bonus'       => $amount,
             'new_balance' => $after,
             'notified'    => $notified,
         ];
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
         error_log("notifyAndDepositBonus error ({$targetPlayerId}): " . $e->getMessage());
         return ['ok' => false, 'error' => $e->getMessage()];
     }
@@ -408,6 +414,7 @@ function sendBonusAlertToTarget(PDO $pdo, string $token, string $targetSpec, flo
 
     $successCount = 0;
     $notifiedCount = 0;
+    $lastError = '';
     foreach ($playerIds as $pid) {
         $res = notifyAndDepositBonus($pdo, $token, (string)$pid, $amount, $note);
         if (!empty($res['ok'])) {
@@ -415,6 +422,8 @@ function sendBonusAlertToTarget(PDO $pdo, string $token, string $targetSpec, flo
             if (!empty($res['notified'])) {
                 $notifiedCount++;
             }
+        } else {
+            $lastError = (string)($res['error'] ?? '');
         }
     }
 
@@ -425,6 +434,7 @@ function sendBonusAlertToTarget(PDO $pdo, string $token, string $targetSpec, flo
         'amount'         => $amount,
         'credited_count' => $successCount,
         'notified_count' => $notifiedCount,
+        'last_error'     => $lastError,
     ];
 }
 
@@ -823,8 +833,10 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 $criteriaLabel = (string)($res['criteria'] ?? formatBonusTargetLabel($target));
                 $cCount = (int)($res['credited_count'] ?? 0);
                 $nCount = (int)($res['notified_count'] ?? 0);
+                $lastErr = trim((string)($res['last_error'] ?? ''));
+                $errNote = ($cCount === 0 && $lastErr !== '') ? "\n• Detail: " . substr($lastErr, 0, 120) : '';
                 $toastText = "Sent +{$amtStr} ETB to {$cCount} players";
-                $statusLine = "\n\n✅ BONUS ALERT SENT & DEPOSITED (+{$amtStr} ETB)\n• Criteria: {$criteriaLabel}\n• Credited: {$cCount} players\n• Telegram Notified: {$nCount} players";
+                $statusLine = "\n\n✅ BONUS ALERT SENT & DEPOSITED (+{$amtStr} ETB)\n• Criteria: {$criteriaLabel}\n• Credited: {$cCount} players\n• Telegram Notified: {$nCount} players{$errNote}";
             }
 
             tgPost($token, 'answerCallbackQuery', [
@@ -953,17 +965,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                     }
                 }
 
-                if (tableExists($pdo, 'balance_ledger')) {
-                    try {
-                        $lStmt = $pdo->prepare("
-                            INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ");
-                        $lStmt->execute([$canonicalPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin", $ts]);
-                    } catch (Throwable $ledgerErr) {
-                        error_log("[insert_ledger] skipped: " . $ledgerErr->getMessage());
-                    }
-                }
+                addLedger($pdo, $canonicalPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin");
 
                 $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
                 $toastText    = "Approved +{$amtFormatted} ETB (Total: " . number_format($after, 2) . " ETB)";
