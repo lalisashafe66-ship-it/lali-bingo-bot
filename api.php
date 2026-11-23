@@ -148,6 +148,14 @@ function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $no
         return ['success' => false, 'error' => 'Invalid Telegram ID or bonus amount.'];
     }
 
+    while ($pdo->inTransaction()) {
+        try {
+            $pdo->rollBack();
+        } catch (Throwable $ignoreRb) {
+            break;
+        }
+    }
+
     $pdo->beginTransaction();
     try {
         $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
@@ -165,8 +173,13 @@ function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $no
         $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")
             ->execute([$after, $telegramId]);
 
-        logBalanceChange($pdo, $telegramId, null, 'bonus', $amount, $before, $after, $note);
         $pdo->commit();
+
+        try {
+            logBalanceChange($pdo, $telegramId, null, 'bonus', $amount, $before, $after, $note);
+        } catch (Throwable $ledgerErr) {
+            error_log("givePlayerBonus ledger skipped: " . $ledgerErr->getMessage());
+        }
 
         $notified = false;
         if ($notifyUser) {
@@ -194,7 +207,11 @@ function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $no
         ];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
-            $pdo->rollBack();
+            try {
+                $pdo->rollBack();
+            } catch (Throwable $rbErr) {
+                error_log("givePlayerBonus rollback error: " . $rbErr->getMessage());
+            }
         }
         error_log("givePlayerBonus error: " . $e->getMessage());
         return ['success' => false, 'error' => 'Bonus transaction error: ' . $e->getMessage()];
@@ -312,16 +329,20 @@ function recordNonWinningPlayers(PDO $pdo, int $roomId, string $gameLabel, array
             continue;
         }
 
-        $dupStmt = $pdo->prepare("SELECT id FROM balance_ledger WHERE CAST(telegram_id AS TEXT) = ? AND room_id = ? AND type = 'loss_settled' LIMIT 1");
-        $dupStmt->execute([$tid, $roomId]);
-        if ($dupStmt->fetchColumn()) {
-            continue;
-        }
+        try {
+            $dupStmt = $pdo->prepare("SELECT id FROM balance_ledger WHERE CAST(telegram_id AS TEXT) = ? AND room_id = ? AND type = 'loss_settled' LIMIT 1");
+            $dupStmt->execute([$tid, $roomId]);
+            if ($dupStmt->fetchColumn()) {
+                continue;
+            }
 
-        $balStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ?");
-        $balStmt->execute([$tid]);
-        $curBal = round((float)($balStmt->fetchColumn() ?: 0), 2);
-        logBalanceChange($pdo, $tid, $roomId, 'loss_settled', -$stakeLost, $curBal, $curBal, "Lost Game {$gameLabel} (stake {$stakeLost} ETB already deducted)");
+            $balStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ?");
+            $balStmt->execute([$tid]);
+            $curBal = round((float)($balStmt->fetchColumn() ?: 0), 2);
+            logBalanceChange($pdo, $tid, $roomId, 'loss_settled', -$stakeLost, $curBal, $curBal, "Lost Game {$gameLabel} (stake {$stakeLost} ETB already deducted)");
+        } catch (Throwable $ledgerErr) {
+            error_log("recordNonWinningPlayers ledger skipped: " . $ledgerErr->getMessage());
+        }
     }
 }
 
@@ -401,6 +422,14 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
     $roomId = (int)$room['id'];
     $gameLabel = (string)($room['game_code'] ?: $roomId);
 
+    while ($pdo->inTransaction()) {
+        try {
+            $pdo->rollBack();
+        } catch (Throwable $ignoreRb) {
+            break;
+        }
+    }
+
     $pdo->beginTransaction();
     try {
         $curStmt = $pdo->prepare("SELECT status, winners_json FROM rooms WHERE id = ? LIMIT 1");
@@ -464,7 +493,11 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
                     ->execute([$after, $wTid]);
                 $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)")
                     ->execute([$roomId, $wTid, $wName, $sharePerWinner]);
-                logBalanceChange($pdo, $wTid, $roomId, 'win_payout', $sharePerWinner, $before, $after, "Won Game {$gameLabel}");
+                try {
+                    logBalanceChange($pdo, $wTid, $roomId, 'win_payout', $sharePerWinner, $before, $after, "Won Game {$gameLabel}");
+                } catch (Throwable $ledgerErr) {
+                    error_log("finalizeRoomWinners ledger skipped: " . $ledgerErr->getMessage());
+                }
             }
         }
 
@@ -483,7 +516,11 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
         return $room;
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
-            $pdo->rollBack();
+            try {
+                $pdo->rollBack();
+            } catch (Throwable $rbErr) {
+                error_log("finalizeRoomWinners rollback error: " . $rbErr->getMessage());
+            }
         }
         error_log("finalizeRoomWinners error on room {$roomId}: " . $e->getMessage());
         return $room;
@@ -493,6 +530,14 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
 function finishRoomWithNoWinner(PDO $pdo, array $room): array {
     $roomId = (int)$room['id'];
     $gameLabel = (string)($room['game_code'] ?: $roomId);
+
+    while ($pdo->inTransaction()) {
+        try {
+            $pdo->rollBack();
+        } catch (Throwable $ignoreRb) {
+            break;
+        }
+    }
 
     $pdo->beginTransaction();
     try {
@@ -504,7 +549,11 @@ function finishRoomWithNoWinner(PDO $pdo, array $room): array {
         $room['winners_json'] = '[]';
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
-            $pdo->rollBack();
+            try {
+                $pdo->rollBack();
+            } catch (Throwable $rbErr) {
+                error_log("finishRoomWithNoWinner rollback error: " . $rbErr->getMessage());
+            }
         }
         error_log("finishRoomWithNoWinner error on room {$roomId}: " . $e->getMessage());
     }
@@ -745,27 +794,47 @@ elseif ($action === 'join_room') {
     }
 
     $totalFee = round($stake * count($cartelaNumbers), 2);
+    $stepTag = 'init';
 
-    $pdo->beginTransaction();
+    while ($pdo->inTransaction()) {
+        try {
+            $pdo->rollBack();
+        } catch (Throwable $ignoreRb) {
+            break;
+        }
+    }
+
     try {
+        $stepTag = 'check_active';
         $activeStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'active' ORDER BY id DESC LIMIT 1");
         $activeStmt->execute([$stake]);
         $activeRoom = $activeStmt->fetch(PDO::FETCH_ASSOC);
 
         if ($activeRoom) {
-            $payload = buildRoomPayload($pdo, $activeRoom);
-            if ($payload['status'] === 'active') {
-                $pdo->commit();
-                echo json_encode([
-                    'success'         => false,
-                    'already_started' => true,
-                    'room'            => $payload,
-                    'error'           => 'you are visiting now, please wait for the next cartella to start the game',
-                ]);
-                exit;
-            }
+            $now = time();
+            $startedAt = (int)($activeRoom['started_at'] ?? $now);
+            $elapsed = max(0, $now - $startedAt);
+            $pool = json_decode($activeRoom['draw_pool_json'] ?? '[]', true);
+            $targetCalls = min(75, (int)floor($elapsed / 2.2) + 1);
+            $called = is_array($pool) ? array_slice($pool, 0, $targetCalls) : [];
+            echo json_encode([
+                'success'         => false,
+                'already_started' => true,
+                'room'            => [
+                    'room_id'        => (int)$activeRoom['id'],
+                    'game_code'      => $activeRoom['game_code'] ?: '1T6BX',
+                    'stake'          => (float)$activeRoom['stake'],
+                    'status'         => 'active',
+                    'derash'         => 0,
+                    'calls_count'    => count($called),
+                    'called_numbers' => $called,
+                ],
+                'error' => 'you are visiting now, please wait for the next cartella to start the game',
+            ]);
+            exit;
         }
 
+        $stepTag = 'select_player';
         $stmt = $pdo->prepare("SELECT balance, first_name, username FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -775,6 +844,7 @@ elseif ($action === 'join_room') {
             : ($rawUsername !== '' ? $rawUsername : ($rawFirstName !== '' ? $rawFirstName : 'Player'));
 
         if (!$player) {
+            $stepTag = 'insert_player';
             $initialBal = 0.00;
             $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, username, phone, balance) VALUES (?, ?, ?, 'WebUser', ?)");
             $ins->execute([$telegramId, $effectiveName, $rawUsername, $initialBal]);
@@ -783,6 +853,7 @@ elseif ($action === 'join_room') {
             $currentBalance = round((float)$player['balance'], 2);
             $existingFirst = trim((string)($player['first_name'] ?? ''));
             if ($rawFirstName !== '' && strcasecmp($rawFirstName, 'Player') !== 0 && $existingFirst !== $rawFirstName) {
+                $stepTag = 'update_player_name';
                 $pdo->prepare("UPDATE players SET first_name = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$rawFirstName, $telegramId]);
                 $effectiveName = $rawFirstName;
             } elseif ($existingFirst !== '' && strcasecmp($existingFirst, 'Player') !== 0) {
@@ -791,16 +862,17 @@ elseif ($action === 'join_room') {
                 $effectiveName = $rawUsername;
             }
             if ($rawUsername !== '') {
+                $stepTag = 'update_player_username';
                 $pdo->prepare("UPDATE players SET username = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$rawUsername, $telegramId]);
             }
         }
 
         if ($currentBalance < $totalFee) {
-            $pdo->rollBack();
             echo json_encode(['success' => false, 'error' => 'Insufficient balance! Please top up via Deposit.']);
             exit;
         }
 
+        $stepTag = 'select_or_create_room';
         $roomStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'waiting' ORDER BY id ASC LIMIT 1");
         $roomStmt->execute([$stake]);
         $room = $roomStmt->fetch(PDO::FETCH_ASSOC);
@@ -813,45 +885,43 @@ elseif ($action === 'join_room') {
             $insRoom = $pdo->prepare("INSERT INTO rooms (game_code, stake, status, created_at, starts_at, draw_pool_json, called_numbers_json, winners_json) VALUES (?, ?, 'waiting', ?, ?, ?, '[]', '[]')");
             $insRoom->execute([$code, $stake, $now, $now + 15, json_encode($pool)]);
             $roomId = lastInsertIdCompat($pdo, 'rooms_id_seq');
-            $roomStmt->execute([$stake]);
-            $room = $roomStmt->fetch(PDO::FETCH_ASSOC);
+            $roomById = $pdo->prepare("SELECT * FROM rooms WHERE id = ? LIMIT 1");
+            $roomById->execute([$roomId]);
+            $room = $roomById->fetch(PDO::FETCH_ASSOC);
         } else {
             $roomId = (int)$room['id'];
         }
 
-        $preCheckPayload = buildRoomPayload($pdo, $room);
-        if ($preCheckPayload['status'] === 'active') {
-            $pdo->commit();
-            echo json_encode([
-                'success'         => false,
-                'already_started' => true,
-                'room'            => $preCheckPayload,
-                'error'           => 'you are visiting now, please wait for the next cartella to start the game',
-            ]);
-            exit;
-        }
-
+        $stepTag = 'check_taken_cartelas';
         $takenStmt = $pdo->prepare("SELECT player_number FROM room_players WHERE room_id = ?");
         $takenStmt->execute([$roomId]);
         $takenList = $takenStmt->fetchAll(PDO::FETCH_COLUMN, 0);
         foreach ($cartelaNumbers as $cn) {
-            if (in_array($cn, $takenList, false)) {
-                $pdo->rollBack();
+            if (in_array((int)$cn, array_map('intval', $takenList), true)) {
                 echo json_encode(['success' => false, 'error' => "Cartela #{$cn} is already taken in this round."]);
                 exit;
             }
         }
 
+        $pdo->beginTransaction();
+
+        $stepTag = 'deduct_balance';
         $newBalance = round($currentBalance - $totalFee, 2);
         $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$newBalance, $telegramId]);
-        logBalanceChange($pdo, $telegramId, $roomId, 'stake_deduct', -$totalFee, $currentBalance, $newBalance, "Joined Game " . ($room['game_code'] ?? $roomId) . " (" . count($cartelaNumbers) . " cartela)");
 
+        $stepTag = 'insert_room_player';
         $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, first_name, player_number, stake_paid) VALUES (?, ?, ?, ?, ?)");
         foreach ($cartelaNumbers as $cn) {
             $logRoom->execute([$roomId, $telegramId, $effectiveName, $cn, $stake]);
         }
 
         $pdo->commit();
+
+        try {
+            logBalanceChange($pdo, $telegramId, $roomId, 'stake_deduct', -$totalFee, $currentBalance, $newBalance, "Joined Game " . ($room['game_code'] ?? $roomId) . " (" . count($cartelaNumbers) . " cartela)");
+        } catch (Throwable $ledgerErr) {
+            error_log("join_room ledger skipped: " . $ledgerErr->getMessage());
+        }
 
         $payload = buildRoomPayload($pdo, $room);
         echo json_encode([
@@ -864,8 +934,14 @@ elseif ($action === 'join_room') {
             'room'            => $payload,
         ]);
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        echo json_encode(['success' => false, 'error' => 'Transaction error: ' . $e->getMessage()]);
+        if ($pdo->inTransaction()) {
+            try {
+                $pdo->rollBack();
+            } catch (Throwable $rbErr) {
+                error_log("join_room rollback error: " . $rbErr->getMessage());
+            }
+        }
+        echo json_encode(['success' => false, 'error' => "Transaction error [{$stepTag}]: " . $e->getMessage()]);
     }
 }
 elseif ($action === 'request_withdrawal') {
@@ -873,6 +949,14 @@ elseif ($action === 'request_withdrawal') {
     $amount = round((float)($_POST['amount'] ?? 0), 2);
     $method = trim((string)($_POST['method'] ?? 'Telebirr'));
     $account = trim((string)($_POST['account'] ?? ''));
+
+    while ($pdo->inTransaction()) {
+        try {
+            $pdo->rollBack();
+        } catch (Throwable $ignoreRb) {
+            break;
+        }
+    }
 
     $pdo->beginTransaction();
     try {
@@ -898,9 +982,13 @@ elseif ($action === 'request_withdrawal') {
 
         $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$newBalance, $telegramId]);
         $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')")->execute([$telegramId, $amount, $method, $account]);
-        logBalanceChange($pdo, $telegramId, null, 'withdrawal', -$amount, $currentBal, $newBalance, "Withdrawal via {$method} ({$account})");
-
         $pdo->commit();
+
+        try {
+            logBalanceChange($pdo, $telegramId, null, 'withdrawal', -$amount, $currentBal, $newBalance, "Withdrawal via {$method} ({$account})");
+        } catch (Throwable $ledgerErr) {
+            error_log("request_withdrawal ledger skipped: " . $ledgerErr->getMessage());
+        }
 
         $ADMIN_ID = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
         $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
@@ -922,7 +1010,13 @@ elseif ($action === 'request_withdrawal') {
             'message'     => 'Withdrawal request submitted! Admin has been notified.',
         ]);
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            try {
+                $pdo->rollBack();
+            } catch (Throwable $rbErr) {
+                error_log("request_withdrawal rollback error: " . $rbErr->getMessage());
+            }
+        }
         error_log("request_withdrawal error: " . $e->getMessage());
         echo json_encode(['success' => false, 'error' => 'Withdrawal error: ' . $e->getMessage()]);
     }
