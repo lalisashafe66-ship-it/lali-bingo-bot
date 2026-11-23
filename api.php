@@ -76,46 +76,98 @@ function lastInsertIdCompat(PDO $pdo, string $sequenceOrTable): int {
     return (int)$pdo->lastInsertId();
 }
 
-function sendTelegramMessage(string $token, string $chatId, string $message): bool {
+function getBotTokenEnv(): string {
+    foreach (['TELEGRAM_BOT_TOKEN', 'BOT_TOKEN', 'TG_BOT_TOKEN'] as $key) {
+        $val = trim((string)(getenv($key) ?: ($_ENV[$key] ?? $_SERVER[$key] ?? '')));
+        if ($val !== '') {
+            return trim($val, "\"'");
+        }
+    }
+    return '';
+}
+
+function getAdminChatIdEnv(): string {
+    foreach (['ADMIN_TELEGRAM_ID', 'ADMIN_ID', 'TELEGRAM_ADMIN_ID', 'ADMIN_CHAT_ID'] as $key) {
+        $val = trim((string)(getenv($key) ?: ($_ENV[$key] ?? $_SERVER[$key] ?? '')));
+        if ($val !== '') {
+            return trim($val, "\"'");
+        }
+    }
+    return '730967613';
+}
+
+function sendTelegramMessage(string $token, string $chatId, string $message): array {
+    $token = trim($token);
+    $chatId = trim($chatId);
+
     if ($token === '' || $chatId === '') {
-        return false;
+        $err = 'Missing bot token or admin chat_id.';
+        error_log("sendTelegramMessage: {$err}");
+        return ['sent' => false, 'error' => $err];
     }
 
-    $params = [
+    $payload = [
         'chat_id'    => $chatId,
         'text'       => $message,
         'parse_mode' => 'HTML',
     ];
 
     $url = "https://api.telegram.org/bot{$token}/sendMessage";
+    $rawBody = false;
+    $httpCode = 0;
+    $transportErr = '';
+
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $params,
+            CURLOPT_POSTFIELDS     => $payload,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 10,
-            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT        => 12,
+            CURLOPT_CONNECTTIMEOUT => 6,
         ]);
-        $res = curl_exec($ch);
+        $rawBody = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($rawBody === false) {
+            $transportErr = curl_error($ch);
+        }
         curl_close($ch);
-        return $res !== false;
+    } else {
+        $ctx = stream_context_create([
+            'http' => [
+                'method'        => 'POST',
+                'header'        => "Content-Type: application/x-www-form-urlencoded\r\n",
+                'content'       => http_build_query($payload),
+                'timeout'       => 12,
+                'ignore_errors' => true,
+            ],
+        ]);
+        $rawBody = @file_get_contents($url, false, $ctx);
+        if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+            $httpCode = (int)$m[1];
+        }
+        if ($rawBody === false) {
+            $transportErr = 'file_get_contents failed';
+        }
     }
 
-    $ctx = stream_context_create([
-        'http' => [
-            'method'  => 'POST',
-            'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
-            'content' => http_build_query($params),
-            'timeout' => 10,
-        ],
-    ]);
-    $res = @file_get_contents($url, false, $ctx);
-    return $res !== false;
+    if ($rawBody === false || !is_string($rawBody)) {
+        error_log("Telegram sendMessage transport error ({$chatId}): {$transportErr}");
+        return ['sent' => false, 'error' => $transportErr !== '' ? $transportErr : 'Network error'];
+    }
+
+    $decoded = json_decode($rawBody, true);
+    if ($httpCode === 200 && is_array($decoded) && !empty($decoded['ok'])) {
+        return ['sent' => true, 'error' => ''];
+    }
+
+    $tgDesc = is_array($decoded) ? (string)($decoded['description'] ?? 'Unknown Telegram error') : $rawBody;
+    error_log("Telegram sendMessage rejected ({$chatId}, HTTP {$httpCode}): {$tgDesc}");
+    return ['sent' => false, 'error' => $tgDesc];
 }
 
-function notifyAdminWithdrawal(string $token, string $chatId, string $message): void {
-    sendTelegramMessage($token, $chatId, $message);
+function notifyAdminWithdrawal(string $token, string $chatId, string $message): array {
+    return sendTelegramMessage($token, $chatId, $message);
 }
 
 try {
@@ -198,7 +250,7 @@ function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $no
 
         $notified = false;
         if ($notifyUser) {
-            $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: getenv('BOT_TOKEN') ?: ''));
+            $token = getBotTokenEnv();
             $safeName = htmlspecialchars((string)($player['first_name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
             $safeNote = htmlspecialchars($note, ENT_QUOTES, 'UTF-8');
             $formattedAmt = number_format($amount, 2);
@@ -210,7 +262,8 @@ function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $no
                        "• <b>New Balance:</b> <b>{$formattedBal} ETB</b>\n" .
                        "• <b>Note:</b> {$safeNote}";
 
-            $notified = sendTelegramMessage($token, $telegramId, $userMsg);
+            $sendRes = sendTelegramMessage($token, $telegramId, $userMsg);
+            $notified = $sendRes['sent'];
         }
 
         return [
@@ -410,8 +463,8 @@ function sendWinnerCongratulations(
         return;
     }
 
-    $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: getenv('BOT_TOKEN') ?: ''));
-    $adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: getenv('ADMIN_ID') ?: '730967613'));
+    $token = getBotTokenEnv();
+    $adminId = getAdminChatIdEnv();
     if ($token === '') {
         return;
     }
@@ -1032,24 +1085,32 @@ elseif ($action === 'request_withdrawal') {
 
         logBalanceChange($pdo, $telegramId, null, 'withdrawal', -$amount, $currentBal, $newBalance, "Withdrawal via {$method} ({$account})");
 
-        $ADMIN_ID = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: getenv('ADMIN_ID') ?: '730967613'));
-        $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: getenv('BOT_TOKEN') ?: ''));
+        $ADMIN_ID = getAdminChatIdEnv();
+        $token = getBotTokenEnv();
         $safePlayerName = htmlspecialchars((string)($player['first_name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
         $safeMethod = htmlspecialchars($method, ENT_QUOTES, 'UTF-8');
         $safeAccount = htmlspecialchars($account, ENT_QUOTES, 'UTF-8');
+        $formattedAmt = number_format($amount, 2);
+
         $adminMsg = "💸 <b>New Withdrawal Request (SMART BINGO)!</b>\n\n" .
                     "• <b>Player:</b> {$safePlayerName}\n" .
                     "• <b>Telegram ID:</b> <code>{$telegramId}</code>\n" .
-                    "• <b>Amount:</b> <b>{$amount} ETB</b>\n" .
+                    "• <b>Amount:</b> <b>{$formattedAmt} ETB</b>\n" .
                     "• <b>Method:</b> {$safeMethod}\n" .
                     "• <b>Account/Phone:</b> <code>{$safeAccount}</code>";
 
-        notifyAdminWithdrawal($token, $ADMIN_ID, $adminMsg);
+        $notifyRes = notifyAdminWithdrawal($token, $ADMIN_ID, $adminMsg);
+
+        $msg = $notifyRes['sent']
+            ? 'Withdrawal request submitted! Admin has been notified.'
+            : 'Withdrawal request submitted, but Telegram admin alert could not be delivered (' . ($notifyRes['error'] ?: 'check bot token/chat ID') . ').';
 
         echo json_encode([
-            'success'     => true,
-            'new_balance' => $newBalance,
-            'message'     => 'Withdrawal request submitted! Admin has been notified.',
+            'success'        => true,
+            'new_balance'    => $newBalance,
+            'admin_notified' => $notifyRes['sent'],
+            'notify_error'   => $notifyRes['error'],
+            'message'        => $msg,
         ]);
     } catch (Throwable $e) {
         resetAbortedTransaction($pdo);
