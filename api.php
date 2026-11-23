@@ -159,8 +159,8 @@ try {
 
 function logBalanceChange(PDO $pdo, string $telegramId, ?int $roomId, string $type, float $amount, float $before, float $after, string $note = ''): void {
     try {
-        $stmt = $pdo->prepare("INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$telegramId, $roomId, $type, $amount, $before, $after, $note]);
+        $stmt = $pdo->prepare("INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$telegramId, $roomId, $type, $amount, $before, $after, $note, gmdate('Y-m-d H:i:s')]);
     } catch (Throwable $e) {
         error_log("logBalanceChange skipped: " . $e->getMessage());
     }
@@ -190,15 +190,15 @@ function givePlayerBonus(PDO $pdo, string $telegramId, float $amount, string $no
         $before = round((float)$player['balance'], 2);
         $after  = round($before + $amount, 2);
 
-        $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")
-            ->execute([$after, $telegramId]);
+        $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+            ->execute([$after, gmdate('Y-m-d H:i:s'), $telegramId]);
 
         $pdo->commit();
         logBalanceChange($pdo, $telegramId, null, 'bonus', $amount, $before, $after, $note);
 
         $notified = false;
         if ($notifyUser) {
-            $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
+            $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: getenv('BOT_TOKEN') ?: ''));
             $safeName = htmlspecialchars((string)($player['first_name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
             $safeNote = htmlspecialchars($note, ENT_QUOTES, 'UTF-8');
             $formattedAmt = number_format($amount, 2);
@@ -371,8 +371,8 @@ function sendWinnerCongratulations(
         return;
     }
 
-    $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
-    $adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
+    $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: getenv('BOT_TOKEN') ?: ''));
+    $adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: getenv('ADMIN_ID') ?: '730967613'));
     if ($token === '') {
         return;
     }
@@ -450,7 +450,8 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
 
     $encodedWinners = json_encode($deduped);
 
-    // Always mark the room as finished so calling stops immediately
+    // Always mark the room as finished first so calling stops immediately
+    resetAbortedTransaction($pdo);
     $pdo->beginTransaction();
     try {
         $pdo->prepare("UPDATE rooms SET status = 'finished', winners_json = ? WHERE id = ?")
@@ -476,8 +477,8 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
                 $before = round((float)($balStmt->fetchColumn() ?: 0), 2);
                 $after = round($before + $sharePerWinner, 2);
 
-                $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")
-                    ->execute([$after, $wTid]);
+                $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                    ->execute([$after, gmdate('Y-m-d H:i:s'), $wTid]);
                 $pdo->prepare("INSERT INTO game_winners (room_id, telegram_id, winner_name, prize) VALUES (?, ?, ?, ?)")
                     ->execute([$roomId, $wTid, $wName, $sharePerWinner]);
                 logBalanceChange($pdo, $wTid, $roomId, 'win_payout', $sharePerWinner, $before, $after, "Won Game {$gameLabel}");
@@ -664,8 +665,9 @@ if ($action === 'get_balance') {
         $balance = round((float)$player['balance'], 2);
     } else {
         $initialBal = 0.00;
-        $stmtIns = $pdo->prepare("INSERT INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', ?)");
-        $stmtIns->execute([$telegramId, $initialBal]);
+        $now = gmdate('Y-m-d H:i:s');
+        $stmtIns = $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, username, phone, balance, created_at, updated_at) VALUES (?, ?, 'Player', '', 'WebUser', ?, ?, ?)");
+        $stmtIns->execute([$telegramId, $telegramId, $initialBal, $now, $now]);
         $balance = $initialBal;
     }
 
@@ -779,18 +781,20 @@ elseif ($action === 'join_room') {
             ? $rawFirstName
             : ($rawUsername !== '' ? $rawUsername : ($rawFirstName !== '' ? $rawFirstName : 'Player'));
 
+        $nowTs = gmdate('Y-m-d H:i:s');
+
         if (!$player) {
             $stepTag = 'insert_player';
             $initialBal = 0.00;
-            $ins = $pdo->prepare("INSERT INTO players (telegram_id, first_name, username, phone, balance) VALUES (?, ?, ?, 'WebUser', ?)");
-            $ins->execute([$telegramId, $effectiveName, $rawUsername, $initialBal]);
+            $ins = $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, username, phone, balance, created_at, updated_at) VALUES (?, ?, ?, ?, 'WebUser', ?, ?, ?)");
+            $ins->execute([$telegramId, $telegramId, $effectiveName, $rawUsername, $initialBal, $nowTs, $nowTs]);
             $currentBalance = $initialBal;
         } else {
             $currentBalance = round((float)$player['balance'], 2);
             $existingFirst = trim((string)($player['first_name'] ?? ''));
             if ($rawFirstName !== '' && strcasecmp($rawFirstName, 'Player') !== 0 && $existingFirst !== $rawFirstName) {
                 $stepTag = 'update_player_name';
-                $pdo->prepare("UPDATE players SET first_name = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$rawFirstName, $telegramId]);
+                $pdo->prepare("UPDATE players SET first_name = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$rawFirstName, $nowTs, $telegramId]);
                 $effectiveName = $rawFirstName;
             } elseif ($existingFirst !== '' && strcasecmp($existingFirst, 'Player') !== 0) {
                 $effectiveName = $existingFirst;
@@ -799,7 +803,7 @@ elseif ($action === 'join_room') {
             }
             if ($rawUsername !== '') {
                 $stepTag = 'update_player_username';
-                $pdo->prepare("UPDATE players SET username = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$rawUsername, $telegramId]);
+                $pdo->prepare("UPDATE players SET username = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$rawUsername, $nowTs, $telegramId]);
             }
         }
 
@@ -858,8 +862,8 @@ elseif ($action === 'join_room') {
             }
 
             $stepTag = 'deduct_balance';
-            $updBal = $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?");
-            $updBal->execute([$newBalance, $telegramId]);
+            $updBal = $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?");
+            $updBal->execute([$newBalance, $nowTs, $telegramId]);
 
             $stepTag = 'commit_tx';
             $pdo->commit();
@@ -923,14 +927,14 @@ elseif ($action === 'request_withdrawal') {
 
         $newBalance = round($currentBal - $amount, 2);
 
-        $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$newBalance, $telegramId]);
+        $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$newBalance, gmdate('Y-m-d H:i:s'), $telegramId]);
         $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')")->execute([$telegramId, $amount, $method, $account]);
         $pdo->commit();
 
         logBalanceChange($pdo, $telegramId, null, 'withdrawal', -$amount, $currentBal, $newBalance, "Withdrawal via {$method} ({$account})");
 
-        $ADMIN_ID = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
-        $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
+        $ADMIN_ID = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: getenv('ADMIN_ID') ?: '730967613'));
+        $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: getenv('BOT_TOKEN') ?: ''));
         $safePlayerName = htmlspecialchars((string)($player['first_name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
         $safeMethod = htmlspecialchars($method, ENT_QUOTES, 'UTF-8');
         $safeAccount = htmlspecialchars($account, ENT_QUOTES, 'UTF-8');
