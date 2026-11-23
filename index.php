@@ -1078,6 +1078,28 @@
       return out;
     }
 
+    function hasWinningLineClient(boardArr, calledSet) {
+      if (!Array.isArray(boardArr) || boardArr.length !== 25) return null;
+      const lines = [
+        [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
+        [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
+        [0,6,12,18,24], [4,8,12,16,20],
+      ];
+      for (const line of lines) {
+        let ok = true;
+        for (const idx of line) {
+          if (idx === 12) continue;
+          const val = Number(boardArr[idx]);
+          if (!calledSet.has(val)) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) return line;
+      }
+      return null;
+    }
+
     function updateCountdownRing(ringId, secs, maxSecs = 15) {
       const ring = document.getElementById(ringId);
       if (!ring) return;
@@ -1323,14 +1345,17 @@
       }
     }
 
-    function renderPlayerCard() {
+    function renderPlayerCard(winLine = null) {
       const boardEl = document.getElementById('board');
       boardEl.innerHTML = '';
+      const winSet = new Set(Array.isArray(winLine) ? winLine : []);
       card.forEach((num, idx) => {
         const cell = document.createElement('div');
         const isFree = idx === 12;
         const isMarked = isFree || marked[idx];
-        cell.className = 'bingo-cell' + (isFree ? ' free' : (isMarked ? ' marked' : ''));
+        const isWinCell = winSet.has(idx);
+        cell.className = 'bingo-cell' +
+          (isWinCell ? ' win-highlight' : (isFree ? ' free' : (isMarked ? ' marked' : '')));
         cell.textContent = isFree ? '★' : num;
         boardEl.appendChild(cell);
       });
@@ -1345,9 +1370,11 @@
     }
 
     function openWinnerModal(roomId, winners, roomObj) {
-      if (!roomId || winnerModalShownForRoom === roomId) return;
-      winnerModalShownForRoom = roomId;
+      const key = `${roomId}:${(roomObj && roomObj.game_code) || ''}`;
+      if (!roomId || winnerModalShownForRoom === key) return;
+      winnerModalShownForRoom = key;
       stopRoomPolling();
+      currentRoomId = null;
       syncBalance();
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       sounds.winFanfare();
@@ -1463,9 +1490,10 @@
           changed = true;
         }
       });
-      if (changed) {
-        sounds.daubMatch();
-        renderPlayerCard();
+      const winLine = hasWinningLineClient(card, calledSet);
+      if (changed || winLine) {
+        if (changed) sounds.daubMatch();
+        renderPlayerCard(winLine);
       }
     }
 
@@ -1480,6 +1508,12 @@
           .then(data => {
             if (!data.success || !data.room) return;
             const room = data.room;
+            if (room.status === 'finished') {
+              stopRoomPolling();
+              currentRoomId = null;
+              openWinnerModal(room.room_id, room.winners || [], room);
+              return;
+            }
             if (room.status === 'waiting') {
               showOnlyScreen('lobby');
               const secs = Math.max(0, Number(room.lobby_seconds_left || 0));
@@ -1498,8 +1532,6 @@
                 renderPlayerCard();
               }
               renderPlayroomScreen(room);
-            } else if (room.status === 'finished') {
-              openWinnerModal(room.room_id, room.winners || [], room);
             }
           })
           .catch(() => {});
