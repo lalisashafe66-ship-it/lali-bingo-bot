@@ -411,7 +411,7 @@ function sendWinnerCongratulations(
         $pName = htmlspecialchars((string)($w['name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
         $cartelaNo = (int)($w['cartela_number'] ?? 0);
         $cartelaLine = $cartelaNo > 0 ? "\n• <b>Winning Cartela:</b> #{$cartelaNo}" : "";
-        $splitLine = $isSplit ? "\n• <b>Shared Pool:</b> {$poolStr} ETB (80% of stakes)" : "\n• <b>Payout Rule:</b> 80% of total stakes (20% admin)";
+        $splitLine = $isSplit ? "\n• <b>Shared Pool:</b> {$poolStr} ETB (split equally between 2 winners)" : "\n• <b>Payout Rule:</b> 80% of total stakes (20% admin)";
 
         $msg = "🏆 <b>BINGO LINE CLOSED — CONGRATULATIONS!</b>\n\n"
              . "Congratulations, <b>{$pName}</b>! 🎉\n"
@@ -426,7 +426,7 @@ function sendWinnerCongratulations(
     $roomPlayerIds = $rpStmt->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
 
     $winnerIdSet = array_flip(array_map(fn($w) => (string)($w['telegram_id'] ?? ''), $winners));
-    $roomNotice = "🛑 <b>Round Over — Line Closed!</b>\n\n{$summaryLine}";
+    $roomNotice = "🛑 <b>Game Over — Line Closed!</b>\n\n{$summaryLine}";
 
     foreach ($roomPlayerIds as $pid) {
         $pidStr = trim((string)$pid);
@@ -437,7 +437,7 @@ function sendWinnerCongratulations(
     }
 
     if ($adminId !== '') {
-        sendTelegramMessage($token, $adminId, "📊 <b>Game #{$safeGame} Finished</b>\n\n{$summaryLine}");
+        sendTelegramMessage($token, $adminId, "📊 <b>Game #{$safeGame} Over</b>\n\n{$summaryLine}");
     }
 }
 
@@ -462,6 +462,7 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
             return $room;
         }
 
+        // Cap at up to 2 co-winners sharing the 80% pool when closing together
         $deduped = [];
         $seenIds = [];
         foreach ($winners as $w) {
@@ -635,6 +636,7 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             }
         }
 
+        // Stop immediately when any line closes (do not draw further lines)
         if (count($autoWinners) > 0) {
             return finalizeRoomWinners($pdo, $room, $autoWinners);
         }
@@ -744,8 +746,6 @@ elseif ($action === 'get_room_state') {
     }
 
     $payload = buildRoomPayload($pdo, $room);
-
-    // Return finished room state so the client renders the winner screen & Play Again option first
     echo json_encode(['success' => true, 'room' => $payload]);
 }
 elseif ($action === 'join_room') {
@@ -817,7 +817,7 @@ elseif ($action === 'join_room') {
                         'calls_count'    => count($called),
                         'called_numbers' => $called,
                     ],
-                    'error' => 'you are visiting now, please wait for the next cartella to start the game',
+                    'error' => 'Please wait until this game ends; you will start in the next round.',
                 ]);
                 exit;
             }
@@ -857,7 +857,7 @@ elseif ($action === 'join_room') {
         }
 
         if ($currentBalance < $totalFee) {
-            echo json_encode(['success' => false, 'error' => 'Insufficient balance! Please top up via Deposit.']);
+            echo json_encode(['success' => false, 'error' => 'Insufficient balance! Please deposit first via Wallet -> Deposit.']);
             exit;
         }
 
@@ -879,6 +879,10 @@ elseif ($action === 'join_room') {
             $room = $roomById->fetch(PDO::FETCH_ASSOC);
         } else {
             $roomId = (int)$room['id'];
+            // Reset 15s countdown whenever a new player joins the waiting room
+            $now = time();
+            $pdo->prepare("UPDATE rooms SET starts_at = ? WHERE id = ? AND status = 'waiting'")->execute([$now + 15, $roomId]);
+            $room['starts_at'] = $now + 15;
         }
 
         $stepTag = 'check_taken_cartelas';
