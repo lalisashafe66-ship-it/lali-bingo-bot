@@ -576,7 +576,7 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
     }
 
     $drawIntervalSec = 2.2;
-    $maxRoundSec = 150;
+    $maxRoundSec = 120;
 
     if ($status === 'waiting' && $now >= $startsAt) {
         $status = 'active';
@@ -591,7 +591,7 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
 
     if ($status === 'active') {
         if ($startedAt <= 0) {
-            $startedAt = $now;
+            $startedAt = (int)($room['created_at'] ?? $now);
             $pdo->prepare("UPDATE rooms SET started_at = ? WHERE id = ?")->execute([$startedAt, $room['id']]);
             $room['started_at'] = $startedAt;
         }
@@ -674,7 +674,7 @@ function buildRoomPayload(PDO $pdo, array $room): array {
     $lobbySecondsLeft = max(0, $startsAt - $now);
 
     $startedAt = (int)($room['started_at'] ?? $now);
-    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 150 - ($now - $startedAt)) : 0;
+    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 120 - ($now - $startedAt)) : 0;
 
     return [
         'room_id'            => (int)$room['id'],
@@ -812,6 +812,9 @@ elseif ($action === 'join_room') {
 
     try {
         $stepTag = 'check_active';
+        $pdo->prepare("UPDATE rooms SET status = 'finished', winners_json = COALESCE(winners_json, '[]') WHERE stake = ? AND status = 'active' AND COALESCE(started_at, created_at, 0) <= ?")
+            ->execute([$stake, time() - 120]);
+
         $activeStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'active' ORDER BY id DESC LIMIT 1");
         $activeStmt->execute([$stake]);
         $activeRoom = $activeStmt->fetch(PDO::FETCH_ASSOC);
