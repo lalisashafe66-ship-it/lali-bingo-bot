@@ -350,7 +350,6 @@
       cursor: pointer;
     }
 
-    /* Featured Caller Ring & Recent Balls */
     .caller-card {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
@@ -456,7 +455,6 @@
       color: var(--text-muted);
     }
 
-    /* Light Crisp Cartela Board */
     .light-cartela-box {
       background: #f8fafc;
       color: #0f172a;
@@ -517,7 +515,6 @@
       font-weight: 900;
     }
 
-    /* Horizontal B-I-N-G-O Master Board (1-75) */
     .master-rows-wrap {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
@@ -666,7 +663,6 @@
       margin-top: 6px;
     }
 
-    /* Floating Gold Active Bottom Navigation */
     .bottom-nav {
       position: fixed;
       bottom: 8px;
@@ -1609,7 +1605,6 @@
               stopRoomPolling();
               currentRoomId = null;
               selectedCartelaNumbers = [];
-              alert('Current game finished! You can now pick your cartelas for the next round.');
               leaveToSetup();
             }
           })
@@ -1642,7 +1637,6 @@
           if (data.already_started && data.room) {
             const msg = data.error || 'you are visiting now, please wait for the next cartella to start the game';
             sounds.errorBuzz();
-            alert(msg);
             startWaitForActiveGame(data.room, msg);
             return;
           }
