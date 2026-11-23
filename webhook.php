@@ -6,8 +6,8 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/db.php';
 
-$botToken = trim((string)(getenv('BOT_TOKEN') ?: ''));
-$appUrl   = rtrim((string)(getenv('APP_URL') ?: 'https://your-domain.example.com'), '/');
+$botToken = trim((string)(getenv('BOT_TOKEN') ?: getenv('TELEGRAM_BOT_TOKEN') ?: ''));
+$appUrl   = rtrim((string)(getenv('APP_URL') ?: 'https://lali-bingo-bot.onrender.com'), '/');
 
 if ($botToken === '') {
     http_response_code(500);
@@ -52,15 +52,27 @@ function sendTelegramMessage(string $botToken, int|string $chatId, string $text,
 
 try {
     $pdo = getBingoPdo();
+    $isPgsql = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) === 'pgsql';
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT UNIQUE,
-        first_name TEXT,
-        username TEXT,
-        balance REAL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
+    if ($isPgsql) {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            telegram_id TEXT UNIQUE,
+            first_name TEXT,
+            username TEXT,
+            balance DOUBLE PRECISION DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )");
+    } else {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id TEXT UNIQUE,
+            first_name TEXT,
+            username TEXT,
+            balance REAL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )");
+    }
 
     $message = $update['message'] ?? null;
     if (is_array($message)) {
@@ -76,8 +88,8 @@ try {
                 INSERT INTO users (telegram_id, first_name, username)
                 VALUES (?, ?, ?)
                 ON CONFLICT(telegram_id) DO UPDATE SET
-                    first_name = excluded.first_name,
-                    username = excluded.username
+                    first_name = EXCLUDED.first_name,
+                    username = EXCLUDED.username
             ");
             $stmt->execute([$userId, $firstName, $username]);
         }
@@ -104,6 +116,9 @@ try {
     http_response_code(200);
     echo json_encode(['ok' => true]);
 } catch (Throwable $e) {
+    if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     error_log('Webhook error: ' . $e->getMessage());
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'Internal server error']);
