@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once __DIR__ . '/db.php';
 
 function resolveBotToken(): string {
-    foreach (['TELEGRAM_BOT_TOKEN'] as $key) {
+    foreach (['TELEGRAM_BOT_TOKEN', 'BOT_TOKEN'] as $key) {
         $val = getenv($key);
         if (is_string($val) && trim($val) !== '') {
             return trim($val);
@@ -97,9 +97,9 @@ if (!is_array($input)) {
     $input = [];
 }
 
-$telegramId = trim((string)($_POST['telegram_id'] ?? $_GET['telegram_id'] ?? $input['telegram_id'] ?? ''));
-$txRef = strtoupper(trim((string)($_POST['tx_ref'] ?? $_GET['tx_ref'] ?? $input['tx_ref'] ?? '')));
-$amount = round((float)($_POST['amount'] ?? $_GET['amount'] ?? $input['amount'] ?? 0), 2);
+$telegramId  = preg_replace('/\D+/', '', trim((string)($_POST['telegram_id'] ?? $_GET['telegram_id'] ?? $input['telegram_id'] ?? ''))) ?? '';
+$txRef       = strtoupper(trim((string)($_POST['tx_ref'] ?? $_GET['tx_ref'] ?? $input['tx_ref'] ?? '')));
+$amount      = round((float)($_POST['amount'] ?? $_GET['amount'] ?? $input['amount'] ?? 0), 2);
 $fullMessage = trim((string)($_POST['full_message'] ?? $_GET['full_message'] ?? $input['full_message'] ?? ''));
 
 if ($telegramId === '' || $txRef === '' || $amount <= 0) {
@@ -112,7 +112,7 @@ if (strlen($txRef) < 6 || !preg_match('/^[A-Z0-9_-]+$/', $txRef)) {
     exit;
 }
 
-$token = resolveBotToken();
+$token    = resolveBotToken();
 $ADMIN_ID = resolveAdminId();
 
 try {
@@ -152,7 +152,6 @@ try {
         }
     }
 
-    // Check if reference already exists (pending, claimed, or rejected)
     $stmt = $pdo->prepare("SELECT status FROM transactions WHERE UPPER(tx_reference) = ? LIMIT 1");
     $stmt->execute([$txRef]);
     $existing = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -165,32 +164,30 @@ try {
         exit;
     }
 
-    // Ensure player exists
+    $now = gmdate('Y-m-d H:i:s');
     if ($isPgsql) {
         $insPlayer = $pdo->prepare("
-            INSERT INTO players (telegram_id, first_name, phone, balance)
-            VALUES (?, 'Player', 'WebUser', 0.00)
+            INSERT INTO players (telegram_id, chat_id, first_name, username, phone, balance, created_at, updated_at)
+            VALUES (?, ?, 'Player', '', 'WebUser', 0.00, ?, ?)
             ON CONFLICT (telegram_id) DO NOTHING
         ");
     } else {
         $insPlayer = $pdo->prepare("
-            INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance)
-            VALUES (?, 'Player', 'WebUser', 0.00)
+            INSERT OR IGNORE INTO players (telegram_id, chat_id, first_name, username, phone, balance, created_at, updated_at)
+            VALUES (?, ?, 'Player', '', 'WebUser', 0.00, ?, ?)
         ");
     }
-    $insPlayer->execute([$telegramId]);
+    $insPlayer->execute([$telegramId, $telegramId, $now, $now]);
 
-    $stmtPlayer = $pdo->prepare("SELECT first_name, phone FROM players WHERE telegram_id = ?");
+    $stmtPlayer = $pdo->prepare("SELECT first_name FROM players WHERE telegram_id = ? LIMIT 1");
     $stmtPlayer->execute([$telegramId]);
     $player = $stmtPlayer->fetch(PDO::FETCH_ASSOC);
     $playerName = htmlspecialchars((string)($player['first_name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
 
-    // Insert as 'pending' — credited only when approved in bot.php
     $insertTx = $pdo->prepare("INSERT INTO transactions (telegram_id, tx_reference, amount, source, full_message, status) VALUES (?, ?, ?, 'webapp_manual', ?, 'pending')");
     $insertTx->execute([$telegramId, $txRef, $amount, $fullMessage !== '' ? $fullMessage : null]);
     $txId = $isPgsql ? (int)$pdo->lastInsertId('transactions_id_seq') : (int)$pdo->lastInsertId();
 
-    // Notify Admin with inline Approve / Reject buttons
     $adminMsg = "🔔 <b>New Deposit Verification Request</b>\n\n" .
                 "👤 <b>Player:</b> {$playerName} (<code>{$telegramId}</code>)\n" .
                 "💰 <b>Amount:</b> <b>{$amount} ETB</b>\n" .
@@ -219,7 +216,7 @@ try {
         'pending' => true,
         'message' => 'Deposit submitted! Waiting for admin confirmation (usually within a few minutes).',
     ]);
-} catch (Exception $e) {
+} catch (Throwable $e) {
     error_log("verify_payment error: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
 }
