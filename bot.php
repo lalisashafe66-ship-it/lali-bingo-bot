@@ -32,6 +32,10 @@ if ($token === '') {
     exit;
 }
 
+function nowTimestampText(): string {
+    return gmdate('Y-m-d H:i:s');
+}
+
 function tgPost(string $token, string $method, array $payload): array {
     $ch = curl_init("https://api.telegram.org/bot{$token}/{$method}");
     curl_setopt_array($ch, [
@@ -158,8 +162,11 @@ function buildRecentInvitesText(PDO $pdo, int $limit = 10): string {
 
 function addLedger(PDO $pdo, string $telegramId, ?int $roomId, string $type, float $amount, float $before, float $after, string $note): void {
     if (!tableExists($pdo, 'balance_ledger')) return;
-    $stmt = $pdo->prepare("INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    $stmt->execute([$telegramId, $roomId, $type, $amount, $before, $after, $note]);
+    $stmt = $pdo->prepare("
+        INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->execute([$telegramId, $roomId, $type, $amount, $before, $after, $note, nowTimestampText()]);
 }
 
 function getPlayerChatTarget(PDO $pdo, string $telegramId): string {
@@ -332,17 +339,18 @@ function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, 
             ? (trim((string)($row['first_name'] ?? 'Player')) ?: 'Player')
             : 'Player';
 
+        $ts = nowTimestampText();
         if (!$row) {
-            $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, invites_count) VALUES (?, ?, 'Player', 0.00, 0)")
-                ->execute([$targetPlayerId, $targetPlayerId]);
+            $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, invites_count, created_at, updated_at) VALUES (?, ?, 'Player', 0.00, 0, ?, ?)")
+                ->execute([$targetPlayerId, $targetPlayerId, $ts, $ts]);
             $before = 0.00;
         } else {
             $before = round((float)($row['balance'] ?? 0.00), 2);
         }
 
         $after = round($before + $amount, 2);
-        $pdo->prepare("UPDATE players SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE CAST(telegram_id AS TEXT) = ?")
-            ->execute([$after, $targetPlayerId]);
+        $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+            ->execute([$after, $ts, $targetPlayerId]);
 
         $amtStr   = number_format($amount, 2);
         $afterStr = number_format($after, 2);
@@ -452,9 +460,10 @@ function applyJoinReferralBonus(
         $pRefStmt = $pdo->prepare("SELECT balance, invites_count, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $pRefStmt->execute([$referrerId]);
         $refRow = $pRefStmt->fetch(PDO::FETCH_ASSOC);
+        $ts = nowTimestampText();
         if (!$refRow) {
-            $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, invites_count) VALUES (?, ?, 'Player', 0.00, 0)")
-                ->execute([$referrerId, $referrerId]);
+            $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, invites_count, created_at, updated_at) VALUES (?, ?, 'Player', 0.00, 0, ?, ?)")
+                ->execute([$referrerId, $referrerId, $ts, $ts]);
             $refBefore = 0.00;
             $refInvites = 0;
             $referrerName = 'Player';
@@ -464,18 +473,18 @@ function applyJoinReferralBonus(
             $referrerName = trim((string)($refRow['first_name'] ?? 'Player')) ?: 'Player';
         }
 
-        $pdo->prepare("UPDATE players SET referred_by = ? WHERE CAST(telegram_id AS TEXT) = ?")
-            ->execute([$referrerId, $newUserId]);
+        $pdo->prepare("UPDATE players SET referred_by = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+            ->execute([$referrerId, $ts, $newUserId]);
 
         $actualBonus = ($bonusAmount > 0) ? $bonusAmount : 0.00;
         $refAfter = round($refBefore + $actualBonus, 2);
         $newInvites = $refInvites + 1;
 
-        $pdo->prepare("UPDATE players SET balance = ?, invites_count = ? WHERE CAST(telegram_id AS TEXT) = ?")
-            ->execute([$refAfter, $newInvites, $referrerId]);
+        $pdo->prepare("UPDATE players SET balance = ?, invites_count = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+            ->execute([$refAfter, $newInvites, $ts, $referrerId]);
 
-        $pdo->prepare("INSERT INTO referrals (referrer_id, referred_id, bonus_amount) VALUES (?, ?, ?)")
-            ->execute([$referrerId, $newUserId, $actualBonus]);
+        $pdo->prepare("INSERT INTO referrals (referrer_id, referred_id, bonus_amount, created_at) VALUES (?, ?, ?, ?)")
+            ->execute([$referrerId, $newUserId, $actualBonus, $ts]);
 
         if ($actualBonus > 0) {
             addLedger(
@@ -873,28 +882,29 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 throw new RuntimeException("Missing player_id ({$targetPlayerId}) or amount ({$amount}) in {$data}");
             }
 
+            $ts = nowTimestampText();
             if ($isApprove) {
                 $pStmt = $pdo->prepare("SELECT telegram_id, balance, chat_id FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
                 $pStmt->execute([$targetPlayerId]);
                 $pRow = $pStmt->fetch(PDO::FETCH_ASSOC);
 
                 if (!$pRow) {
-                    $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance) VALUES (?, ?, 'Player', 0.00)")
-                        ->execute([$targetPlayerId, $targetPlayerId]);
+                    $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, created_at, updated_at) VALUES (?, ?, 'Player', 0.00, ?, ?)")
+                        ->execute([$targetPlayerId, $targetPlayerId, $ts, $ts]);
                     $before = 0.00;
                     $canonicalPlayerId = $targetPlayerId;
                 } else {
                     $canonicalPlayerId = (string)$pRow['telegram_id'];
                     $before = round((float)($pRow['balance'] ?? 0.00), 2);
                     if (trim((string)($pRow['chat_id'] ?? '')) === '') {
-                        $pdo->prepare("UPDATE players SET chat_id = ? WHERE CAST(telegram_id AS TEXT) = ?")
-                            ->execute([$targetPlayerId, $canonicalPlayerId]);
+                        $pdo->prepare("UPDATE players SET chat_id = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                            ->execute([$targetPlayerId, $ts, $canonicalPlayerId]);
                     }
                 }
 
                 $after = round($before + $amount, 2);
-                $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")
-                    ->execute([$after, $canonicalPlayerId]);
+                $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                    ->execute([$after, $ts, $canonicalPlayerId]);
 
                 if ($depTable !== null && $recId > 0) {
                     $pdo->prepare("UPDATE {$depTable} SET status = 'approved' WHERE id = ?")->execute([$recId]);
@@ -948,6 +958,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 throw new RuntimeException("Missing withdrawal player_id ({$targetPlayerId}) or amount ({$amount}) in {$data}");
             }
 
+            $ts = nowTimestampText();
             if ($isApprove) {
                 if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
                     $pdo->prepare("UPDATE withdrawals SET status = 'approved' WHERE id = ?")->execute([$recId]);
@@ -967,8 +978,8 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 $before = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
                 $after  = round($before + $amount, 2);
 
-                $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")
-                    ->execute([$after, $targetPlayerId]);
+                $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                    ->execute([$after, $ts, $targetPlayerId]);
 
                 if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
                     $pdo->prepare("UPDATE withdrawals SET status = 'rejected' WHERE id = ?")->execute([$recId]);
