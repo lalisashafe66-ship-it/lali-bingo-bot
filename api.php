@@ -400,8 +400,8 @@ function sendWinnerCongratulations(
 
     $isSplit = count($winners) > 1;
     $summaryLine = $isSplit
-        ? "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line together (max 2 co-winners) in Game <b>#{$safeGame}</b> and share the <b>{$poolStr} ETB</b> pool equally: <b>{$shareStr} ETB each</b>!"
-        : "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line first in Game <b>#{$safeGame}</b> and won <b>{$shareStr} ETB</b>!";
+        ? "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line together in Game <b>#{$safeGame}</b> and share the <b>{$poolStr} ETB</b> (80% pool) equally: <b>{$shareStr} ETB each</b>!"
+        : "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line first in Game <b>#{$safeGame}</b> and won <b>{$shareStr} ETB</b> (80% pool; 20% admin fee)!";
 
     foreach ($winners as $w) {
         $tid = trim((string)($w['telegram_id'] ?? ''));
@@ -411,12 +411,12 @@ function sendWinnerCongratulations(
         $pName = htmlspecialchars((string)($w['name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
         $cartelaNo = (int)($w['cartela_number'] ?? 0);
         $cartelaLine = $cartelaNo > 0 ? "\n• <b>Winning Cartela:</b> #{$cartelaNo}" : "";
-        $splitLine = $isSplit ? "\n• <b>Shared Pool:</b> {$poolStr} ETB (split between 2 winners)" : "";
+        $splitLine = $isSplit ? "\n• <b>Shared Pool:</b> {$poolStr} ETB (80% of stakes)" : "\n• <b>Payout Rule:</b> 80% of total stakes (20% admin)";
 
         $msg = "🏆 <b>BINGO LINE CLOSED — CONGRATULATIONS!</b>\n\n"
              . "Congratulations, <b>{$pName}</b>! 🎉\n"
-             . "You completed a winning line in Game <b>#{$safeGame}</b>!{$cartelaLine}\n"
-             . "• <b>Prize Won:</b> <b>+{$shareStr} ETB</b>{$splitLine}";
+             . "You closed a winning line in Game <b>#{$safeGame}</b>!{$cartelaLine}\n"
+             . "• <b>Prize Awarded:</b> <b>+{$shareStr} ETB</b>{$splitLine}";
 
         sendTelegramMessage($token, $tid, $msg);
     }
@@ -426,8 +426,7 @@ function sendWinnerCongratulations(
     $roomPlayerIds = $rpStmt->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
 
     $winnerIdSet = array_flip(array_map(fn($w) => (string)($w['telegram_id'] ?? ''), $winners));
-    $roomNotice = "🛑 <b>Round Ended — Line Closed!</b>\n\n"
-                . "{$summaryLine}";
+    $roomNotice = "🛑 <b>Round Over — Line Closed!</b>\n\n{$summaryLine}";
 
     foreach ($roomPlayerIds as $pid) {
         $pidStr = trim((string)$pid);
@@ -478,11 +477,15 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
             }
         }
 
-        $stakesStmt = $pdo->prepare("SELECT COALESCE(SUM(stake_paid), 0) AS total_stakes FROM room_players WHERE room_id = ?");
+        $stakesStmt = $pdo->prepare("SELECT COALESCE(SUM(stake_paid), 0) AS total_stakes, COUNT(*) AS entry_count FROM room_players WHERE room_id = ?");
         $stakesStmt->execute([$roomId]);
-        $totalStakes = (float)($stakesStmt->fetchColumn() ?: 0);
-        $totalDerash = round($totalStakes * 0.80, 2);
+        $stakeRow = $stakesStmt->fetch(PDO::FETCH_ASSOC);
+        $totalStakes = (float)($stakeRow['total_stakes'] ?? 0);
+        if ($totalStakes <= 0 && (int)($stakeRow['entry_count'] ?? 0) > 0) {
+            $totalStakes = (float)$stakeRow['entry_count'] * (float)($room['stake'] ?? 10);
+        }
 
+        $totalDerash = round($totalStakes * 0.80, 2);
         $winnerCount = count($deduped);
         $sharePerWinner = ($winnerCount > 0) ? round($totalDerash / $winnerCount, 2) : 0.0;
 
@@ -663,7 +666,8 @@ function buildRoomPayload(PDO $pdo, array $room): array {
     foreach ($rows as $r) {
         $uniquePlayers[(string)$r['telegram_id']] = true;
         $takenCartelas[] = (int)$r['player_number'];
-        $totalStakes += (float)($r['stake_paid'] ?? $room['stake']);
+        $paid = (float)($r['stake_paid'] ?? 0);
+        $totalStakes += ($paid > 0) ? $paid : (float)$room['stake'];
     }
 
     $playersCount = count($uniquePlayers);
@@ -741,28 +745,7 @@ elseif ($action === 'get_room_state') {
 
     $payload = buildRoomPayload($pdo, $room);
 
-    if ($payload['status'] === 'finished' && $stake > 0) {
-        $now = time();
-        $code = generateGameCode(5);
-        $pool = range(1, 75);
-        shuffle($pool);
-        $insRoom = $pdo->prepare("INSERT INTO rooms (game_code, stake, status, created_at, starts_at, draw_pool_json, called_numbers_json, winners_json) VALUES (?, ?, 'waiting', ?, ?, ?, '[]', '[]')");
-        $insRoom->execute([$code, $stake, $now, $now + 15, json_encode($pool)]);
-        $newRoomId = lastInsertIdCompat($pdo, 'rooms_id_seq');
-        $newStmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
-        $newStmt->execute([$newRoomId]);
-        $newRoom = $newStmt->fetch(PDO::FETCH_ASSOC);
-        if ($newRoom) {
-            echo json_encode([
-                'success'           => true,
-                'previous_finished' => true,
-                'finished_room'     => $payload,
-                'room'              => buildRoomPayload($pdo, $newRoom),
-            ]);
-            exit;
-        }
-    }
-
+    // Return finished room state so the client renders the winner screen & Play Again option first
     echo json_encode(['success' => true, 'room' => $payload]);
 }
 elseif ($action === 'join_room') {
