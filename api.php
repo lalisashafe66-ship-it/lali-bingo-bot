@@ -911,22 +911,33 @@ elseif ($action === 'join_room') {
 
         $rpTidType = getColumnType($pdo, 'room_players', 'telegram_id');
         $rpTidVal = normalizeIdForColumn($telegramId, $rpTidType);
+        $newBalance = round($currentBalance - $totalFee, 2);
 
         $stepTag = 'begin_tx';
+        resetAbortedTransaction($pdo);
         $pdo->beginTransaction();
 
-        $stepTag = 'deduct_balance';
-        $newBalance = round($currentBalance - $totalFee, 2);
-        $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$newBalance, $telegramId]);
+        try {
+            $stepTag = 'insert_room_player';
+            $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, first_name, player_number, stake_paid) VALUES (?, ?, ?, ?, ?)");
+            foreach ($cartelaNumbers as $cn) {
+                $logRoom->execute([$roomId, $rpTidVal, $effectiveName, (int)$cn, $stake]);
+            }
 
-        $stepTag = 'insert_room_player';
-        $logRoom = $pdo->prepare("INSERT INTO room_players (room_id, telegram_id, first_name, player_number, stake_paid) VALUES (?, ?, ?, ?, ?)");
-        foreach ($cartelaNumbers as $cn) {
-            $logRoom->execute([$roomId, $rpTidVal, $effectiveName, (int)$cn, $stake]);
+            $stepTag = 'deduct_balance';
+            $updBal = $pdo->prepare("UPDATE players SET balance = ? WHERE CAST(telegram_id AS TEXT) = ?");
+            $updBal->execute([$newBalance, $telegramId]);
+
+            $stepTag = 'commit_tx';
+            $pdo->commit();
+        } catch (Throwable $txErr) {
+            resetAbortedTransaction($pdo);
+            echo json_encode([
+                'success' => false,
+                'error'   => "Transaction error [{$stepTag}]: " . $txErr->getMessage(),
+            ]);
+            exit;
         }
-
-        $stepTag = 'commit_tx';
-        $pdo->commit();
 
         try {
             logBalanceChange($pdo, $telegramId, $roomId, 'stake_deduct', -$totalFee, $currentBalance, $newBalance, "Joined Game " . ($room['game_code'] ?? $roomId) . " (" . count($cartelaNumbers) . " cartela)");
