@@ -1,5 +1,7 @@
 <?php
 // verify_payment.php - Submits deposit reference as 'pending' and alerts admin for approval
+declare(strict_types=1);
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
@@ -25,7 +27,7 @@ function resolveBotToken(): string {
             return trim($_SERVER[$key]);
         }
     }
-    return '9105830123:AAGh_IUoXNiUbLZX2f5BBUo7_woBuzn8zBU';
+    return '';
 }
 
 function resolveAdminId(): string {
@@ -115,21 +117,39 @@ $ADMIN_ID = resolveAdminId();
 
 try {
     $pdo = getBingoPdo();
+    $isPgsql = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) === 'pgsql';
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT,
-        tx_reference TEXT UNIQUE,
-        amount REAL,
-        source TEXT,
-        full_message TEXT,
-        status TEXT DEFAULT 'pending',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
-
-    $txCols = $pdo->query("PRAGMA table_info(transactions)")->fetchAll(PDO::FETCH_COLUMN, 1);
-    if (!in_array('full_message', $txCols, true)) {
-        $pdo->exec("ALTER TABLE transactions ADD COLUMN full_message TEXT");
+    if ($isPgsql) {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS transactions (
+                id SERIAL PRIMARY KEY,
+                telegram_id TEXT,
+                tx_reference TEXT UNIQUE,
+                amount DOUBLE PRECISION,
+                source TEXT,
+                full_message TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+        $pdo->exec("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS full_message TEXT");
+    } else {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id TEXT,
+                tx_reference TEXT UNIQUE,
+                amount REAL,
+                source TEXT,
+                full_message TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+        $txCols = $pdo->query("PRAGMA table_info(transactions)")->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('full_message', $txCols, true)) {
+            $pdo->exec("ALTER TABLE transactions ADD COLUMN full_message TEXT");
+        }
     }
 
     // Check if reference already exists (pending, claimed, or rejected)
@@ -146,7 +166,18 @@ try {
     }
 
     // Ensure player exists
-    $insPlayer = $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', 0.00)");
+    if ($isPgsql) {
+        $insPlayer = $pdo->prepare("
+            INSERT INTO players (telegram_id, first_name, phone, balance)
+            VALUES (?, 'Player', 'WebUser', 0.00)
+            ON CONFLICT (telegram_id) DO NOTHING
+        ");
+    } else {
+        $insPlayer = $pdo->prepare("
+            INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance)
+            VALUES (?, 'Player', 'WebUser', 0.00)
+        ");
+    }
     $insPlayer->execute([$telegramId]);
 
     $stmtPlayer = $pdo->prepare("SELECT first_name, phone FROM players WHERE telegram_id = ?");
@@ -157,7 +188,7 @@ try {
     // Insert as 'pending' — credited only when approved in bot.php
     $insertTx = $pdo->prepare("INSERT INTO transactions (telegram_id, tx_reference, amount, source, full_message, status) VALUES (?, ?, ?, 'webapp_manual', ?, 'pending')");
     $insertTx->execute([$telegramId, $txRef, $amount, $fullMessage !== '' ? $fullMessage : null]);
-    $txId = $pdo->lastInsertId();
+    $txId = $isPgsql ? (int)$pdo->lastInsertId('transactions_id_seq') : (int)$pdo->lastInsertId();
 
     // Notify Admin with inline Approve / Reject buttons
     $adminMsg = "🔔 <b>New Deposit Verification Request</b>\n\n" .
