@@ -590,6 +590,12 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
     }
 
     if ($status === 'active') {
+        if ($startedAt <= 0) {
+            $startedAt = $now;
+            $pdo->prepare("UPDATE rooms SET started_at = ? WHERE id = ?")->execute([$startedAt, $room['id']]);
+            $room['started_at'] = $startedAt;
+        }
+
         $elapsed = max(0, $now - $startedAt);
         $targetCalls = min(75, (int)floor($elapsed / $drawIntervalSec) + 1);
         $called = array_slice($pool, 0, $targetCalls);
@@ -811,27 +817,30 @@ elseif ($action === 'join_room') {
         $activeRoom = $activeStmt->fetch(PDO::FETCH_ASSOC);
 
         if ($activeRoom) {
-            $now = time();
-            $startedAt = (int)($activeRoom['started_at'] ?? $now);
-            $elapsed = max(0, $now - $startedAt);
-            $pool = json_decode($activeRoom['draw_pool_json'] ?? '[]', true);
-            $targetCalls = min(75, (int)floor($elapsed / 2.2) + 1);
-            $called = is_array($pool) ? array_slice($pool, 0, $targetCalls) : [];
-            echo json_encode([
-                'success'         => false,
-                'already_started' => true,
-                'room'            => [
-                    'room_id'        => (int)$activeRoom['id'],
-                    'game_code'      => $activeRoom['game_code'] ?: '1T6BX',
-                    'stake'          => (float)$activeRoom['stake'],
-                    'status'         => 'active',
-                    'derash'         => 0,
-                    'calls_count'    => count($called),
-                    'called_numbers' => $called,
-                ],
-                'error' => 'you are visiting now, please wait for the next cartella to start the game',
-            ]);
-            exit;
+            $syncedActive = syncRoomLifecycle($pdo, $activeRoom);
+            if (($syncedActive['status'] ?? '') === 'active') {
+                $now = time();
+                $startedAt = (int)($syncedActive['started_at'] ?? $now);
+                $elapsed = max(0, $now - $startedAt);
+                $pool = json_decode($syncedActive['draw_pool_json'] ?? '[]', true);
+                $targetCalls = min(75, (int)floor($elapsed / 2.2) + 1);
+                $called = is_array($pool) ? array_slice($pool, 0, $targetCalls) : [];
+                echo json_encode([
+                    'success'         => false,
+                    'already_started' => true,
+                    'room'            => [
+                        'room_id'        => (int)$syncedActive['id'],
+                        'game_code'      => $syncedActive['game_code'] ?: '1T6BX',
+                        'stake'          => (float)$syncedActive['stake'],
+                        'status'         => 'active',
+                        'derash'         => 0,
+                        'calls_count'    => count($called),
+                        'called_numbers' => $called,
+                    ],
+                    'error' => 'you are visiting now, please wait for the next cartella to start the game',
+                ]);
+                exit;
+            }
         }
 
         $stepTag = 'select_player';
