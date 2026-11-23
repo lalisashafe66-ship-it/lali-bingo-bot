@@ -534,9 +534,15 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
     }
 
     $drawIntervalSec = 2.2;
-    $maxRoundSec = 120;
+    $maxRoundSec = 90;
 
     if ($status === 'waiting' && $now >= $startsAt) {
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM room_players WHERE room_id = ?");
+        $countStmt->execute([$room['id']]);
+        if ((int)$countStmt->fetchColumn() === 0) {
+            return finishRoomWithNoWinner($pdo, $room);
+        }
+
         $status = 'active';
         $startedAt = $now;
         $stmt = $pdo->prepare("UPDATE rooms SET status = 'active', started_at = ?, draw_pool_json = ?, called_numbers_json = '[]' WHERE id = ?");
@@ -554,6 +560,14 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             $room['started_at'] = $startedAt;
         }
 
+        $rpStmt = $pdo->prepare("SELECT telegram_id, first_name, player_number FROM room_players WHERE room_id = ? ORDER BY id ASC");
+        $rpStmt->execute([$room['id']]);
+        $entries = $rpStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (count($entries) === 0) {
+            return finishRoomWithNoWinner($pdo, $room);
+        }
+
         $elapsed = max(0, $now - $startedAt);
         $targetCalls = min(75, (int)floor($elapsed / $drawIntervalSec) + 1);
         $called = array_slice($pool, 0, $targetCalls);
@@ -562,10 +576,6 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
         $pdo->prepare("UPDATE rooms SET called_numbers_json = ? WHERE id = ?")
             ->execute([json_encode($called), $room['id']]);
         $room['called_numbers_json'] = json_encode($called);
-
-        $rpStmt = $pdo->prepare("SELECT telegram_id, first_name, player_number FROM room_players WHERE room_id = ? ORDER BY id ASC");
-        $rpStmt->execute([$room['id']]);
-        $entries = $rpStmt->fetchAll(PDO::FETCH_ASSOC);
 
         $autoWinners = [];
         $seenWinnerIds = [];
@@ -634,7 +644,7 @@ function buildRoomPayload(PDO $pdo, array $room): array {
     $lobbySecondsLeft = max(0, $startsAt - $now);
 
     $startedAt = (int)($room['started_at'] ?? $now);
-    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 120 - ($now - $startedAt)) : 0;
+    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 90 - ($now - $startedAt)) : 0;
 
     return [
         'room_id'            => (int)$room['id'],
@@ -688,7 +698,17 @@ elseif ($action === 'get_room_state') {
         $stmt->execute([$roomId]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
     } elseif ($stake > 0) {
-        $stmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status IN ('active', 'waiting') ORDER BY id DESC LIMIT 1");
+        $stmt = $pdo->prepare("
+            SELECT r.*
+            FROM rooms r
+            WHERE r.stake = ?
+              AND (
+                r.status = 'waiting'
+                OR (r.status = 'active' AND EXISTS (SELECT 1 FROM room_players rp WHERE rp.room_id = r.id))
+              )
+            ORDER BY r.id DESC
+            LIMIT 1
+        ");
         $stmt->execute([$stake]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
     } else {
@@ -744,10 +764,26 @@ elseif ($action === 'join_room') {
 
     try {
         $stepTag = 'check_active';
-        $pdo->prepare("UPDATE rooms SET status = 'finished', winners_json = COALESCE(winners_json, '[]') WHERE stake = ? AND status = 'active' AND COALESCE(started_at, created_at, 0) <= ?")
-            ->execute([$stake, time() - 120]);
+        $pdo->prepare("
+            UPDATE rooms
+            SET status = 'finished', winners_json = COALESCE(winners_json, '[]')
+            WHERE stake = ?
+              AND status = 'active'
+              AND (
+                COALESCE(started_at, created_at, 0) <= ?
+                OR NOT EXISTS (SELECT 1 FROM room_players rp WHERE rp.room_id = rooms.id)
+              )
+        ")->execute([$stake, time() - 90]);
 
-        $activeStmt = $pdo->prepare("SELECT * FROM rooms WHERE stake = ? AND status = 'active' ORDER BY id DESC LIMIT 1");
+        $activeStmt = $pdo->prepare("
+            SELECT r.*
+            FROM rooms r
+            WHERE r.stake = ?
+              AND r.status = 'active'
+              AND EXISTS (SELECT 1 FROM room_players rp WHERE rp.room_id = r.id)
+            ORDER BY r.id DESC
+            LIMIT 1
+        ");
         $activeStmt->execute([$stake]);
         $activeRoom = $activeStmt->fetch(PDO::FETCH_ASSOC);
 
