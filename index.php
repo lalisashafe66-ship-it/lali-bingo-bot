@@ -1559,7 +1559,12 @@
       roomPollInterval = setInterval(tick, 1500);
     }
 
+    // Only updates setup screen prize/taken cartelas; never forces wait-active before selecting a cartela
     function pollSetupRoomStatus() {
+      if (currentRoomId) return;
+      const gameSec = document.getElementById('screen-game');
+      if (!gameSec || gameSec.classList.contains('d-none')) return;
+
       fetch(`api.php?action=get_room_state&stake=${encodeURIComponent(selectedStake)}`)
         .then(r => r.json())
         .then(data => {
@@ -1579,19 +1584,25 @@
     }
 
     function startWaitForActiveGame(room, noticeMsg = '') {
+      if (!room || !room.room_id || room.status === 'finished') {
+        leaveToSetup();
+        return;
+      }
       currentRoomId = room.room_id;
       renderWaitActiveScreen(room, noticeMsg || 'Please wait until this game ends; you will start in the next round.');
       stopRoomPolling();
       roomPollInterval = setInterval(() => {
+        if (!currentRoomId) return;
         fetch(`api.php?action=get_room_state&room_id=${encodeURIComponent(room.room_id)}&stake=${encodeURIComponent(selectedStake)}`)
           .then(r => r.json())
           .then(data => {
-            if (!data.success || !data.room) return;
+            if (!data.success || !data.room) {
+              leaveToSetup();
+              return;
+            }
             if (data.room.status === 'active') {
               renderWaitActiveScreen(data.room, noticeMsg || 'Please wait until this game ends; you will start in the next round.');
             } else if (data.room.status === 'finished' || data.room.status === 'waiting') {
-              stopRoomPolling();
-              currentRoomId = null;
               leaveToSetup();
             }
           })
