@@ -895,60 +895,74 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
             $ts = nowTimestampText();
 
             $pdo->beginTransaction();
-            if ($isApprove) {
-                $pStmt = $pdo->prepare("SELECT telegram_id, balance, chat_id FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
-                $pStmt->execute([$targetPlayerId]);
-                $pRow = $pStmt->fetch(PDO::FETCH_ASSOC);
+            try {
+                if ($isApprove) {
+                    $pStmt = $pdo->prepare("SELECT telegram_id, balance, chat_id FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
+                    $pStmt->execute([$targetPlayerId]);
+                    $pRow = $pStmt->fetch(PDO::FETCH_ASSOC);
 
-                if (!$pRow) {
-                    $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, created_at, updated_at) VALUES (?, ?, 'Player', 0.00, ?, ?)")
-                        ->execute([$targetPlayerId, $targetPlayerId, $ts, $ts]);
-                    $before = 0.00;
-                    $canonicalPlayerId = $targetPlayerId;
-                } else {
-                    $canonicalPlayerId = (string)$pRow['telegram_id'];
-                    $before = round((float)($pRow['balance'] ?? 0.00), 2);
-                    if (trim((string)($pRow['chat_id'] ?? '')) === '') {
-                        $pdo->prepare("UPDATE players SET chat_id = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
-                            ->execute([$targetPlayerId, $ts, $canonicalPlayerId]);
+                    if (!$pRow) {
+                        $pdo->prepare("INSERT INTO players (telegram_id, chat_id, first_name, balance, created_at, updated_at) VALUES (?, ?, 'Player', 0.00, ?, ?)")
+                            ->execute([$targetPlayerId, $targetPlayerId, $ts, $ts]);
+                        $before = 0.00;
+                        $canonicalPlayerId = $targetPlayerId;
+                    } else {
+                        $canonicalPlayerId = (string)$pRow['telegram_id'];
+                        $before = round((float)($pRow['balance'] ?? 0.00), 2);
+                        if (trim((string)($pRow['chat_id'] ?? '')) === '') {
+                            $pdo->prepare("UPDATE players SET chat_id = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                                ->execute([$targetPlayerId, $ts, $canonicalPlayerId]);
+                        }
                     }
+
+                    $after = round($before + $amount, 2);
+                    $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                        ->execute([$after, $ts, $canonicalPlayerId]);
+
+                    if ($depTable !== null && $recId > 0) {
+                        $pdo->prepare("UPDATE {$depTable} SET status = 'approved' WHERE id = ?")->execute([$recId]);
+                    }
+
+                    if ($hasLedger) {
+                        $pdo->exec("SAVEPOINT sp_ledger");
+                        try {
+                            $lStmt = $pdo->prepare("
+                                INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            ");
+                            $lStmt->execute([$canonicalPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin", $ts]);
+                            $pdo->exec("RELEASE SAVEPOINT sp_ledger");
+                        } catch (Throwable $ledgerErr) {
+                            $pdo->exec("ROLLBACK TO SAVEPOINT sp_ledger");
+                            error_log("Ledger insert skipped on deposit approve: " . $ledgerErr->getMessage());
+                        }
+                    }
+
+                    $pdo->commit();
+
+                    $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
+                    $toastText    = "Approved +{$amtFormatted} ETB (Total: " . number_format($after, 2) . " ETB)";
+                    $statusLabel  = "\n\n✅ APPROVED (+{$amtFormatted} ETB) | New Balance: " . number_format($after, 2) . " ETB";
+                    $playerNotify = "SMART BINGO — Deposit Approved\n\n"
+                                  . "Previous Balance: " . number_format($before, 2) . " ETB\n"
+                                  . "Credited Amount: +" . number_format($amount, 2) . " ETB\n"
+                                  . "New Balance: " . number_format($after, 2) . " ETB";
+                } else {
+                    if ($depTable !== null && $recId > 0) {
+                        $pdo->prepare("UPDATE {$depTable} SET status = 'rejected' WHERE id = ?")->execute([$recId]);
+                    }
+                    $pdo->commit();
+
+                    $toastText    = "Rejected deposit";
+                    $statusLabel  = "\n\n❌ REJECTED by Admin";
+                    $playerNotify = "SMART BINGO — Deposit Rejected\n\n"
+                                  . "Your deposit request of " . number_format($amount, 2) . " ETB was rejected. Please verify your reference or contact support.";
                 }
-
-                $after = round($before + $amount, 2);
-                $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
-                    ->execute([$after, $ts, $canonicalPlayerId]);
-
-                if ($depTable !== null && $recId > 0) {
-                    $pdo->prepare("UPDATE {$depTable} SET status = 'approved' WHERE id = ?")->execute([$recId]);
+            } catch (Throwable $txErr) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
                 }
-
-                if ($hasLedger) {
-                    $lStmt = $pdo->prepare("
-                        INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ");
-                    $lStmt->execute([$canonicalPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin", $ts]);
-                }
-
-                $pdo->commit();
-
-                $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
-                $toastText    = "Approved +{$amtFormatted} ETB (Total: " . number_format($after, 2) . " ETB)";
-                $statusLabel  = "\n\n✅ APPROVED (+{$amtFormatted} ETB) | New Balance: " . number_format($after, 2) . " ETB";
-                $playerNotify = "SMART BINGO — Deposit Approved\n\n"
-                              . "Previous Balance: " . number_format($before, 2) . " ETB\n"
-                              . "Credited Amount: +" . number_format($amount, 2) . " ETB\n"
-                              . "New Balance: " . number_format($after, 2) . " ETB";
-            } else {
-                if ($depTable !== null && $recId > 0) {
-                    $pdo->prepare("UPDATE {$depTable} SET status = 'rejected' WHERE id = ?")->execute([$recId]);
-                }
-                $pdo->commit();
-
-                $toastText    = "Rejected deposit";
-                $statusLabel  = "\n\n❌ REJECTED by Admin";
-                $playerNotify = "SMART BINGO — Deposit Rejected\n\n"
-                              . "Your deposit request of " . number_format($amount, 2) . " ETB was rejected. Please verify your reference or contact support.";
+                throw new RuntimeException($txErr->getMessage() . " [at line " . $txErr->getLine() . "]", 0, $txErr);
             }
         } else {
             $hasWithdrawals = tableExists($pdo, 'withdrawals');
@@ -986,49 +1000,56 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
             $ts = nowTimestampText();
 
             $pdo->beginTransaction();
-            if ($isApprove) {
-                if ($recId > 0 && $hasWithdrawals) {
-                    $pdo->prepare("UPDATE withdrawals SET status = 'approved' WHERE id = ?")->execute([$recId]);
+            try {
+                if ($isApprove) {
+                    if ($recId > 0 && $hasWithdrawals) {
+                        $pdo->prepare("UPDATE withdrawals SET status = 'approved' WHERE id = ?")->execute([$recId]);
+                    }
+                    $bStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
+                    $bStmt->execute([$targetPlayerId]);
+                    $curBal = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
+                    $pdo->commit();
+
+                    $toastText    = "Approved withdrawal";
+                    $statusLabel  = "\n\n✅ WITHDRAWAL APPROVED";
+                    $playerNotify = "SMART BINGO — Withdrawal Approved\n\n"
+                                  . "Approved Amount: " . number_format($amount, 2) . " ETB\n"
+                                  . "Current Balance: " . number_format($curBal, 2) . " ETB";
+                } else {
+                    $bStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
+                    $bStmt->execute([$targetPlayerId]);
+                    $before = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
+                    $after  = round($before + $amount, 2);
+
+                    $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                        ->execute([$after, $ts, $targetPlayerId]);
+
+                    if ($recId > 0 && $hasWithdrawals) {
+                        $pdo->prepare("UPDATE withdrawals SET status = 'rejected' WHERE id = ?")->execute([$recId]);
+                    }
+
+                    if ($hasLedger) {
+                        $lStmt = $pdo->prepare("
+                            INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ");
+                        $lStmt->execute([$targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal rejected & refunded", $ts]);
+                    }
+                    $pdo->commit();
+
+                    $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
+                    $toastText    = "Rejected & refunded {$amtFormatted} ETB";
+                    $statusLabel  = "\n\n❌ WITHDRAWAL REJECTED & REFUNDED";
+                    $playerNotify = "SMART BINGO — Withdrawal Rejected\n\n"
+                                  . "Previous Balance: " . number_format($before, 2) . " ETB\n"
+                                  . "Refunded Amount: +" . number_format($amount, 2) . " ETB\n"
+                                  . "New Balance: " . number_format($after, 2) . " ETB";
                 }
-                $bStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
-                $bStmt->execute([$targetPlayerId]);
-                $curBal = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
-                $pdo->commit();
-
-                $toastText    = "Approved withdrawal";
-                $statusLabel  = "\n\n✅ WITHDRAWAL APPROVED";
-                $playerNotify = "SMART BINGO — Withdrawal Approved\n\n"
-                              . "Approved Amount: " . number_format($amount, 2) . " ETB\n"
-                              . "Current Balance: " . number_format($curBal, 2) . " ETB";
-            } else {
-                $bStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
-                $bStmt->execute([$targetPlayerId]);
-                $before = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
-                $after  = round($before + $amount, 2);
-
-                $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
-                    ->execute([$after, $ts, $targetPlayerId]);
-
-                if ($recId > 0 && $hasWithdrawals) {
-                    $pdo->prepare("UPDATE withdrawals SET status = 'rejected' WHERE id = ?")->execute([$recId]);
+            } catch (Throwable $txErr) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
                 }
-
-                if ($hasLedger) {
-                    $lStmt = $pdo->prepare("
-                        INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ");
-                    $lStmt->execute([$targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal rejected & refunded", $ts]);
-                }
-                $pdo->commit();
-
-                $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
-                $toastText    = "Rejected & refunded {$amtFormatted} ETB";
-                $statusLabel  = "\n\n❌ WITHDRAWAL REJECTED & REFUNDED";
-                $playerNotify = "SMART BINGO — Withdrawal Rejected\n\n"
-                              . "Previous Balance: " . number_format($before, 2) . " ETB\n"
-                              . "Refunded Amount: +" . number_format($amount, 2) . " ETB\n"
-                              . "New Balance: " . number_format($after, 2) . " ETB";
+                throw new RuntimeException($txErr->getMessage() . " [at line " . $txErr->getLine() . "]", 0, $txErr);
             }
         }
 
@@ -1052,12 +1073,17 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
         }
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
-            $pdo->rollBack();
+            try {
+                $pdo->rollBack();
+            } catch (Throwable $rbErr) {
+                error_log("Callback rollback error: " . $rbErr->getMessage());
+            }
         }
-        error_log("Callback error ({$data}): " . $e->getMessage());
+        $msg = $e->getMessage() . " @L" . $e->getLine();
+        error_log("Callback error ({$data}): " . $msg);
         tgPost($token, 'answerCallbackQuery', [
             'callback_query_id' => $cbId,
-            'text'              => 'Callback error: ' . substr($e->getMessage(), 0, 140),
+            'text'              => 'Callback error: ' . substr($msg, 0, 140),
             'show_alert'        => true,
         ]);
     }
