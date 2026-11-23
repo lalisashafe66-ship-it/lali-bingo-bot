@@ -726,7 +726,7 @@
   <section id="screen-game" class="container">
     <h1 class="section-title">Choose a table</h1>
     <p class="section-sub">
-      Share with friends, deposit ETB, and pick up to 3 cartelas. 15s countdown starts once cartelas are held. First closed line wins 80% (20% admin fee); 2 co-winners split 80% equally.
+      Share with friends, deposit ETB, and pick up to 3 cartelas. 15s countdown starts once cartelas are held. First closed line wins 80% (20% commission); 2 co-winners split 80% equally.
     </p>
 
     <div class="onboarding-strip">
@@ -742,7 +742,7 @@
       <div class="table-big-amt">10</div>
       <div style="flex:1;">
         <div class="table-meta-title">ETB per cartela</div>
-        <div class="table-meta-sub">1 line to win. Winner takes 80% of all stakes</div>
+        <div class="table-meta-sub">1 line to win. 80% prize pool &bull; 20% commission</div>
       </div>
       <span class="radio-ring"></span>
     </label>
@@ -752,7 +752,7 @@
       <div class="table-big-amt">20</div>
       <div style="flex:1;">
         <div class="table-meta-title">ETB per cartela</div>
-        <div class="table-meta-sub">1 line to win. Winner takes 80% of all stakes</div>
+        <div class="table-meta-sub">1 line to win. 80% prize pool &bull; 20% commission</div>
       </div>
       <span class="radio-ring"></span>
     </label>
@@ -762,7 +762,7 @@
       <div class="table-big-amt">50</div>
       <div style="flex:1;">
         <div class="table-meta-title">ETB per cartela</div>
-        <div class="table-meta-sub">1 line to win. Winner takes 80% of all stakes</div>
+        <div class="table-meta-sub">1 line to win. 80% prize pool &bull; 20% commission</div>
       </div>
       <span class="radio-ring"></span>
     </label>
@@ -1182,6 +1182,8 @@
       const activeRadio = element.querySelector('input[type="radio"]');
       if (activeRadio) activeRadio.checked = true;
       selectedStake = stake;
+      selectedCartelaNumbers = [];
+      takenCartelas = [];
       document.getElementById('active-stake-label').textContent = stake;
       updatePlayButtonLabel();
       pollSetupRoomStatus();
@@ -1189,6 +1191,18 @@
 
     function stopRoomPolling() {
       if (roomPollInterval) { clearInterval(roomPollInterval); roomPollInterval = null; }
+    }
+
+    function clearRoundSelectionState() {
+      selectedCartelaNumbers = [];
+      lastJoinedCartelas = [];
+      takenCartelas = [];
+      card = [];
+      marked = Array(25).fill(false);
+      marked[12] = true;
+      calledNumbers = [];
+      lastAnnouncedNumber = null;
+      updatePlayButtonLabel();
     }
 
     function showOnlyScreen(screenName) {
@@ -1203,6 +1217,7 @@
     function leaveToSetup() {
       stopRoomPolling();
       currentRoomId = null;
+      clearRoundSelectionState();
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       switchTab('game');
       pollSetupRoomStatus();
@@ -1211,9 +1226,8 @@
     function playAgainQuick() {
       stopRoomPolling();
       currentRoomId = null;
-      if (lastJoinedCartelas.length > 0) {
-        selectedCartelaNumbers = lastJoinedCartelas.filter(n => !takenCartelas.includes(n)).slice(0, 3);
-      }
+      const preferred = lastJoinedCartelas.length > 0 ? [...lastJoinedCartelas] : [...selectedCartelaNumbers];
+      selectedCartelaNumbers = preferred.filter(n => !takenCartelas.includes(n)).slice(0, 3);
       if (selectedCartelaNumbers.length === 0) {
         for (let n = 1; n <= 400; n++) {
           if (!takenCartelas.includes(n)) {
@@ -1222,6 +1236,11 @@
           }
         }
       }
+      card = [];
+      marked = Array(25).fill(false);
+      marked[12] = true;
+      calledNumbers = [];
+      lastAnnouncedNumber = null;
       showOnlyScreen('game');
       buildCartelaPickerGrid();
       joinSelectedTable();
@@ -1438,7 +1457,6 @@
 
     function leaveLobbyFromModal() {
       document.getElementById('winner-modal').classList.add('d-none');
-      selectedCartelaNumbers = [];
       leaveToSetup();
     }
 
@@ -1574,7 +1592,6 @@
             } else if (data.room.status === 'finished' || data.room.status === 'waiting') {
               stopRoomPolling();
               currentRoomId = null;
-              selectedCartelaNumbers = [];
               leaveToSetup();
             }
           })
