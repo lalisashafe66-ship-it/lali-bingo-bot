@@ -8,16 +8,16 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --bg-deep: #0b1220;
-      --bg-card: #131d33;
-      --bg-card-soft: #1a2744;
+      --bg-deep: #0b2429;
+      --bg-card: #12363d;
+      --bg-card-soft: #194750;
       --accent-gold: #f5b700;
       --accent-gold-hover: #ffcc29;
       --accent-green: #22c55e;
       --accent-red: #ef4444;
       --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --line-border: rgba(255, 255, 255, 0.08);
+      --text-muted: #9ec0c7;
+      --line-border: rgba(255, 255, 255, 0.10);
     }
 
     *, *::before, *::after {
@@ -27,8 +27,8 @@
 
     body {
       margin: 0;
-      padding: 0 0 82px 0;
-      background: radial-gradient(circle at top, #172542 0%, var(--bg-deep) 65%);
+      padding: 0 0 88px 0;
+      background: radial-gradient(circle at top, #17434b 0%, var(--bg-deep) 68%);
       color: var(--text-main);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       min-height: 100vh;
@@ -39,7 +39,7 @@
       align-items: center;
       justify-content: space-between;
       padding: 12px 16px;
-      background: rgba(11, 18, 32, 0.85);
+      background: rgba(11, 36, 41, 0.90);
       backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--line-border);
       position: sticky;
@@ -47,52 +47,137 @@
       z-index: 40;
     }
 
+    .top-stripe {
+      height: 6px;
+      background: repeating-linear-gradient(
+        90deg,
+        var(--accent-gold) 0px,
+        var(--accent-gold) 12px,
+        #1e606e 12px,
+        #1e606e 24px
+      );
+    }
+
     .brand-pill {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-weight: 800;
-      font-size: 1rem;
+      font-weight: 900;
+      font-size: 1.05rem;
       letter-spacing: 0.3px;
     }
 
-    .brand-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
+    .brand-diamond {
+      width: 12px;
+      height: 12px;
+      transform: rotate(45deg);
       background: var(--accent-gold);
-      box-shadow: 0 0 10px var(--accent-gold);
+      box-shadow: 0 0 10px rgba(245, 183, 0, 0.65);
+    }
+
+    .balance-box {
+      text-align: right;
+      cursor: pointer;
+    }
+
+    .balance-label {
+      display: block;
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      line-height: 1.1;
     }
 
     .balance-pill {
-      background: var(--bg-card-soft);
-      border: 1px solid rgba(245, 183, 0, 0.35);
+      background: transparent;
+      border: none;
       color: var(--accent-gold);
-      font-weight: 800;
-      font-size: 0.88rem;
-      padding: 6px 12px;
-      border-radius: 999px;
+      font-weight: 900;
+      font-size: 0.98rem;
+      padding: 0;
       cursor: pointer;
     }
 
     .section-title {
       font-size: 1.25rem;
       font-weight: 800;
-      margin: 14px 0 6px;
+      margin: 14px 0 4px;
     }
 
     .section-sub {
       color: var(--text-muted);
-      font-size: 0.86rem;
+      font-size: 0.85rem;
       margin-bottom: 12px;
     }
 
     .card-panel {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
-      border-radius: 16px;
+      border-radius: 18px;
       padding: 14px;
       margin-bottom: 14px;
+    }
+
+    .lobby-hero-card {
+      background: var(--bg-card);
+      border: 1px solid var(--line-border);
+      border-radius: 18px;
+      padding: 14px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .countdown-ring {
+      width: 74px;
+      height: 74px;
+      border-radius: 50%;
+      background: conic-gradient(var(--accent-gold) 0deg, rgba(255, 255, 255, 0.14) 0deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      padding: 6px;
+    }
+
+    .countdown-ring-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: var(--bg-card);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 1.12rem;
+      color: #fff;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      margin: 6px 0 10px;
+    }
+
+    .legend-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+
+    .legend-dot.yours {
+      background: var(--accent-gold);
+    }
+
+    .legend-dot.taken {
+      background: rgba(148, 163, 184, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.25);
     }
 
     .stake-grid {
@@ -105,7 +190,7 @@
       background: var(--bg-card-soft);
       border: 2px solid transparent;
       border-radius: 14px;
-      padding: 12px 8px;
+      padding: 11px 8px;
       text-align: center;
       cursor: pointer;
       transition: all 0.15s ease;
@@ -116,7 +201,7 @@
     }
 
     .stake-option .amt {
-      font-size: 1.1rem;
+      font-size: 1.05rem;
       font-weight: 900;
       color: #fff;
     }
@@ -129,16 +214,16 @@
 
     .stake-option.selected {
       border-color: var(--accent-gold);
-      background: rgba(245, 183, 0, 0.14);
-      box-shadow: 0 0 18px rgba(245, 183, 0, 0.18);
+      background: rgba(245, 183, 0, 0.16);
+      box-shadow: 0 0 16px rgba(245, 183, 0, 0.18);
     }
 
     .cartela-picker-scroll {
-      max-height: 230px;
+      max-height: 240px;
       overflow-y: auto;
-      padding: 4px;
-      border-radius: 12px;
-      background: rgba(0, 0, 0, 0.22);
+      padding: 6px;
+      border-radius: 14px;
+      background: rgba(6, 22, 26, 0.45);
     }
 
     .cartela-grid {
@@ -153,7 +238,7 @@
       background: var(--bg-card-soft);
       border: 1px solid var(--line-border);
       color: var(--text-main);
-      font-size: 0.74rem;
+      font-size: 0.75rem;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -165,16 +250,78 @@
     .cartela-circle.selected {
       background: var(--accent-gold);
       color: #111827;
-      border-color: var(--accent-gold);
+      border-color: #fff;
       font-weight: 900;
     }
 
     .cartela-circle.taken {
-      background: rgba(239, 68, 68, 0.22);
-      color: #fca5a5;
-      border-color: rgba(239, 68, 68, 0.45);
+      background: rgba(100, 116, 139, 0.20);
+      color: #64748b;
+      border-color: rgba(148, 163, 184, 0.22);
       cursor: not-allowed;
       text-decoration: line-through;
+    }
+
+    .mini-preview-strip {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      margin-top: 10px;
+    }
+
+    .mini-cartela-card {
+      min-width: 148px;
+      background: #f8fafc;
+      color: #0f172a;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid var(--accent-gold);
+      flex-shrink: 0;
+    }
+
+    .mini-cartela-top {
+      background: repeating-linear-gradient(
+        90deg,
+        var(--accent-gold) 0px,
+        var(--accent-gold) 10px,
+        #0f766e 10px,
+        #0f766e 20px
+      );
+      height: 6px;
+    }
+
+    .mini-cartela-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 8px 2px;
+      font-size: 0.7rem;
+      font-weight: 800;
+    }
+
+    .mini-5x5 {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 2px;
+      padding: 4px 7px 7px;
+    }
+
+    .mini-cell {
+      aspect-ratio: 1 / 1;
+      border-radius: 50%;
+      background: #e2e8f0;
+      color: #0f172a;
+      font-size: 0.56rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mini-cell.star {
+      background: #0f766e;
+      color: #fff;
     }
 
     .btn-gold {
@@ -203,43 +350,136 @@
       cursor: pointer;
     }
 
+    /* Featured Caller Ring & Recent Balls */
+    .caller-card {
+      background: var(--bg-card);
+      border: 1px solid var(--line-border);
+      border-radius: 20px;
+      padding: 14px 12px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .featured-ball-ring {
+      width: 126px;
+      height: 126px;
+      border-radius: 50%;
+      margin: 0 auto 12px;
+      padding: 9px;
+      background: conic-gradient(
+        #ef4444 0deg 60deg,
+        #f59e0b 60deg 120deg,
+        #22c55e 120deg 180deg,
+        #06b6d4 180deg 240deg,
+        #3b82f6 240deg 300deg,
+        #a855f7 300deg 360deg
+      );
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    .featured-ball-core {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: #0c272c;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .featured-ball-letter {
+      font-size: 0.92rem;
+      font-weight: 900;
+      color: var(--accent-gold);
+      margin-bottom: 2px;
+    }
+
+    .featured-ball-num {
+      font-size: 2.35rem;
+      font-weight: 900;
+      color: #ffffff;
+    }
+
     .recent-balls-row {
       display: flex;
-      gap: 8px;
+      gap: 7px;
+      justify-content: center;
       align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
     }
 
     .recent-ball {
-      width: 44px;
-      height: 44px;
+      width: 38px;
+      height: 38px;
       border-radius: 50%;
-      background: var(--bg-card-soft);
-      border: 2px solid rgba(255, 255, 255, 0.18);
+      background: #0d2b31;
+      border: 2px solid var(--accent-gold);
+      color: #ffffff;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      font-size: 0.82rem;
+      font-size: 0.84rem;
     }
 
     .recent-ball.latest {
-      background: var(--accent-gold);
-      color: #111827;
-      border-color: #fff;
+      border-color: #ffffff;
+      background: rgba(245, 183, 0, 0.22);
       transform: scale(1.06);
     }
 
-    .play-split {
+    .stats-strip-3 {
       display: grid;
-      grid-template-columns: 1.05fr 0.95fr;
-      gap: 10px;
-      align-items: start;
+      grid-template-columns: repeat(3, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      border-top: 1px solid var(--line-border);
+      padding-top: 10px;
+      font-size: 0.82rem;
+    }
+
+    .stats-strip-3 strong {
+      display: block;
+      font-size: 0.96rem;
+      font-weight: 900;
+      color: #fff;
+    }
+
+    .stats-strip-3 span.lbl {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    /* Light Crisp Cartela Board */
+    .light-cartela-box {
+      background: #f8fafc;
+      color: #0f172a;
+      border-radius: 16px;
+      padding: 10px;
+      margin-bottom: 12px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+    }
+
+    .light-cartela-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.82rem;
+      font-weight: 900;
+      margin-bottom: 8px;
+      padding: 0 2px;
     }
 
     .bingo-5col {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 4px;
+      gap: 5px;
     }
 
     .bingo-head {
@@ -247,57 +487,90 @@
       font-weight: 900;
       font-size: 0.78rem;
       color: #111827;
-      border-radius: 6px;
-      padding: 3px 0;
-    }
-
-    .num-75-cell {
-      aspect-ratio: 1 / 1;
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.68rem;
-      font-weight: 700;
-      color: var(--text-muted);
-    }
-
-    .num-75-cell.called {
-      background: rgba(34, 197, 94, 0.25);
-      color: #fff;
-      border: 1px solid rgba(34, 197, 94, 0.65);
-    }
-
-    .num-75-cell.latest {
-      background: var(--accent-gold);
-      color: #111827;
-      font-weight: 900;
+      border-radius: 7px;
+      padding: 4px 0;
     }
 
     .bingo-cell {
       aspect-ratio: 1 / 1;
-      background: var(--bg-card-soft);
-      border: 1px solid var(--line-border);
-      border-radius: 8px;
+      border-radius: 50%;
+      background: #e2e8f0;
+      color: #0f172a;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 0.86rem;
+      font-size: 0.88rem;
     }
 
     .bingo-cell.free,
     .bingo-cell.marked {
-      background: rgba(34, 197, 94, 0.28);
-      border-color: var(--accent-green);
-      color: #86efac;
+      background: #0f766e;
+      color: #ffffff;
+      font-weight: 900;
     }
 
     .bingo-cell.win-highlight {
       background: var(--accent-gold);
       color: #111827;
-      border-color: #fff;
+      border: 2px solid #0f172a;
+      font-weight: 900;
+    }
+
+    /* Horizontal B-I-N-G-O Master Board (1-75) */
+    .master-rows-wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--line-border);
+      border-radius: 16px;
+      padding: 10px;
+      margin-bottom: 12px;
+    }
+
+    .master-letter-row {
+      display: grid;
+      grid-template-columns: 24px repeat(15, 1fr);
+      gap: 3px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .master-letter-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .master-row-tag {
+      height: 20px;
+      border-radius: 5px;
+      font-size: 0.72rem;
+      font-weight: 900;
+      color: #111827;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .master-num-pill {
+      height: 20px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-muted);
+      font-size: 0.64rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .master-num-pill.called {
+      background: var(--accent-gold);
+      color: #111827;
+      font-weight: 900;
+    }
+
+    .master-num-pill.latest {
+      background: #ffffff;
+      color: #111827;
+      outline: 2px solid var(--accent-gold);
       font-weight: 900;
     }
 
@@ -380,7 +653,7 @@
       width: 100%;
       max-width: 390px;
       background: var(--bg-card);
-      border: 1px solid rgba(245, 183, 0, 0.45);
+      border: 1px solid rgba(245, 183, 0, 0.55);
       border-radius: 18px;
       padding: 18px;
       text-align: center;
@@ -391,166 +664,216 @@
       font-weight: 900;
       color: #ffffff;
       margin-top: 6px;
-      letter-spacing: 0.2px;
     }
 
+    /* Floating Gold Active Bottom Navigation */
     .bottom-nav {
       position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 64px;
-      background: rgba(11, 18, 32, 0.95);
-      backdrop-filter: blur(12px);
-      border-top: 1px solid var(--line-border);
+      bottom: 8px;
+      left: 10px;
+      right: 10px;
+      height: 62px;
+      background: #143d45;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 22px;
       display: grid;
       grid-template-columns: repeat(4, 1fr);
+      padding: 5px;
+      gap: 4px;
       z-index: 50;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
     }
 
     .nav-tab {
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       color: var(--text-muted);
+      border-radius: 17px;
       cursor: pointer;
+      transition: all 0.15s ease;
+      line-height: 1.15;
+    }
+
+    .nav-tab .nav-gem {
+      font-size: 0.55rem;
+      opacity: 0;
+      margin-top: 2px;
     }
 
     .nav-tab.active {
-      color: var(--accent-gold);
-      border-top: 2px solid var(--accent-gold);
+      background: var(--accent-gold);
+      color: #111827;
+      transform: translateY(-3px);
+      box-shadow: 0 4px 12px rgba(245, 183, 0, 0.35);
+    }
+
+    .nav-tab.active .nav-gem {
+      opacity: 1;
     }
   </style>
 </head>
 <body>
   <header class="top-bar">
     <div class="brand-pill">
-      <span class="brand-dot"></span>
+      <span class="brand-diamond"></span>
       <span>Smart Bingo</span>
     </div>
-    <button type="button" class="balance-pill" id="balance-display" onclick="switchTab('wallet')">0.00 ETB</button>
+    <div class="balance-box" onclick="switchTab('wallet')">
+      <span class="balance-label">Balance</span>
+      <button type="button" class="balance-pill" id="balance-display">0.00 ETB</button>
+    </div>
   </header>
+  <div class="top-stripe"></div>
 
   <!-- SCREEN 1: GAME SETUP -->
   <section id="screen-game" class="container">
-    <h1 class="section-title">Choose a Table</h1>
-    <div class="section-sub" id="credit-breakdown-text">Main 0.00 ETB, play credits 0.00 ETB</div>
+    <div class="lobby-hero-card" style="margin-top:12px;">
+      <div class="countdown-ring" id="setup-countdown-ring">
+        <div class="countdown-ring-inner" id="setup-countdown-text">15s</div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:0.76rem;color:var(--text-muted);font-weight:700;">Prize so far</div>
+        <div style="font-size:1.55rem;font-weight:900;color:var(--accent-gold);line-height:1.1;" id="setup-prize-pool">0.00 ETB</div>
+        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;" id="credit-breakdown-text">
+          Stake 10 ETB per cartela • Play credits 0.00 ETB
+        </div>
+      </div>
+    </div>
 
-    <div class="card-panel">
+    <div class="card-panel" style="padding:10px;">
       <div class="stake-grid">
         <label class="stake-option selected" onclick="selectTable(10, this)">
           <input type="radio" name="stake" value="10" checked />
           <div class="amt">10 ETB</div>
-          <div class="lbl">1 Line Win</div>
+          <div class="lbl">1 line to win</div>
         </label>
         <label class="stake-option" onclick="selectTable(20, this)">
           <input type="radio" name="stake" value="20" />
           <div class="amt">20 ETB</div>
-          <div class="lbl">2 Lines Win</div>
+          <div class="lbl">1 line to win</div>
         </label>
         <label class="stake-option" onclick="selectTable(50, this)">
           <input type="radio" name="stake" value="50" />
           <div class="amt">50 ETB</div>
-          <div class="lbl">3 Lines Win</div>
+          <div class="lbl">1 line to win</div>
         </label>
       </div>
     </div>
 
     <div class="card-panel">
-      <div class="section-sub" id="selected-cartela-info" style="margin-bottom:8px;">
-        Your cartelas (0/3). Tap a number to select/remove.
+      <div class="legend-row">
+        <span><i class="legend-dot yours"></i>Yours</span>
+        <span><i class="legend-dot taken"></i>Taken</span>
       </div>
       <div class="cartela-picker-scroll">
         <div id="cartela-grid-picker" class="cartela-grid"></div>
       </div>
+      <div class="section-sub" id="selected-cartela-info" style="margin:10px 0 4px;">
+        Your cartelas (0/3). Tap a number again to remove it.
+      </div>
+      <div id="selected-cartelas-preview" class="mini-preview-strip"></div>
     </div>
 
     <button type="button" id="play-btn" class="btn-gold" onclick="joinSelectedTable()">Select at least 1 Cartela</button>
   </section>
 
-  <!-- SCREEN 2: LOBBY WAITING -->
+  <!-- SCREEN 2: LOBBY WAITING (ACTIVE GAME VISITOR) -->
   <section id="screen-wait-active" class="container d-none">
     <h1 class="section-title">Game In Progress</h1>
     <p class="section-sub" id="wait-active-banner">you are visiting now, please wait for the next cartella to start the game</p>
-    <div class="card-panel">
-      <div style="display:flex;justify-content:space-between;font-size:0.86rem;margin-bottom:8px;">
-        <span>Game <strong id="wait-game-code">--</strong></span>
-        <span>Prize <strong id="wait-derash">0.00</strong></span>
-        <span>Calls <strong id="wait-calls">0</strong></span>
+
+    <div class="caller-card">
+      <div class="featured-ball-ring">
+        <div class="featured-ball-core">
+          <span class="featured-ball-letter" id="wait-featured-letter">--</span>
+          <span class="featured-ball-num" id="wait-featured-num">--</span>
+        </div>
       </div>
-      <div class="recent-balls-row" id="wait-recent-balls" style="justify-content:center;margin-bottom:10px;"></div>
-      <div class="bingo-5col" style="margin-bottom:4px;">
-        <div class="bingo-head" style="background:#ff9800;">B</div>
-        <div class="bingo-head" style="background:#4ade80;">I</div>
-        <div class="bingo-head" style="background:#38bdf8;">N</div>
-        <div class="bingo-head" style="background:#f87171;">G</div>
-        <div class="bingo-head" style="background:#c084fc;">O</div>
+      <div class="recent-balls-row" id="wait-recent-balls"></div>
+      <div class="stats-strip-3">
+        <div><strong id="wait-derash">0.00</strong><span class="lbl">ETB prize</span></div>
+        <div><strong id="wait-calls">0/75</strong><span class="lbl">called</span></div>
+        <div><strong id="wait-game-code">--</strong><span class="lbl">game</span></div>
+        <button type="button" class="btn-secondary-dark" style="padding:6px 10px;font-size:0.75rem;" onclick="leaveToSetup()">Tables</button>
       </div>
-      <div class="bingo-5col" id="wait-master-grid"></div>
     </div>
-    <button type="button" class="btn-secondary-dark" style="width:100%;padding:11px;" onclick="leaveToSetup()">Back to Tables</button>
+
+    <div id="wait-master-grid" class="master-rows-wrap"></div>
   </section>
 
   <!-- SCREEN 3: LOBBY COUNTDOWN -->
   <section id="screen-lobby" class="container d-none">
     <h1 class="section-title">Starting Soon</h1>
-    <div class="card-panel" style="text-align:center;">
-      <div style="font-size:2.4rem;font-weight:900;color:var(--accent-gold);" id="lobby-timer">00:15</div>
-      <div style="margin-top:8px;font-size:0.95rem;">Prize Pool: <strong id="lobby-prize-pool">0.00 ETB</strong></div>
-      <div style="margin-top:4px;color:var(--text-muted);font-size:0.86rem;" id="lobby-player-count">Players Joined: 1</div>
+    <div class="lobby-hero-card" style="margin-top:10px;">
+      <div class="countdown-ring" id="lobby-countdown-ring">
+        <div class="countdown-ring-inner" id="lobby-timer">15s</div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:0.76rem;color:var(--text-muted);font-weight:700;">Prize pool</div>
+        <div style="font-size:1.5rem;font-weight:900;color:var(--accent-gold);line-height:1.1;" id="lobby-prize-pool">0.00 ETB</div>
+        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;" id="lobby-player-count">Players Joined: 1</div>
+      </div>
+    </div>
+    <div class="card-panel">
+      <div style="font-weight:800;font-size:0.88rem;margin-bottom:6px;">Your Reserved Cartelas</div>
+      <div id="lobby-cartelas-preview" class="mini-preview-strip"></div>
     </div>
     <button type="button" class="btn-secondary-dark" style="width:100%;padding:11px;" onclick="leaveToSetup()">Leave Lobby</button>
   </section>
 
   <!-- SCREEN 4: ACTIVE PLAYROOM -->
   <section id="screen-playroom" class="container d-none">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:8px;font-size:0.76rem;">
-      <span>Game <strong id="play-game-code">--</strong></span>
-      <span>Prize <strong id="play-derash">0.00</strong></span>
-      <span>Calls <strong id="play-calls">0</strong></span>
-      <button id="sound-toggle" class="btn-secondary-dark" style="width:auto;padding:5px 10px;font-size:0.75rem;" onclick="toggleSound()">🔊 Sound</button>
-      <button class="btn-secondary-dark" style="width:auto;padding:5px 10px;font-size:0.75rem;" onclick="leaveToSetup()">Exit</button>
-    </div>
-
-    <div class="recent-balls-row" id="play-recent-balls" style="justify-content:center;margin-bottom:10px;"></div>
-
-    <div class="play-split">
-      <div class="board-75-wrap">
-        <div class="bingo-5col" style="margin-bottom:4px;">
-          <div class="bingo-head" style="background:#ff9800;">B</div>
-          <div class="bingo-head" style="background:#4ade80;">I</div>
-          <div class="bingo-head" style="background:#38bdf8;">N</div>
-          <div class="bingo-head" style="background:#f87171;">G</div>
-          <div class="bingo-head" style="background:#c084fc;">O</div>
+    <div class="caller-card" style="margin-top:10px;">
+      <div class="featured-ball-ring">
+        <div class="featured-ball-core">
+          <span class="featured-ball-letter" id="play-featured-letter">--</span>
+          <span class="featured-ball-num" id="play-featured-num">--</span>
         </div>
-        <div class="bingo-5col" id="play-master-grid"></div>
       </div>
 
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:0.78rem;">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="checkbox" id="auto-checkbox" checked onchange="toggleAutoMode()">
-            <span>Auto <strong id="auto-status-label" style="color:#4ade80;">ON</strong></span>
-          </label>
-          <strong style="color:var(--accent-gold);" id="active-cartela-badge">Board #1</strong>
-        </div>
+      <div class="recent-balls-row" id="play-recent-balls"></div>
 
-        <div class="bingo-5col" style="margin-bottom:4px;">
-          <div class="bingo-head" style="background:#ff9800;">B</div>
-          <div class="bingo-head" style="background:#4ade80;">I</div>
-          <div class="bingo-head" style="background:#38bdf8;">N</div>
-          <div class="bingo-head" style="background:#f87171;">G</div>
-          <div class="bingo-head" style="background:#c084fc;">O</div>
-        </div>
-        <div id="board" class="bingo-5col" style="margin-bottom:10px;"></div>
-
-        <button id="bingo-btn" class="btn-gold" style="background:#198754;color:#fff;padding:10px;" disabled>
-          Automatic (<span id="bingo-btn-derash">0</span>)
-        </button>
+      <div class="stats-strip-3">
+        <div><strong id="play-derash">0.00</strong><span class="lbl">ETB prize</span></div>
+        <div><strong id="play-calls">0/75</strong><span class="lbl">called</span></div>
+        <div><strong id="play-cartelas-count">1</strong><span class="lbl">cartelas</span></div>
+        <button id="sound-toggle" class="btn-secondary-dark" style="padding:6px 10px;font-size:0.78rem;" onclick="toggleSound()">🔊</button>
       </div>
     </div>
+
+    <div class="light-cartela-box">
+      <div class="light-cartela-hdr">
+        <span>Smart Bingo</span>
+        <span id="active-cartela-badge">#1</span>
+      </div>
+      <div class="bingo-5col" style="margin-bottom:5px;">
+        <div class="bingo-head" style="background:#f59e0b;">B</div>
+        <div class="bingo-head" style="background:#4ade80;">I</div>
+        <div class="bingo-head" style="background:#38bdf8;">N</div>
+        <div class="bingo-head" style="background:#f87171;">G</div>
+        <div class="bingo-head" style="background:#c084fc;">O</div>
+      </div>
+      <div id="board" class="bingo-5col"></div>
+    </div>
+
+    <div id="play-master-grid" class="master-rows-wrap"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;">
+        <input type="checkbox" id="auto-checkbox" checked onchange="toggleAutoMode()">
+        <span>Auto <strong id="auto-status-label" style="color:#4ade80;">ON</strong></span>
+      </label>
+      <span style="font-size:0.78rem;color:var(--text-muted);">Game <strong id="play-game-code">--</strong></span>
+      <button class="btn-secondary-dark" style="padding:6px 12px;font-size:0.78rem;" onclick="leaveToSetup()">Exit</button>
+    </div>
+
+    <button id="bingo-btn" class="btn-gold" style="background:#198754;color:#fff;padding:11px;" disabled>
+      Automatic (<span id="bingo-btn-derash">0</span>)
+    </button>
   </section>
 
   <!-- SCREEN 5: HISTORY -->
@@ -633,12 +956,12 @@
   <!-- WINNER MODAL -->
   <div id="winner-modal" class="modal-backdrop-custom d-none">
     <div class="modal-box-custom">
-      <div style="color:var(--accent-gold);font-weight:900;font-size:1.2rem;letter-spacing:1px;">BINGO!</div>
+      <div style="color:var(--accent-gold);font-weight:900;font-size:1.25rem;letter-spacing:1px;">BINGO!</div>
       <div id="winner-top-name" class="winner-top-name"></div>
-      <div id="winner-list-banner" style="background:#e67e00;border-radius:10px;padding:10px;margin:10px 0;font-weight:700;"></div>
+      <div id="winner-list-banner" style="background:#d97706;border-radius:10px;padding:10px;margin:10px 0;font-weight:700;"></div>
       <div id="winner-board-title" style="font-size:0.85rem;font-weight:700;color:var(--accent-gold);margin-bottom:6px;">Board #--</div>
       <div class="bingo-5col" style="margin-bottom:4px;">
-        <div class="bingo-head" style="background:#ff9800;">B</div>
+        <div class="bingo-head" style="background:#f59e0b;">B</div>
         <div class="bingo-head" style="background:#4ade80;">I</div>
         <div class="bingo-head" style="background:#38bdf8;">N</div>
         <div class="bingo-head" style="background:#f87171;">G</div>
@@ -651,10 +974,22 @@
 
   <!-- BOTTOM NAVIGATION -->
   <nav class="bottom-nav">
-    <div class="nav-tab active" onclick="switchTab('game')" id="nav-game">Game</div>
-    <div class="nav-tab" onclick="switchTab('history')" id="nav-history">History</div>
-    <div class="nav-tab" onclick="switchTab('wallet')" id="nav-wallet">Wallet</div>
-    <div class="nav-tab" onclick="switchTab('profile')" id="nav-profile">Profile</div>
+    <div class="nav-tab active" onclick="switchTab('game')" id="nav-game">
+      <span>Game</span>
+      <span class="nav-gem">◆</span>
+    </div>
+    <div class="nav-tab" onclick="switchTab('history')" id="nav-history">
+      <span>History</span>
+      <span class="nav-gem">◆</span>
+    </div>
+    <div class="nav-tab" onclick="switchTab('wallet')" id="nav-wallet">
+      <span>Wallet</span>
+      <span class="nav-gem">◆</span>
+    </div>
+    <div class="nav-tab" onclick="switchTab('profile')" id="nav-profile">
+      <span>Profile</span>
+      <span class="nav-gem">◆</span>
+    </div>
   </nav>
 
   <script>
@@ -774,11 +1109,46 @@
       return out;
     }
 
+    function updateCountdownRing(ringId, secs, maxSecs = 15) {
+      const ring = document.getElementById(ringId);
+      if (!ring) return;
+      const clamped = Math.max(0, Math.min(maxSecs, Number(secs) || 0));
+      const deg = Math.round((clamped / maxSecs) * 360);
+      ring.style.background = `conic-gradient(var(--accent-gold) ${deg}deg, rgba(255, 255, 255, 0.14) ${deg}deg 360deg)`;
+    }
+
+    function renderMiniCartelaPreviews(containerId, numbers) {
+      const box = document.getElementById(containerId);
+      if (!box) return;
+      if (!numbers || numbers.length === 0) {
+        box.innerHTML = '';
+        return;
+      }
+      box.innerHTML = numbers.map(num => {
+        const board = generateDeterministicCard(num);
+        const cellsHtml = board.map((val, idx) => {
+          const isStar = idx === 12;
+          return `<div class="mini-cell${isStar ? ' star' : ''}">${isStar ? '★' : val}</div>`;
+        }).join('');
+        return `
+          <div class="mini-cartela-card">
+            <div class="mini-cartela-top"></div>
+            <div class="mini-cartela-hdr">
+              <span>Smart Bingo</span>
+              <span>#${num}</span>
+            </div>
+            <div class="mini-5x5">${cellsHtml}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
     function updatePlayButtonLabel() {
       const btn = document.getElementById('play-btn');
       btn.textContent = selectedCartelaNumbers.length > 0
         ? `Play for ${selectedStake * selectedCartelaNumbers.length} ETB`
         : 'Select at least 1 Cartela';
+      renderMiniCartelaPreviews('selected-cartelas-preview', selectedCartelaNumbers);
     }
 
     function buildCartelaPickerGrid() {
@@ -796,7 +1166,7 @@
         gridContainer.appendChild(circle);
       }
       document.getElementById('selected-cartela-info').textContent =
-        `Your cartelas (${selectedCartelaNumbers.length}/3). Tap a number to select/remove.`;
+        `Your cartelas (${selectedCartelaNumbers.length}/3). Tap a number again to remove it.`;
       updatePlayButtonLabel();
     }
 
@@ -890,7 +1260,7 @@
     function toggleSound() {
       soundEnabled = !soundEnabled;
       const btn = document.getElementById('sound-toggle');
-      if (btn) btn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Muted';
+      if (btn) btn.textContent = soundEnabled ? '🔊' : '🔇';
       const profToggle = document.getElementById('profile-sound-toggle');
       if (profToggle) profToggle.checked = soundEnabled;
     }
@@ -931,7 +1301,8 @@
       const formatted = `${balance.toFixed(2)} ETB`;
       document.getElementById('balance-display').textContent = formatted;
       document.getElementById('wallet-balance').textContent = formatted;
-      document.getElementById('credit-breakdown-text').textContent = `Main 0.00 ETB, play credits ${formatted}`;
+      document.getElementById('credit-breakdown-text').textContent =
+        `Stake ${selectedStake} ETB per cartela • Play credits ${formatted}`;
     }
 
     function syncBalance() {
@@ -944,34 +1315,45 @@
         .catch(() => {});
     }
 
-    function render75Grid(containerId, calledSet, latestNum) {
+    function renderHorizontalMasterBoard(containerId, calledSet, latestNum) {
       const container = document.getElementById(containerId);
       if (!container) return;
-      container.innerHTML = '';
-      for (let r = 1; r <= 15; r++) {
-        for (let c = 0; c < 5; c++) {
-          const n = c * 15 + r;
-          const cell = document.createElement('div');
+      const rowsMeta = [
+        { letter: 'B', start: 1,  color: '#f59e0b' },
+        { letter: 'I', start: 16, color: '#4ade80' },
+        { letter: 'N', start: 31, color: '#38bdf8' },
+        { letter: 'G', start: 46, color: '#f87171' },
+        { letter: 'O', start: 61, color: '#c084fc' },
+      ];
+      container.innerHTML = rowsMeta.map(row => {
+        let pills = '';
+        for (let offset = 0; offset < 15; offset++) {
+          const n = row.start + offset;
           const isCalled = calledSet.has(n);
           const isLatest = isCalled && n === latestNum;
-          cell.className = 'num-75-cell' + (isCalled ? ' called' : '') + (isLatest ? ' latest' : '');
-          cell.textContent = n;
-          container.appendChild(cell);
+          const cls = 'master-num-pill' + (isLatest ? ' latest' : (isCalled ? ' called' : ''));
+          pills += `<div class="${cls}">${n}</div>`;
         }
-      }
+        return `
+          <div class="master-letter-row">
+            <div class="master-row-tag" style="background:${row.color};">${row.letter}</div>
+            ${pills}
+          </div>
+        `;
+      }).join('');
     }
 
     function renderRecentBalls(containerId, calledArr) {
       const box = document.getElementById(containerId);
       if (!box) return;
-      const lastThree = calledArr.slice(-3).reverse();
+      const recent = calledArr.slice(-6).reverse();
       box.innerHTML = '';
-      for (let i = 0; i < 3; i++) {
-        const n = lastThree[i];
+      for (let i = 0; i < 6; i++) {
+        const n = recent[i];
         const el = document.createElement('div');
         if (n !== undefined) {
           el.className = 'recent-ball' + (i === 0 ? ' latest' : '');
-          el.textContent = `${getBallLetter(n)}${n}`;
+          el.textContent = `${n}`;
         } else {
           el.className = 'recent-ball';
           el.textContent = '--';
@@ -1087,12 +1469,15 @@
       }
       document.getElementById('wait-game-code').textContent = room.game_code || '--';
       document.getElementById('wait-derash').textContent = Number(room.derash || 0).toFixed(2);
-      document.getElementById('wait-calls').textContent = room.calls_count ?? 0;
 
       const arr = Array.isArray(room.called_numbers) ? room.called_numbers : [];
       const latest = arr.length > 0 ? arr[arr.length - 1] : null;
+      document.getElementById('wait-calls').textContent = `${arr.length}/75`;
+      document.getElementById('wait-featured-letter').textContent = latest !== null ? getBallLetter(latest) : '--';
+      document.getElementById('wait-featured-num').textContent = latest !== null ? latest : '--';
+
       renderRecentBalls('wait-recent-balls', arr);
-      render75Grid('wait-master-grid', new Set(arr), latest);
+      renderHorizontalMasterBoard('wait-master-grid', new Set(arr), latest);
     }
 
     function renderPlayroomScreen(room) {
@@ -1104,8 +1489,11 @@
 
       document.getElementById('play-game-code').textContent = currentGameCode;
       document.getElementById('play-derash').textContent = currentDerash.toFixed(2);
-      document.getElementById('play-calls').textContent = arr.length;
-      document.getElementById('active-cartela-badge').textContent = `Board #${activeCartelaNumber}`;
+      document.getElementById('play-calls').textContent = `${arr.length}/75`;
+      document.getElementById('play-cartelas-count').textContent = `${Math.max(1, selectedCartelaNumbers.length)}`;
+      document.getElementById('active-cartela-badge').textContent = `#${activeCartelaNumber}`;
+      document.getElementById('play-featured-letter').textContent = latest !== null ? getBallLetter(latest) : '--';
+      document.getElementById('play-featured-num').textContent = latest !== null ? latest : '--';
 
       const derashEl = document.getElementById('bingo-btn-derash');
       if (derashEl) derashEl.textContent = Math.round(currentDerash);
@@ -1118,7 +1506,7 @@
 
       calledNumbers = arr;
       renderRecentBalls('play-recent-balls', arr);
-      render75Grid('play-master-grid', new Set(arr), latest);
+      renderHorizontalMasterBoard('play-master-grid', new Set(arr), latest);
 
       const calledSet = new Set(calledNumbers);
       let changed = false;
@@ -1148,12 +1536,11 @@
             if (room.status === 'waiting') {
               showOnlyScreen('lobby');
               const secs = Math.max(0, Number(room.lobby_seconds_left || 0));
-              const m = Math.floor(secs / 60);
-              const s = secs % 60;
-              document.getElementById('lobby-timer').textContent =
-                `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+              document.getElementById('lobby-timer').textContent = `${secs}s`;
+              updateCountdownRing('lobby-countdown-ring', secs, 15);
               document.getElementById('lobby-prize-pool').textContent = `${Number(room.derash || 0).toFixed(2)} ETB`;
               document.getElementById('lobby-player-count').textContent = `Players Joined: ${room.players_count || 1}`;
+              renderMiniCartelaPreviews('lobby-cartelas-preview', selectedCartelaNumbers);
             } else if (room.status === 'active') {
               if (card.length !== 25) {
                 activeCartelaNumber = selectedCartelaNumbers[0] || 1;
@@ -1189,10 +1576,17 @@
         .then(data => {
           if (!data.success) return;
           if (data.room && data.room.status === 'waiting') {
+            const secs = Math.max(0, Number(data.room.lobby_seconds_left || 0));
+            document.getElementById('setup-countdown-text').textContent = `${secs}s`;
+            updateCountdownRing('setup-countdown-ring', secs, 15);
+            document.getElementById('setup-prize-pool').textContent = `${Number(data.room.derash || 0).toFixed(2)} ETB`;
             takenCartelas = Array.isArray(data.room.taken_cartelas) ? data.room.taken_cartelas : [];
             selectedCartelaNumbers = selectedCartelaNumbers.filter(n => !takenCartelas.includes(n));
             buildCartelaPickerGrid();
           } else {
+            document.getElementById('setup-countdown-text').textContent = '15s';
+            updateCountdownRing('setup-countdown-ring', 15, 15);
+            document.getElementById('setup-prize-pool').textContent = '0.00 ETB';
             takenCartelas = [];
             buildCartelaPickerGrid();
           }
