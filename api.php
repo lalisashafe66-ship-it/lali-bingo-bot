@@ -976,6 +976,15 @@ elseif ($action === 'request_withdrawal') {
     $method = trim((string)($_POST['method'] ?? 'Telebirr'));
     $account = trim((string)($_POST['account'] ?? ''));
 
+    if ($telegramId === '' || $telegramId === 'undefined' || $telegramId === 'null') {
+        echo json_encode(['success' => false, 'error' => 'Invalid Telegram ID.']);
+        exit;
+    }
+    if ($account === '') {
+        echo json_encode(['success' => false, 'error' => 'Please enter a valid phone or account number.']);
+        exit;
+    }
+
     resetAbortedTransaction($pdo);
 
     $pdo->beginTransaction();
@@ -990,18 +999,35 @@ elseif ($action === 'request_withdrawal') {
             exit;
         }
 
-        $currentBal = (float)$player['balance'];
+        $currentBal = round((float)$player['balance'], 2);
 
         if ($currentBal < $amount || $amount <= 0) {
             $pdo->rollBack();
-            echo json_encode(['success' => false, 'error' => 'Invalid balance or amount.']);
+            echo json_encode(['success' => false, 'error' => 'Insufficient balance or invalid withdrawal amount.']);
             exit;
         }
 
         $newBalance = round($currentBal - $amount, 2);
+        $nowStr = gmdate('Y-m-d H:i:s');
 
-        $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")->execute([$newBalance, gmdate('Y-m-d H:i:s'), $telegramId]);
-        $pdo->prepare("INSERT INTO withdrawals (telegram_id, amount, method, account, status) VALUES (?, ?, ?, ?, 'pending')")->execute([$telegramId, $amount, $method, $account]);
+        $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+            ->execute([$newBalance, $nowStr, $telegramId]);
+
+        $wCols = getColumnNames($pdo, 'withdrawals');
+        $wTidType = getColumnType($pdo, 'withdrawals', 'telegram_id');
+        $wTidVal = normalizeIdForColumn($telegramId, $wTidType);
+
+        $insertCols = ['telegram_id', 'amount', 'method', 'account', 'status'];
+        $insertVals = [$wTidVal, $amount, $method, $account, 'pending'];
+        if (in_array('created_at', $wCols, true)) {
+            $insertCols[] = 'created_at';
+            $insertVals[] = $nowStr;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($insertCols), '?'));
+        $colList = implode(', ', $insertCols);
+        $pdo->prepare("INSERT INTO withdrawals ({$colList}) VALUES ({$placeholders})")->execute($insertVals);
+
         $pdo->commit();
 
         logBalanceChange($pdo, $telegramId, null, 'withdrawal', -$amount, $currentBal, $newBalance, "Withdrawal via {$method} ({$account})");
