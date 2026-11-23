@@ -295,6 +295,45 @@ function hasWinningLine(array $board, array $calledSet): ?array {
     return null;
 }
 
+function pickClosestLineWinner(PDO $pdo, array $entries, array $calledSet): ?array {
+    $lines = [
+        [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
+        [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
+        [0,6,12,18,24], [4,8,12,16,20],
+    ];
+
+    $best = null;
+    $bestScore = -1;
+
+    foreach ($entries as $entry) {
+        $tid = (string)($entry['telegram_id'] ?? '');
+        $cn = (int)($entry['player_number'] ?? 0);
+        if ($tid === '' || $cn <= 0) continue;
+
+        $board = generateCartelaBoard($cn);
+        foreach ($lines as $line) {
+            $hits = 0;
+            foreach ($line as $idx) {
+                if ($idx === 12 || isset($calledSet[(int)($board[$idx] ?? -1)])) {
+                    $hits++;
+                }
+            }
+            if ($hits > $bestScore) {
+                $bestScore = $hits;
+                $best = [
+                    'telegram_id'    => $tid,
+                    'name'           => resolvePlayerDisplayName($pdo, $tid, (string)($entry['first_name'] ?? '')),
+                    'cartela_number' => $cn,
+                    'board'          => $board,
+                    'winning_line'   => $line,
+                ];
+            }
+        }
+    }
+
+    return $best;
+}
+
 function resolvePlayerDisplayName(PDO $pdo, string $telegramId, string $roomFirstName = ''): string {
     $name = trim($roomFirstName);
     if ($name !== '' && strcasecmp($name, 'Player') !== 0) {
@@ -389,8 +428,8 @@ function sendWinnerCongratulations(
 
     $isSplit = count($winners) > 1;
     $summaryLine = $isSplit
-        ? "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line together in Game <b>#{$safeGame}</b> and share the <b>{$poolStr} ETB</b> (80% pool) equally: <b>{$shareStr} ETB each</b>!"
-        : "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line first in Game <b>#{$safeGame}</b> and won <b>{$shareStr} ETB</b> (80% pool; 20% admin fee)!";
+        ? "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line together in Game <b>#{$safeGame}</b> and share the <b>{$poolStr} ETB</b> (80% pool; 20% commission) equally: <b>{$shareStr} ETB each</b>!"
+        : "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line first in Game <b>#{$safeGame}</b> and won <b>{$shareStr} ETB</b> (80% pool; 20% commission)!";
 
     foreach ($winners as $w) {
         $tid = trim((string)($w['telegram_id'] ?? ''));
@@ -449,6 +488,7 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
         $totalStakes = (float)$stakeRow['entry_count'] * (float)($room['stake'] ?? 10);
     }
 
+    // 80% prize pool to winner(s), 20% commission retained
     $totalDerash = round($totalStakes * 0.80, 2);
     $winnerCount = count($deduped);
     $sharePerWinner = ($winnerCount > 0) ? round($totalDerash / $winnerCount, 2) : 0.0;
@@ -533,8 +573,7 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
         shuffle($pool);
     }
 
-    $drawIntervalSec = 2.2;
-    $maxRoundSec = 90;
+    $drawIntervalSec = 2.0;
 
     if ($status === 'waiting' && $now >= $startsAt) {
         $countStmt = $pdo->prepare("SELECT COUNT(*) FROM room_players WHERE room_id = ?");
@@ -605,7 +644,12 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             return finalizeRoomWinners($pdo, $room, $autoWinners);
         }
 
-        if ($elapsed >= $maxRoundSec || count($called) >= 75) {
+        // At least one winner is mandatory whenever players are in the round
+        if (count($called) >= 75) {
+            $fallbackWinner = pickClosestLineWinner($pdo, $entries, $calledSet);
+            if ($fallbackWinner !== null) {
+                return finalizeRoomWinners($pdo, $room, [$fallbackWinner]);
+            }
             return finishRoomWithNoWinner($pdo, $room);
         }
     }
@@ -644,7 +688,7 @@ function buildRoomPayload(PDO $pdo, array $room): array {
     $lobbySecondsLeft = max(0, $startsAt - $now);
 
     $startedAt = (int)($room['started_at'] ?? $now);
-    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 90 - ($now - $startedAt)) : 0;
+    $roundSecondsLeft = ($room['status'] === 'active') ? max(0, 150 - ($now - $startedAt)) : 0;
 
     return [
         'room_id'            => (int)$room['id'],
@@ -773,7 +817,7 @@ elseif ($action === 'join_room') {
                 COALESCE(started_at, created_at, 0) <= ?
                 OR NOT EXISTS (SELECT 1 FROM room_players rp WHERE rp.room_id = rooms.id)
               )
-        ")->execute([$stake, time() - 90]);
+        ")->execute([$stake, time() - 180]);
 
         $activeStmt = $pdo->prepare("
             SELECT r.*
