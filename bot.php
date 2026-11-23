@@ -960,9 +960,13 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 }
             } catch (Throwable $txErr) {
                 if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
+                    try {
+                        $pdo->rollBack();
+                    } catch (Throwable $rbErr) {
+                        error_log("Inner rollback error: " . $rbErr->getMessage());
+                    }
                 }
-                throw new RuntimeException($txErr->getMessage() . " [at line " . $txErr->getLine() . "]", 0, $txErr);
+                throw new RuntimeException("L" . $txErr->getLine() . ": " . $txErr->getMessage(), 0, $txErr);
             }
         } else {
             $hasWithdrawals = tableExists($pdo, 'withdrawals');
@@ -1047,9 +1051,13 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 }
             } catch (Throwable $txErr) {
                 if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
+                    try {
+                        $pdo->rollBack();
+                    } catch (Throwable $rbErr) {
+                        error_log("Inner rollback error: " . $rbErr->getMessage());
+                    }
                 }
-                throw new RuntimeException($txErr->getMessage() . " [at line " . $txErr->getLine() . "]", 0, $txErr);
+                throw new RuntimeException("L" . $txErr->getLine() . ": " . $txErr->getMessage(), 0, $txErr);
             }
         }
 
@@ -1079,11 +1087,11 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 error_log("Callback rollback error: " . $rbErr->getMessage());
             }
         }
-        $msg = $e->getMessage() . " @L" . $e->getLine();
+        $msg = "L" . $e->getLine() . " " . $e->getMessage();
         error_log("Callback error ({$data}): " . $msg);
         tgPost($token, 'answerCallbackQuery', [
             'callback_query_id' => $cbId,
-            'text'              => 'Callback error: ' . substr($msg, 0, 140),
+            'text'              => substr($msg, 0, 180),
             'show_alert'        => true,
         ]);
     }
