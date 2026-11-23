@@ -1524,7 +1524,7 @@
 
       const tick = () => {
         if (!currentRoomId) return;
-        fetch(`api.php?action=get_room_state&room_id=${encodeURIComponent(currentRoomId)}`)
+        fetch(`api.php?action=get_room_state&room_id=${encodeURIComponent(currentRoomId)}&stake=${encodeURIComponent(selectedStake)}`)
           .then(res => res.json())
           .then(data => {
             if (!data.success || !data.room) return;
@@ -1554,7 +1554,6 @@
                 stopRoomPolling();
                 currentRoomId = null;
                 selectedCartelaNumbers = [];
-                alert('Round ended with no winner. Starting next round.');
                 leaveToSetup();
               }
             }
@@ -1595,13 +1594,13 @@
       renderWaitActiveScreen(room, noticeMsg);
       stopRoomPolling();
       roomPollInterval = setInterval(() => {
-        fetch(`api.php?action=get_room_state&room_id=${encodeURIComponent(room.room_id)}`)
+        fetch(`api.php?action=get_room_state&room_id=${encodeURIComponent(room.room_id)}&stake=${encodeURIComponent(selectedStake)}`)
           .then(res => res.json())
           .then(data => {
             if (!data.success || !data.room) return;
             if (data.room.status === 'active') {
               renderWaitActiveScreen(data.room, noticeMsg);
-            } else if (data.room.status === 'finished') {
+            } else if (data.room.status === 'finished' || data.room.status === 'waiting') {
               stopRoomPolling();
               currentRoomId = null;
               selectedCartelaNumbers = [];
