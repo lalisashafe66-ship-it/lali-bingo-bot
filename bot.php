@@ -19,10 +19,10 @@ if (!is_array($update)) {
     exit;
 }
 
-$token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: ''));
-$adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: '730967613'));
+$token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: getenv('BOT_TOKEN') ?: ''));
+$adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: getenv('ADMIN_ID') ?: '730967613'));
 $botUsername = 'SmartBingoHub_bot';
-$webAppUrl = 'https://lali-bingo-bot.onrender.com/index.php';
+$webAppUrl = rtrim((string)(getenv('APP_URL') ?: 'https://lali-bingo-bot.onrender.com'), '/') . '/index.php';
 $referralBonusEtb = round((float)(getenv('REFERRAL_BONUS_ETB') ?: '5.00'), 2);
 
 if ($token === '') {
@@ -329,6 +329,10 @@ function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, 
 
     ensureReferralSchema($pdo);
 
+    while ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
     $pdo->beginTransaction();
     try {
         $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
@@ -439,6 +443,10 @@ function applyJoinReferralBonus(
     }
 
     ensureReferralSchema($pdo);
+
+    while ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
 
     $pdo->beginTransaction();
     try {
@@ -692,6 +700,10 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $pdo = getBingoPdo();
 
     try {
+        while ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
         if ($parsed === null) {
             throw new RuntimeException('Unrecognized callback action: ' . $data);
         }
@@ -837,15 +849,13 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
         $targetPlayerId = (string)$parsed['player_id'];
         $amount         = (float)$parsed['amount'];
 
-        $pdo->beginTransaction();
-
         if ($kind === 'deposit') {
             $depTable = null;
             $depRow = null;
             if ($recId > 0) {
                 foreach (['transactions', 'deposits'] as $tbl) {
                     if (tableExists($pdo, $tbl)) {
-                        $dStmt = $pdo->prepare("SELECT * FROM {$tbl} WHERE id = ? LIMIT 1");
+                        $dStmt = $pdo->prepare("SELECT id, telegram_id, amount, status FROM {$tbl} WHERE id = ? LIMIT 1");
                         $dStmt->execute([$recId]);
                         $found = $dStmt->fetch(PDO::FETCH_ASSOC);
                         if ($found) {
@@ -866,7 +876,6 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 }
                 $curStatus = strtolower(trim((string)($depRow['status'] ?? 'pending')));
                 if ($curStatus !== '' && $curStatus !== 'pending') {
-                    $pdo->rollBack();
                     tgPost($token, 'answerCallbackQuery', [
                         'callback_query_id' => $cbId,
                         'text'              => "Already {$curStatus}.",
@@ -882,7 +891,10 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 throw new RuntimeException("Missing player_id ({$targetPlayerId}) or amount ({$amount}) in {$data}");
             }
 
+            $hasLedger = tableExists($pdo, 'balance_ledger');
             $ts = nowTimestampText();
+
+            $pdo->beginTransaction();
             if ($isApprove) {
                 $pStmt = $pdo->prepare("SELECT telegram_id, balance, chat_id FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
                 $pStmt->execute([$targetPlayerId]);
@@ -910,7 +922,16 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                     $pdo->prepare("UPDATE {$depTable} SET status = 'approved' WHERE id = ?")->execute([$recId]);
                 }
 
-                addLedger($pdo, $canonicalPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin");
+                if ($hasLedger) {
+                    $lStmt = $pdo->prepare("
+                        INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $lStmt->execute([$canonicalPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin", $ts]);
+                }
+
+                $pdo->commit();
+
                 $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
                 $toastText    = "Approved +{$amtFormatted} ETB (Total: " . number_format($after, 2) . " ETB)";
                 $statusLabel  = "\n\n✅ APPROVED (+{$amtFormatted} ETB) | New Balance: " . number_format($after, 2) . " ETB";
@@ -922,14 +943,18 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 if ($depTable !== null && $recId > 0) {
                     $pdo->prepare("UPDATE {$depTable} SET status = 'rejected' WHERE id = ?")->execute([$recId]);
                 }
+                $pdo->commit();
+
                 $toastText    = "Rejected deposit";
                 $statusLabel  = "\n\n❌ REJECTED by Admin";
                 $playerNotify = "SMART BINGO — Deposit Rejected\n\n"
                               . "Your deposit request of " . number_format($amount, 2) . " ETB was rejected. Please verify your reference or contact support.";
             }
         } else {
-            if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
-                $wStmt = $pdo->prepare("SELECT * FROM withdrawals WHERE id = ? LIMIT 1");
+            $hasWithdrawals = tableExists($pdo, 'withdrawals');
+            $wdRow = null;
+            if ($recId > 0 && $hasWithdrawals) {
+                $wStmt = $pdo->prepare("SELECT id, telegram_id, amount, status FROM withdrawals WHERE id = ? LIMIT 1");
                 $wStmt->execute([$recId]);
                 $wdRow = $wStmt->fetch(PDO::FETCH_ASSOC);
                 if ($wdRow) {
@@ -941,7 +966,6 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                     }
                     $curStatus = strtolower(trim((string)($wdRow['status'] ?? 'pending')));
                     if ($curStatus !== '' && $curStatus !== 'pending') {
-                        $pdo->rollBack();
                         tgPost($token, 'answerCallbackQuery', [
                             'callback_query_id' => $cbId,
                             'text'              => "Already {$curStatus}.",
@@ -958,14 +982,18 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 throw new RuntimeException("Missing withdrawal player_id ({$targetPlayerId}) or amount ({$amount}) in {$data}");
             }
 
+            $hasLedger = tableExists($pdo, 'balance_ledger');
             $ts = nowTimestampText();
+
+            $pdo->beginTransaction();
             if ($isApprove) {
-                if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
+                if ($recId > 0 && $hasWithdrawals) {
                     $pdo->prepare("UPDATE withdrawals SET status = 'approved' WHERE id = ?")->execute([$recId]);
                 }
                 $bStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
                 $bStmt->execute([$targetPlayerId]);
                 $curBal = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
+                $pdo->commit();
 
                 $toastText    = "Approved withdrawal";
                 $statusLabel  = "\n\n✅ WITHDRAWAL APPROVED";
@@ -981,11 +1009,19 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
                     ->execute([$after, $ts, $targetPlayerId]);
 
-                if ($recId > 0 && tableExists($pdo, 'withdrawals')) {
+                if ($recId > 0 && $hasWithdrawals) {
                     $pdo->prepare("UPDATE withdrawals SET status = 'rejected' WHERE id = ?")->execute([$recId]);
                 }
 
-                addLedger($pdo, $targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal rejected & refunded");
+                if ($hasLedger) {
+                    $lStmt = $pdo->prepare("
+                        INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $lStmt->execute([$targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal rejected & refunded", $ts]);
+                }
+                $pdo->commit();
+
                 $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
                 $toastText    = "Rejected & refunded {$amtFormatted} ETB";
                 $statusLabel  = "\n\n❌ WITHDRAWAL REJECTED & REFUNDED";
@@ -995,8 +1031,6 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                               . "New Balance: " . number_format($after, 2) . " ETB";
             }
         }
-
-        $pdo->commit();
 
         $notified = sendPlayerNotification($pdo, $token, $targetPlayerId, $playerNotify);
 
@@ -1063,6 +1097,9 @@ $replyMarkup = buildMainMenuKeyboard($webAppUrl, $isAdmin);
 
 try {
     $pdo = getBingoPdo();
+    while ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     ensureReferralSchema($pdo);
     $player = registerOrGetUser($userId, $chatId, $firstName, $username);
     $balanceNum = (float)($player['balance'] ?? 0.0);
@@ -1249,6 +1286,9 @@ try {
         }
     }
 } catch (Throwable $e) {
+    if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     error_log("SmartBingoHub_bot DB error: " . $e->getMessage());
     $reply = "Temporary database error while saving your profile. Please try again.";
 }
