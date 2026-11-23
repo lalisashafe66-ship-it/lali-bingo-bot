@@ -1,5 +1,7 @@
 <?php
 // deposit.php - Handles deposit requests, logs transactions, and credits player balance
+declare(strict_types=1);
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST');
@@ -22,20 +24,37 @@ if ($telegramId === '' || $telegramId === 'undefined' || $telegramId === 'null' 
 
 try {
     $pdo = getBingoPdo();
+    $isPgsql = strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) === 'pgsql';
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT,
-        tx_reference TEXT UNIQUE,
-        amount REAL,
-        source TEXT DEFAULT 'web_deposit',
-        status TEXT DEFAULT 'verified',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
-
-    $txCols = $pdo->query("PRAGMA table_info(transactions)")->fetchAll(PDO::FETCH_COLUMN, 1);
-    if (!in_array('source', $txCols, true)) {
-        $pdo->exec("ALTER TABLE transactions ADD COLUMN source TEXT DEFAULT 'web_deposit'");
+    if ($isPgsql) {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS transactions (
+                id SERIAL PRIMARY KEY,
+                telegram_id TEXT,
+                tx_reference TEXT UNIQUE,
+                amount DOUBLE PRECISION,
+                source TEXT DEFAULT 'web_deposit',
+                status TEXT DEFAULT 'verified',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+        $pdo->exec("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'web_deposit'");
+    } else {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id TEXT,
+                tx_reference TEXT UNIQUE,
+                amount REAL,
+                source TEXT DEFAULT 'web_deposit',
+                status TEXT DEFAULT 'verified',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+        $txCols = $pdo->query("PRAGMA table_info(transactions)")->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('source', $txCols, true)) {
+            $pdo->exec("ALTER TABLE transactions ADD COLUMN source TEXT DEFAULT 'web_deposit'");
+        }
     }
 
     if ($txRef !== '') {
@@ -48,8 +67,18 @@ try {
 
         $pdo->beginTransaction();
 
-        $pdo->prepare("INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance) VALUES (?, 'Player', 'WebUser', 0.00)")
-            ->execute([$telegramId]);
+        if ($isPgsql) {
+            $pdo->prepare("
+                INSERT INTO players (telegram_id, first_name, phone, balance)
+                VALUES (?, 'Player', 'WebUser', 0.00)
+                ON CONFLICT (telegram_id) DO NOTHING
+            ")->execute([$telegramId]);
+        } else {
+            $pdo->prepare("
+                INSERT OR IGNORE INTO players (telegram_id, first_name, phone, balance)
+                VALUES (?, 'Player', 'WebUser', 0.00)
+            ")->execute([$telegramId]);
+        }
 
         $balStmt = $pdo->prepare("SELECT balance FROM players WHERE telegram_id = ?");
         $balStmt->execute([$telegramId]);
@@ -79,7 +108,7 @@ try {
             'instructions' => 'Transfer money to CBE: 1000171689116 or Telebirr: 0917461538, then submit your Transaction ID.'
         ]);
     }
-} catch (Exception $e) {
+} catch (Throwable $e) {
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();
     }
