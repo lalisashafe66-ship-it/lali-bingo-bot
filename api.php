@@ -416,6 +416,16 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
 
     resetAbortedTransaction($pdo);
 
+    // Atomic guard: only the first caller that claims status = 'finished' pays out & notifies
+    $claimStmt = $pdo->prepare("UPDATE rooms SET status = 'finished' WHERE id = ? AND status <> 'finished'");
+    $claimStmt->execute([$roomId]);
+    if ($claimStmt->rowCount() === 0 && ($room['status'] ?? '') === 'finished') {
+        $existingWinners = json_decode($room['winners_json'] ?? '[]', true);
+        if (is_array($existingWinners) && count($existingWinners) > 0) {
+            return $room;
+        }
+    }
+
     $deduped = [];
     $seenIds = [];
     foreach ($winners as $w) {
@@ -450,16 +460,12 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
 
     $encodedWinners = json_encode($deduped);
 
-    // Always mark the room as finished first so calling stops immediately
     resetAbortedTransaction($pdo);
-    $pdo->beginTransaction();
     try {
         $pdo->prepare("UPDATE rooms SET status = 'finished', winners_json = ? WHERE id = ?")
             ->execute([$encodedWinners, $roomId]);
-        $pdo->commit();
     } catch (Throwable $e) {
-        resetAbortedTransaction($pdo);
-        $pdo->exec("UPDATE rooms SET status = 'finished' WHERE id = " . $roomId);
+        error_log("finalizeRoomWinners winners_json update error on room {$roomId}: " . $e->getMessage());
     }
 
     $winnerIds = [];
@@ -748,25 +754,12 @@ elseif ($action === 'join_room') {
         if ($activeRoom) {
             $syncedActive = syncRoomLifecycle($pdo, $activeRoom);
             if (($syncedActive['status'] ?? '') === 'active') {
-                $now = time();
-                $startedAt = (int)($syncedActive['started_at'] ?? $now);
-                $elapsed = max(0, $now - $startedAt);
-                $pool = json_decode($syncedActive['draw_pool_json'] ?? '[]', true);
-                $targetCalls = min(75, (int)floor($elapsed / 2.2) + 1);
-                $called = is_array($pool) ? array_slice($pool, 0, $targetCalls) : [];
+                $activePayload = buildRoomPayload($pdo, $syncedActive);
                 echo json_encode([
                     'success'         => false,
                     'already_started' => true,
-                    'room'            => [
-                        'room_id'        => (int)$syncedActive['id'],
-                        'game_code'      => $syncedActive['game_code'] ?: '1T6BX',
-                        'stake'          => (float)$syncedActive['stake'],
-                        'status'         => 'active',
-                        'derash'         => 0,
-                        'calls_count'    => count($called),
-                        'called_numbers' => $called,
-                    ],
-                    'error' => 'Please wait until this game ends; you will start in the next round.',
+                    'room'            => $activePayload,
+                    'error'           => 'Please wait until this game ends; you will start in the next round.',
                 ]);
                 exit;
             }
