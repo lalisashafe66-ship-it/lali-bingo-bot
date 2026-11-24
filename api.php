@@ -1025,9 +1025,9 @@ elseif ($action === 'join_room') {
 }
 elseif ($action === 'request_withdrawal') {
     $telegramId = trim((string)($_POST['telegram_id'] ?? ''));
-    $amount = round((float)($_POST['amount'] ?? 0), 2);
-    $method = trim((string)($_POST['method'] ?? 'Telebirr'));
-    $account = trim((string)($_POST['account'] ?? ''));
+    $amount     = round((float)($_POST['amount'] ?? 0), 2);
+    $method     = trim((string)($_POST['method'] ?? 'Telebirr'));
+    $account    = trim((string)($_POST['account'] ?? ''));
 
     if ($telegramId === '' || $telegramId === 'undefined' || $telegramId === 'null') {
         echo json_encode(['success' => false, 'error' => 'Invalid Telegram ID.']);
@@ -1037,60 +1037,80 @@ elseif ($action === 'request_withdrawal') {
         echo json_encode(['success' => false, 'error' => 'Please enter a valid phone or account number.']);
         exit;
     }
+    if ($amount <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Please enter a valid withdrawal amount greater than 0.']);
+        exit;
+    }
 
     resetAbortedTransaction($pdo);
 
-    $pdo->beginTransaction();
     try {
+        // Fetch schema metadata OUTSIDE any transaction so it never aborts a transaction
+        $wCols    = getColumnNames($pdo, 'withdrawals');
+        $wTidType = getColumnType($pdo, 'withdrawals', 'telegram_id');
+        $wTidVal  = normalizeIdForColumn($telegramId, $wTidType);
+
+        // Fetch player record first
         $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$player) {
-            $pdo->rollBack();
             echo json_encode(['success' => false, 'error' => 'Player record not found.']);
             exit;
         }
 
         $currentBal = round((float)$player['balance'], 2);
-
-        if ($currentBal < $amount || $amount <= 0) {
-            $pdo->rollBack();
-            echo json_encode(['success' => false, 'error' => 'Insufficient balance or invalid withdrawal amount.']);
+        if ($currentBal < $amount) {
+            echo json_encode(['success' => false, 'error' => 'Insufficient balance for this withdrawal.']);
             exit;
         }
 
         $newBalance = round($currentBal - $amount, 2);
-        $nowStr = gmdate('Y-m-d H:i:s');
+        $nowStr     = gmdate('Y-m-d H:i:s');
+        $playerName = (string)($player['first_name'] ?? 'Player');
 
-        $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
-            ->execute([$newBalance, $nowStr, $telegramId]);
+        // Start clean transaction only for the atomic balance deduction + withdrawal insert
+        $pdo->beginTransaction();
 
-        $wCols = getColumnNames($pdo, 'withdrawals');
-        $wTidType = getColumnType($pdo, 'withdrawals', 'telegram_id');
-        $wTidVal = normalizeIdForColumn($telegramId, $wTidType);
+        $updPlayer = $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?");
+        $updPlayer->execute([$newBalance, $nowStr, $telegramId]);
 
         $insertCols = ['telegram_id', 'amount', 'method', 'account', 'status'];
         $insertVals = [$wTidVal, $amount, $method, $account, 'pending'];
+
+        if (in_array('first_name', $wCols, true)) {
+            $insertCols[] = 'first_name';
+            $insertVals[] = $playerName;
+        } elseif (in_array('player_name', $wCols, true)) {
+            $insertCols[] = 'player_name';
+            $insertVals[] = $playerName;
+        }
+
         if (in_array('created_at', $wCols, true)) {
             $insertCols[] = 'created_at';
             $insertVals[] = $nowStr;
         }
+        if (in_array('updated_at', $wCols, true)) {
+            $insertCols[] = 'updated_at';
+            $insertVals[] = $nowStr;
+        }
 
         $placeholders = implode(', ', array_fill(0, count($insertCols), '?'));
-        $colList = implode(', ', $insertCols);
-        $pdo->prepare("INSERT INTO withdrawals ({$colList}) VALUES ({$placeholders})")->execute($insertVals);
+        $colList      = implode(', ', $insertCols);
+        $insWithdraw  = $pdo->prepare("INSERT INTO withdrawals ({$colList}) VALUES ({$placeholders})");
+        $insWithdraw->execute($insertVals);
 
         $pdo->commit();
 
         logBalanceChange($pdo, $telegramId, null, 'withdrawal', -$amount, $currentBal, $newBalance, "Withdrawal via {$method} ({$account})");
 
-        $ADMIN_ID = getAdminChatIdEnv();
-        $token = getBotTokenEnv();
-        $safePlayerName = htmlspecialchars((string)($player['first_name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
-        $safeMethod = htmlspecialchars($method, ENT_QUOTES, 'UTF-8');
-        $safeAccount = htmlspecialchars($account, ENT_QUOTES, 'UTF-8');
-        $formattedAmt = number_format($amount, 2);
+        $ADMIN_ID       = getAdminChatIdEnv();
+        $token          = getBotTokenEnv();
+        $safePlayerName = htmlspecialchars($playerName, ENT_QUOTES, 'UTF-8');
+        $safeMethod     = htmlspecialchars($method, ENT_QUOTES, 'UTF-8');
+        $safeAccount    = htmlspecialchars($account, ENT_QUOTES, 'UTF-8');
+        $formattedAmt   = number_format($amount, 2);
 
         $adminMsg = "💸 <b>New Withdrawal Request (SMART BINGO)!</b>\n\n" .
                     "• <b>Player:</b> {$safePlayerName}\n" .
