@@ -845,7 +845,7 @@
       <div id="lobby-cartelas-preview" class="mini-preview-strip"></div>
     </div>
     <div class="lobby-actions-row">
-      <button type="button" class="btn-gold" style="padding:10px;font-size:0.9rem;" onclick="playAgainQuick()">Play Again</button>
+      <button type="button" class="btn-gold" style="padding:10px;font-size:0.9rem;" onclick="playAgainQuick()">New Round</button>
       <button type="button" class="btn-secondary-dark" style="padding:10px;font-size:0.9rem;" onclick="leaveToSetup()">Leave Lobby</button>
     </div>
   </section>
@@ -1238,27 +1238,9 @@
       pollSetupRoomStatus();
     }
 
+    // Resets selection and returns to table/cartela screen without pre-selecting or auto-starting
     function playAgainQuick() {
-      stopRoomPolling();
-      currentRoomId = null;
-      const preferred = lastJoinedCartelas.length > 0 ? [...lastJoinedCartelas] : [...selectedCartelaNumbers];
-      selectedCartelaNumbers = preferred.filter(n => !takenCartelas.includes(n)).slice(0, 3);
-      if (selectedCartelaNumbers.length === 0) {
-        for (let n = 1; n <= 400; n++) {
-          if (!takenCartelas.includes(n)) {
-            selectedCartelaNumbers = [n];
-            break;
-          }
-        }
-      }
-      card = [];
-      marked = Array(25).fill(false);
-      marked[12] = true;
-      calledNumbers = [];
-      lastAnnouncedNumber = null;
-      showOnlyScreen('game');
-      buildCartelaPickerGrid();
-      joinSelectedTable();
+      leaveToSetup();
     }
 
     function switchTab(tab) {
