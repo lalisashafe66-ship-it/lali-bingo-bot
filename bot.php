@@ -1271,7 +1271,7 @@ try {
                 }
                 break;
 
-            case 'Share & Invite':
+            case 'Share, Invite & Get Bonus':
             case '/invite':
             case '/share':
                 $inviteLink = "https://t.me/{$botUsername}?start=ref_{$userId}";
