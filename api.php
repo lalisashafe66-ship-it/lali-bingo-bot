@@ -329,6 +329,7 @@ function hasWinningLine(array $board, array $calledSet): ?array {
         [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
         [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
         [0,6,12,18,24], [4,8,12,16,20],
+        [0,4,20,24], // 4 corners
     ];
 
     foreach ($lines as $line) {
@@ -353,6 +354,7 @@ function pickClosestLineWinner(PDO $pdo, array $entries, array $calledSet): ?arr
         [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
         [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
         [0,6,12,18,24], [4,8,12,16,20],
+        [0,4,20,24], // 4 corners
     ];
 
     $best = null;
@@ -481,8 +483,8 @@ function sendWinnerCongratulations(
 
     $isSplit = count($winners) > 1;
     $summaryLine = $isSplit
-        ? "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line together in Game <b>#{$safeGame}</b> and share the <b>{$poolStr} ETB</b> (80% pool; 20% commission) equally: <b>{$shareStr} ETB each</b>!"
-        : "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line first in Game <b>#{$safeGame}</b> and won <b>{$shareStr} ETB</b> (80% pool; 20% commission)!";
+        ? "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line or 4 corners together in Game <b>#{$safeGame}</b> and share the <b>{$poolStr} ETB</b> (80% pool; 20% commission) equally: <b>{$shareStr} ETB each</b>!"
+        : "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line or 4 corners first in Game <b>#{$safeGame}</b> and won <b>{$shareStr} ETB</b> (80% pool; 20% commission)!";
 
     foreach ($winners as $w) {
         $tid = trim((string)($w['telegram_id'] ?? ''));
@@ -490,9 +492,9 @@ function sendWinnerCongratulations(
         $pName = htmlspecialchars((string)($w['name'] ?? 'Player'), ENT_QUOTES, 'UTF-8');
         $cartelaNo = (int)($w['cartela_number'] ?? 0);
         $cartelaLine = $cartelaNo > 0 ? "\n• <b>Winning Cartela:</b> #{$cartelaNo}" : "";
-        $msg = "🏆 <b>BINGO LINE CLOSED — CONGRATULATIONS!</b>\n\n"
+        $msg = "🏆 <b>BINGO CLOSED — CONGRATULATIONS!</b>\n\n"
              . "Congratulations, <b>{$pName}</b>! 🎉\n"
-             . "You closed a winning line in Game <b>#{$safeGame}</b>!{$cartelaLine}\n"
+             . "You closed a winning line or 4 corners in Game <b>#{$safeGame}</b>!{$cartelaLine}\n"
              . "• <b>Prize Awarded:</b> <b>+{$shareStr} ETB</b>";
         sendTelegramMessage($token, $tid, $msg);
     }
@@ -508,7 +510,6 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
 
     resetAbortedTransaction($pdo);
 
-    // Atomic guard: only the first caller that claims status = 'finished' pays out & notifies
     $claimStmt = $pdo->prepare("UPDATE rooms SET status = 'finished' WHERE id = ? AND status <> 'finished'");
     $claimStmt->execute([$roomId]);
     if ($claimStmt->rowCount() === 0 && ($room['status'] ?? '') === 'finished') {
@@ -541,7 +542,6 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
         $totalStakes = (float)$stakeRow['entry_count'] * (float)($room['stake'] ?? 10);
     }
 
-    // 80% prize pool to winner(s), 20% commission retained
     $totalDerash = round($totalStakes * 0.80, 2);
     $winnerCount = count($deduped);
     $sharePerWinner = ($winnerCount > 0) ? round($totalDerash / $winnerCount, 2) : 0.0;
@@ -697,7 +697,6 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             return finalizeRoomWinners($pdo, $room, $autoWinners);
         }
 
-        // At least one winner is mandatory whenever players are in the round
         if (count($called) >= 75) {
             $fallbackWinner = pickClosestLineWinner($pdo, $entries, $calledSet);
             if ($fallbackWinner !== null) {
@@ -1045,12 +1044,10 @@ elseif ($action === 'request_withdrawal') {
     resetAbortedTransaction($pdo);
 
     try {
-        // Fetch schema metadata OUTSIDE any transaction so it never aborts a transaction
         $wCols    = getColumnNames($pdo, 'withdrawals');
         $wTidType = getColumnType($pdo, 'withdrawals', 'telegram_id');
         $wTidVal  = normalizeIdForColumn($telegramId, $wTidType);
 
-        // Fetch player record first
         $stmt = $pdo->prepare("SELECT balance, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
         $stmt->execute([$telegramId]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1070,7 +1067,6 @@ elseif ($action === 'request_withdrawal') {
         $nowStr     = gmdate('Y-m-d H:i:s');
         $playerName = (string)($player['first_name'] ?? 'Player');
 
-        // Start clean transaction only for the atomic balance deduction + withdrawal insert
         $pdo->beginTransaction();
 
         $updPlayer = $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?");
