@@ -26,7 +26,7 @@
 
     body {
       margin: 0;
-      padding: 0 0 82px 0;
+      padding: 0 0 76px 0;
       background: radial-gradient(circle at top, #17434b 0%, var(--bg-deep) 70%);
       color: var(--text-main);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -37,7 +37,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 9px 14px;
+      padding: 8px 12px;
       background: rgba(11, 36, 41, 0.94);
       backdrop-filter: blur(10px);
       position: sticky;
@@ -46,7 +46,7 @@
     }
 
     .top-stripe {
-      height: 6px;
+      height: 5px;
       background: repeating-linear-gradient(
         135deg,
         var(--accent-gold) 0px,
@@ -59,14 +59,14 @@
     .brand-pill {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
       font-weight: 900;
-      font-size: 1rem;
+      font-size: 0.96rem;
     }
 
     .brand-diamond {
-      width: 12px;
-      height: 12px;
+      width: 11px;
+      height: 11px;
       transform: rotate(45deg);
       background: var(--accent-gold);
       box-shadow: 0 0 10px rgba(245, 183, 0, 0.65);
@@ -79,9 +79,9 @@
 
     .balance-label {
       display: block;
-      font-size: 0.66rem;
+      font-size: 0.62rem;
       color: var(--text-muted);
-      line-height: 1.1;
+      line-height: 1.05;
     }
 
     .balance-pill {
@@ -89,69 +89,69 @@
       border: none;
       color: var(--accent-gold);
       font-weight: 900;
-      font-size: 0.96rem;
+      font-size: 0.92rem;
       padding: 0;
       cursor: pointer;
     }
 
     .section-title {
-      font-size: 1.5rem;
+      font-size: 1.22rem;
       font-weight: 900;
-      margin: 12px 0 6px;
+      margin: 8px 0 3px;
       line-height: 1.15;
     }
 
     .section-sub {
       color: var(--text-muted);
-      font-size: 0.9rem;
-      margin-bottom: 12px;
-      line-height: 1.4;
+      font-size: 0.78rem;
+      margin-bottom: 8px;
+      line-height: 1.3;
     }
 
     .onboarding-strip {
       background: var(--bg-card);
       border: 1px solid rgba(245, 183, 0, 0.35);
-      border-radius: 16px;
-      padding: 12px 14px;
-      margin-bottom: 14px;
+      border-radius: 12px;
+      padding: 7px 10px;
+      margin-bottom: 8px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
     }
 
     .onboarding-step-text {
-      font-size: 0.82rem;
+      font-size: 0.74rem;
       color: var(--text-main);
       font-weight: 700;
       flex: 1;
-      min-width: 180px;
+      min-width: 150px;
     }
 
     .onboarding-btns {
       display: flex;
-      gap: 8px;
+      gap: 6px;
     }
 
     .card-panel {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
-      border-radius: 16px;
-      padding: 12px;
-      margin-bottom: 12px;
+      border-radius: 14px;
+      padding: 9px 10px;
+      margin-bottom: 8px;
     }
 
     .table-card {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: 10px;
       background: var(--bg-card);
       border: 2px solid var(--line-border);
-      border-radius: 16px;
-      padding: 13px 15px;
-      margin-bottom: 10px;
+      border-radius: 13px;
+      padding: 8px 12px;
+      margin-bottom: 7px;
       cursor: pointer;
       transition: all 0.15s ease;
     }
@@ -164,28 +164,30 @@
     .table-card input[type="radio"] { display: none; }
 
     .table-big-amt {
-      font-size: 2rem;
+      font-size: 1.45rem;
       font-weight: 900;
       line-height: 1;
-      min-width: 50px;
+      min-width: 36px;
       text-align: center;
     }
 
     .table-meta-title {
       font-weight: 900;
-      font-size: 0.98rem;
+      font-size: 0.86rem;
       color: #fff;
+      line-height: 1.15;
     }
 
     .table-meta-sub {
-      font-size: 0.8rem;
+      font-size: 0.7rem;
       color: var(--text-muted);
-      margin-top: 2px;
+      margin-top: 1px;
+      line-height: 1.2;
     }
 
     .radio-ring {
-      width: 22px;
-      height: 22px;
+      width: 18px;
+      height: 18px;
       border-radius: 50%;
       border: 2px solid var(--text-muted);
       display: flex;
@@ -198,8 +200,8 @@
 
     .table-card.selected .radio-ring::after {
       content: "";
-      width: 11px;
-      height: 11px;
+      width: 9px;
+      height: 9px;
       border-radius: 50%;
       background: var(--accent-gold);
     }
@@ -207,18 +209,18 @@
     .legend-row {
       display: flex;
       align-items: center;
-      gap: 18px;
-      font-size: 0.82rem;
+      gap: 14px;
+      font-size: 0.74rem;
       font-weight: 700;
-      margin: 4px 0 8px;
+      margin: 3px 0 6px;
     }
 
     .legend-dot {
-      width: 11px;
-      height: 11px;
+      width: 9px;
+      height: 9px;
       border-radius: 50%;
       display: inline-block;
-      margin-right: 6px;
+      margin-right: 4px;
       vertical-align: middle;
     }
 
@@ -226,17 +228,17 @@
     .legend-dot.taken { background: var(--bg-card-soft); border: 1px solid var(--line-border); }
 
     .cartela-picker-scroll {
-      max-height: 230px;
+      max-height: 168px;
       overflow-y: auto;
-      padding: 6px;
-      border-radius: 14px;
+      padding: 5px;
+      border-radius: 11px;
       background: rgba(6, 22, 26, 0.45);
     }
 
     .cartela-grid {
       display: grid;
       grid-template-columns: repeat(8, 1fr);
-      gap: 6px;
+      gap: 4px;
     }
 
     .cartela-circle {
@@ -245,7 +247,7 @@
       background: var(--bg-card-soft);
       border: 1px solid var(--line-border);
       color: var(--text-main);
-      font-size: 0.76rem;
+      font-size: 0.7rem;
       font-weight: 800;
       display: flex;
       align-items: center;
@@ -272,15 +274,15 @@
       display: flex;
       gap: 8px;
       overflow-x: auto;
-      padding-bottom: 4px;
-      margin-top: 8px;
+      padding-bottom: 3px;
+      margin-top: 6px;
     }
 
     .mini-cartela-card {
-      min-width: 148px;
+      min-width: 140px;
       background: #f8fafc;
       color: #0f172a;
-      border-radius: 12px;
+      border-radius: 11px;
       overflow: hidden;
       border: 2px solid var(--accent-gold);
       flex-shrink: 0;
@@ -301,8 +303,8 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 4px 8px 2px;
-      font-size: 0.7rem;
+      padding: 3px 7px 1px;
+      font-size: 0.68rem;
       font-weight: 900;
     }
 
@@ -318,7 +320,7 @@
       border-radius: 50%;
       background: #e2e8f0;
       color: #0f172a;
-      font-size: 0.56rem;
+      font-size: 0.54rem;
       font-weight: 800;
       display: flex;
       align-items: center;
@@ -336,10 +338,10 @@
       background: var(--accent-gold);
       color: #111827;
       font-weight: 900;
-      font-size: 0.98rem;
+      font-size: 0.92rem;
       border: none;
-      border-radius: 14px;
-      padding: 12px 16px;
+      border-radius: 12px;
+      padding: 10px 14px;
       cursor: pointer;
     }
 
@@ -349,7 +351,7 @@
       background: var(--bg-card-soft);
       color: var(--text-main);
       border: 1px solid var(--line-border);
-      border-radius: 11px;
+      border-radius: 10px;
       font-weight: 700;
       cursor: pointer;
     }
@@ -365,17 +367,17 @@
     .caller-card {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
-      border-radius: 16px;
-      padding: 10px 10px 8px;
-      margin-bottom: 8px;
+      border-radius: 15px;
+      padding: 9px 10px 7px;
+      margin-bottom: 7px;
       text-align: center;
     }
 
     .featured-ball-ring {
-      width: 84px;
-      height: 84px;
+      width: 80px;
+      height: 80px;
       border-radius: 50%;
-      margin: 0 auto 8px;
+      margin: 0 auto 7px;
       padding: 6px;
       background: conic-gradient(
         #ef4444 0deg 60deg,
@@ -403,14 +405,14 @@
     }
 
     .featured-ball-letter {
-      font-size: 0.72rem;
+      font-size: 0.7rem;
       font-weight: 900;
       color: #c084fc;
       margin-bottom: 1px;
     }
 
     .featured-ball-num {
-      font-size: 1.65rem;
+      font-size: 1.55rem;
       font-weight: 900;
       color: #ffffff;
     }
@@ -421,12 +423,12 @@
       justify-content: center;
       align-items: center;
       flex-wrap: nowrap;
-      margin-bottom: 8px;
+      margin-bottom: 7px;
     }
 
     .recent-ball {
-      width: 28px;
-      height: 28px;
+      width: 27px;
+      height: 27px;
       border-radius: 50%;
       background: #0d2b31;
       border: 1.5px solid var(--accent-gold);
@@ -435,7 +437,7 @@
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      font-size: 0.72rem;
+      font-size: 0.7rem;
       flex-shrink: 0;
     }
 
@@ -445,20 +447,20 @@
       gap: 6px;
       align-items: center;
       border-top: 1px solid var(--line-border);
-      padding-top: 6px;
-      font-size: 0.76rem;
+      padding-top: 5px;
+      font-size: 0.74rem;
     }
 
     .stats-strip-3 strong {
       display: block;
-      font-size: 0.88rem;
+      font-size: 0.86rem;
       font-weight: 900;
       color: #fff;
       line-height: 1.1;
     }
 
     .stats-strip-3 span.lbl {
-      font-size: 0.64rem;
+      font-size: 0.62rem;
       color: var(--text-muted);
       line-height: 1.1;
     }
@@ -466,9 +468,9 @@
     .light-cartela-box {
       background: #f8fafc;
       color: #0f172a;
-      border-radius: 14px;
+      border-radius: 13px;
       overflow: hidden;
-      margin-bottom: 8px;
+      margin-bottom: 7px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     }
 
@@ -476,37 +478,37 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.76rem;
+      font-size: 0.74rem;
       font-weight: 900;
-      padding: 4px 10px;
+      padding: 4px 9px;
     }
 
     .bingo-5col {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
       gap: 3px;
-      padding: 0 8px 7px;
+      padding: 0 7px 6px;
     }
 
     .bingo-head {
       text-align: center;
       font-weight: 900;
-      font-size: 0.72rem;
+      font-size: 0.7rem;
       color: #fff;
       border-radius: 6px;
       padding: 2px 0;
     }
 
     .bingo-cell {
-      height: 30px;
-      border-radius: 8px;
+      height: 28px;
+      border-radius: 7px;
       background: #e2e8f0;
       color: #0f172a;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       line-height: 1;
     }
 
@@ -527,14 +529,14 @@
     .master-rows-wrap {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
-      border-radius: 12px;
-      padding: 6px 7px;
-      margin-bottom: 8px;
+      border-radius: 11px;
+      padding: 5px 6px;
+      margin-bottom: 7px;
     }
 
     .master-letter-row {
       display: grid;
-      grid-template-columns: 18px repeat(15, 1fr);
+      grid-template-columns: 17px repeat(15, 1fr);
       gap: 2px;
       align-items: center;
       margin-bottom: 2px;
@@ -543,9 +545,9 @@
     .master-letter-row:last-child { margin-bottom: 0; }
 
     .master-row-tag {
-      height: 15px;
+      height: 14px;
       border-radius: 4px;
-      font-size: 0.62rem;
+      font-size: 0.6rem;
       font-weight: 900;
       color: #fff;
       display: flex;
@@ -554,11 +556,11 @@
     }
 
     .master-num-pill {
-      height: 15px;
+      height: 14px;
       border-radius: 4px;
       background: rgba(255, 255, 255, 0.08);
       color: var(--text-muted);
-      font-size: 0.56rem;
+      font-size: 0.54rem;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -584,17 +586,17 @@
     .lobby-hero-card {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
-      border-radius: 16px;
-      padding: 12px;
-      margin-bottom: 10px;
+      border-radius: 15px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
       display: flex;
       align-items: center;
       gap: 12px;
     }
 
     .countdown-ring {
-      width: 66px;
-      height: 66px;
+      width: 62px;
+      height: 62px;
       border-radius: 50%;
       background: conic-gradient(var(--accent-gold) 0deg, rgba(255, 255, 255, 0.14) 0deg);
       display: flex;
@@ -613,7 +615,7 @@
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      font-size: 1rem;
+      font-size: 0.96rem;
       color: #fff;
     }
 
@@ -625,8 +627,8 @@
     }
 
     .wallet-action-btn {
-      padding: 12px;
-      border-radius: 14px;
+      padding: 11px;
+      border-radius: 13px;
       font-weight: 800;
       border: none;
       cursor: pointer;
@@ -636,13 +638,13 @@
     .wallet-action-btn.withdraw { background: var(--bg-card-soft); color: #fff; border: 1px solid var(--line-border); }
 
     .profile-badge-circle {
-      width: 60px;
-      height: 60px;
+      width: 56px;
+      height: 56px;
       border-radius: 50%;
       background: var(--accent-gold);
       color: #111827;
       font-weight: 900;
-      font-size: 1.5rem;
+      font-size: 1.4rem;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -662,16 +664,16 @@
 
     .modal-box-custom {
       width: 100%;
-      max-width: 350px;
+      max-width: 340px;
       background: var(--bg-card);
       border: 1px solid rgba(245, 183, 0, 0.55);
       border-radius: 18px;
-      padding: 14px;
+      padding: 13px;
       text-align: center;
     }
 
     .winner-top-name {
-      font-size: 1.35rem;
+      font-size: 1.3rem;
       font-weight: 900;
       color: #ffffff;
       margin-top: 2px;
@@ -680,7 +682,7 @@
     .winning-board-card {
       background: #f8fafc;
       color: #0f172a;
-      border-radius: 14px;
+      border-radius: 13px;
       overflow: hidden;
       margin: 8px 0 10px;
       border: 2px solid var(--accent-gold);
@@ -691,10 +693,10 @@
       bottom: 8px;
       left: 10px;
       right: 10px;
-      height: 56px;
+      height: 54px;
       background: #143d45;
       border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 20px;
+      border-radius: 18px;
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       padding: 4px;
@@ -709,13 +711,13 @@
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       color: var(--text-muted);
-      border-radius: 16px;
+      border-radius: 14px;
       cursor: pointer;
     }
 
-    .nav-tab .nav-gem { font-size: 0.5rem; opacity: 0; margin-top: 1px; }
+    .nav-tab .nav-gem { font-size: 0.48rem; opacity: 0; margin-top: 1px; }
     .nav-tab.active {
       background: var(--accent-gold);
       color: #111827;
@@ -738,54 +740,54 @@
   <div class="top-stripe"></div>
 
   <!-- SCREEN 1: CHOOSE TABLE & CARTELAS -->
-  <section id="screen-game" class="container">
+  <section id="screen-game" class="container" style="padding-left:10px;padding-right:10px;">
     <h1 class="section-title">Choose a table</h1>
     <p class="section-sub">
-      Share with friends, deposit ETB, and pick up to 3 cartelas. 15s countdown starts once cartelas are held. First closed line wins 80% (20% commission); 2 co-winners split 80% equally.
+      Pick up to 3 cartelas. 15s countdown starts once held. 1 line wins 80% (20% fee); 2 winners split 80%.
     </p>
 
     <div class="onboarding-strip">
       <div class="onboarding-step-text">1. Share invite &bull; 2. Deposit ETB &bull; 3. Pick cartela</div>
       <div class="onboarding-btns">
-        <button type="button" class="btn-secondary-dark" style="padding:7px 11px;font-size:0.78rem;" onclick="shareInviteLink()">Share</button>
-        <button type="button" class="btn-gold" style="width:auto;padding:7px 12px;font-size:0.78rem;" onclick="startInstantDeposit()">+ Deposit</button>
+        <button type="button" class="btn-secondary-dark" style="padding:5px 9px;font-size:0.72rem;" onclick="shareInviteLink()">Share</button>
+        <button type="button" class="btn-gold" style="width:auto;padding:5px 10px;font-size:0.72rem;" onclick="startInstantDeposit()">+ Deposit</button>
       </div>
     </div>
 
-    <label class="table-card selected" style="border-left:6px solid #22c55e;" onclick="selectTable(10, this)">
+    <label class="table-card selected" style="border-left:5px solid #22c55e;" onclick="selectTable(10, this)">
       <input type="radio" name="stake" value="10" checked />
       <div class="table-big-amt">10</div>
       <div style="flex:1;">
         <div class="table-meta-title">ETB per cartela</div>
-        <div class="table-meta-sub">1 line to win. 80% prize pool &bull; 20% commission</div>
+        <div class="table-meta-sub">1 line to win &bull; 80% pool &bull; 20% fee</div>
       </div>
       <span class="radio-ring"></span>
     </label>
 
-    <label class="table-card" style="border-left:6px solid #38bdf8;" onclick="selectTable(20, this)">
+    <label class="table-card" style="border-left:5px solid #38bdf8;" onclick="selectTable(20, this)">
       <input type="radio" name="stake" value="20" />
       <div class="table-big-amt">20</div>
       <div style="flex:1;">
         <div class="table-meta-title">ETB per cartela</div>
-        <div class="table-meta-sub">1 line to win. 80% prize pool &bull; 20% commission</div>
+        <div class="table-meta-sub">1 line to win &bull; 80% pool &bull; 20% fee</div>
       </div>
       <span class="radio-ring"></span>
     </label>
 
-    <label class="table-card" style="border-left:6px solid #ef4444;" onclick="selectTable(50, this)">
+    <label class="table-card" style="border-left:5px solid #ef4444;" onclick="selectTable(50, this)">
       <input type="radio" name="stake" value="50" />
       <div class="table-big-amt">50</div>
       <div style="flex:1;">
         <div class="table-meta-title">ETB per cartela</div>
-        <div class="table-meta-sub">1 line to win. 80% prize pool &bull; 20% commission</div>
+        <div class="table-meta-sub">1 line to win &bull; 80% pool &bull; 20% fee</div>
       </div>
       <span class="radio-ring"></span>
     </label>
 
     <div class="card-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div style="font-weight:800;font-size:0.9rem;">Stake <span id="active-stake-label">10</span> ETB per cartela</div>
-        <div style="font-size:0.8rem;color:var(--accent-gold);font-weight:800;" id="setup-prize-pool">Prize: 0.00 ETB</div>
+        <div style="font-weight:800;font-size:0.82rem;">Stake <span id="active-stake-label">10</span> ETB / cartela</div>
+        <div style="font-size:0.76rem;color:var(--accent-gold);font-weight:800;" id="setup-prize-pool">Prize: 0.00 ETB</div>
       </div>
       <div class="legend-row">
         <span><i class="legend-dot yours"></i>Yours</span>
@@ -794,7 +796,7 @@
       <div class="cartela-picker-scroll">
         <div id="cartela-grid-picker" class="cartela-grid"></div>
       </div>
-      <div class="section-sub" id="selected-cartela-info" style="margin:10px 0 4px;">
+      <div class="section-sub" id="selected-cartela-info" style="margin:7px 0 3px;font-size:0.74rem;">
         Your cartelas (0/3). Tap a number again to remove it.
       </div>
       <div id="selected-cartelas-preview" class="mini-preview-strip"></div>
@@ -804,9 +806,9 @@
   </section>
 
   <!-- SCREEN 2: LOBBY WAITING (ACTIVE GAME VISITOR) -->
-  <section id="screen-wait-active" class="container d-none">
-    <h1 class="section-title" style="font-size:1.25rem;margin-top:8px;">Next Round Queue</h1>
-    <p class="section-sub" id="wait-active-banner" style="font-size:0.82rem;margin-bottom:8px;">Please wait until this game ends; you will start in the next round.</p>
+  <section id="screen-wait-active" class="container d-none" style="padding-left:10px;padding-right:10px;">
+    <h1 class="section-title" style="font-size:1.15rem;margin-top:6px;">Next Round Queue</h1>
+    <p class="section-sub" id="wait-active-banner" style="font-size:0.74rem;margin-bottom:6px;">Please wait until this game ends; you will start in the next round.</p>
 
     <div class="caller-card">
       <div class="featured-ball-ring">
@@ -820,7 +822,7 @@
         <div><strong id="wait-derash">0.00</strong><span class="lbl">ETB prize</span></div>
         <div><strong id="wait-calls">0/75</strong><span class="lbl">called</span></div>
         <div><strong id="wait-game-code">--</strong><span class="lbl">game</span></div>
-        <button type="button" class="btn-secondary-dark" style="padding:5px 8px;font-size:0.72rem;" onclick="leaveToSetup()">Tables</button>
+        <button type="button" class="btn-secondary-dark" style="padding:4px 8px;font-size:0.7rem;" onclick="leaveToSetup()">Tables</button>
       </div>
     </div>
 
@@ -828,30 +830,30 @@
   </section>
 
   <!-- SCREEN 3: LOBBY 15s COUNTDOWN -->
-  <section id="screen-lobby" class="container d-none">
-    <h1 class="section-title" style="font-size:1.3rem;margin-top:8px;">Starting Soon</h1>
+  <section id="screen-lobby" class="container d-none" style="padding-left:10px;padding-right:10px;">
+    <h1 class="section-title" style="font-size:1.2rem;margin-top:6px;">Starting Soon</h1>
     <div class="lobby-hero-card">
       <div class="countdown-ring" id="lobby-countdown-ring">
         <div class="countdown-ring-inner" id="lobby-timer">15s</div>
       </div>
       <div style="flex:1;">
-        <div style="font-size:0.74rem;color:var(--text-muted);font-weight:700;">Winner prize (80% pool)</div>
-        <div style="font-size:1.45rem;font-weight:900;color:var(--accent-gold);line-height:1.1;" id="lobby-prize-pool">0.00 ETB</div>
-        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;" id="lobby-player-count">Players Joined: 1</div>
+        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;">Winner prize (80% pool)</div>
+        <div style="font-size:1.35rem;font-weight:900;color:var(--accent-gold);line-height:1.1;" id="lobby-prize-pool">0.00 ETB</div>
+        <div style="font-size:0.74rem;color:var(--text-muted);margin-top:2px;" id="lobby-player-count">Players Joined: 1</div>
       </div>
     </div>
     <div class="card-panel">
-      <div style="font-weight:800;font-size:0.84rem;margin-bottom:4px;">Your Reserved Cartelas</div>
+      <div style="font-weight:800;font-size:0.8rem;margin-bottom:3px;">Your Reserved Cartelas</div>
       <div id="lobby-cartelas-preview" class="mini-preview-strip"></div>
     </div>
     <div class="lobby-actions-row">
-      <button type="button" class="btn-gold" style="padding:10px;font-size:0.9rem;" onclick="playAgainQuick()">New Round</button>
-      <button type="button" class="btn-secondary-dark" style="padding:10px;font-size:0.9rem;" onclick="leaveToSetup()">Leave Lobby</button>
+      <button type="button" class="btn-gold" style="padding:9px;font-size:0.86rem;" onclick="playAgainQuick()">New Round</button>
+      <button type="button" class="btn-secondary-dark" style="padding:9px;font-size:0.86rem;" onclick="leaveToSetup()">Leave Lobby</button>
     </div>
   </section>
 
   <!-- SCREEN 4: ACTIVE PLAYROOM -->
-  <section id="screen-playroom" class="container" style="padding-left:10px;padding-right:10px;">
+  <section id="screen-playroom" class="container d-none" style="padding-left:10px;padding-right:10px;">
     <div class="caller-card" style="margin-top:6px;">
       <div class="featured-ball-ring">
         <div class="featured-ball-core">
@@ -866,7 +868,7 @@
         <div><strong id="play-derash">0</strong><span class="lbl">ETB prize</span></div>
         <div><strong id="play-calls">0/75</strong><span class="lbl">called</span></div>
         <div><strong id="play-cartelas-count">1</strong><span class="lbl">cartelas</span></div>
-        <button id="sound-toggle" class="btn-secondary-dark" style="width:30px;height:30px;border-radius:50%;font-size:0.78rem;padding:0;" onclick="toggleSound()">🔊</button>
+        <button id="sound-toggle" class="btn-secondary-dark" style="width:28px;height:28px;border-radius:50%;font-size:0.74rem;padding:0;" onclick="toggleSound()">🔊</button>
       </div>
     </div>
 
@@ -889,12 +891,12 @@
     <div id="play-master-grid" class="master-rows-wrap"></div>
 
     <div class="playroom-footer-bar">
-      <label style="display:flex;align-items:center;gap:5px;font-size:0.76rem;cursor:pointer;margin:0;">
+      <label style="display:flex;align-items:center;gap:5px;font-size:0.74rem;cursor:pointer;margin:0;">
         <input type="checkbox" id="auto-checkbox" checked onchange="toggleAutoMode()">
         <span>Auto <strong id="auto-status-label" style="color:#4ade80;">ON</strong></span>
       </label>
-      <span style="font-size:0.72rem;color:var(--text-muted);">Game <strong id="play-game-code">--</strong></span>
-      <button class="btn-secondary-dark" style="padding:4px 10px;font-size:0.72rem;" onclick="leaveToSetup()">Exit</button>
+      <span style="font-size:0.7rem;color:var(--text-muted);">Game <strong id="play-game-code">--</strong></span>
+      <button class="btn-secondary-dark" style="padding:4px 9px;font-size:0.7rem;" onclick="leaveToSetup()">Exit</button>
     </div>
   </section>
 
@@ -910,9 +912,9 @@
   <section id="screen-wallet" class="container d-none">
     <h1 class="section-title">Wallet</h1>
     <div class="card-panel">
-      <div style="font-size:2rem;font-weight:900;" id="wallet-withdrawable">0.00 ETB</div>
-      <div style="color:var(--accent-green);font-weight:700;font-size:0.88rem;margin-bottom:10px;">Can be withdrawn</div>
-      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--line-border);padding-top:10px;font-size:0.9rem;">
+      <div style="font-size:1.8rem;font-weight:900;" id="wallet-withdrawable">0.00 ETB</div>
+      <div style="color:var(--accent-green);font-weight:700;font-size:0.84rem;margin-bottom:8px;">Can be withdrawn</div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--line-border);padding-top:8px;font-size:0.86rem;">
         <span style="color:var(--text-muted);">Play credits</span>
         <strong id="wallet-balance">0.00 ETB</strong>
       </div>
@@ -929,11 +931,11 @@
     <h1 class="section-title">Profile</h1>
     <div class="card-panel" style="text-align:center;">
       <div class="profile-badge-circle" id="profile-avatar">P</div>
-      <div style="font-size:1.2rem;font-weight:800;" id="profile-name">Player</div>
-      <div style="color:var(--accent-green);font-size:0.85rem;margin-top:2px;">Verified player</div>
-      <div style="color:var(--text-muted);font-size:0.78rem;margin-top:4px;">ID: <span id="profile-id">--</span></div>
-      <div style="margin-top:12px;">
-        <button type="button" class="btn-gold" style="padding:9px 12px;font-size:0.86rem;" onclick="shareInviteLink()">
+      <div style="font-size:1.15rem;font-weight:800;" id="profile-name">Player</div>
+      <div style="color:var(--accent-green);font-size:0.82rem;margin-top:2px;">Verified player</div>
+      <div style="color:var(--text-muted);font-size:0.76rem;margin-top:4px;">ID: <span id="profile-id">--</span></div>
+      <div style="margin-top:10px;">
+        <button type="button" class="btn-gold" style="padding:8px 12px;font-size:0.82rem;" onclick="shareInviteLink()">
           Copy Invite Link
         </button>
       </div>
@@ -943,9 +945,9 @@
   <!-- WINNER MODAL WITH PLAY AGAIN + LEAVE LOBBY -->
   <div id="winner-modal" class="modal-backdrop-custom d-none">
     <div class="modal-box-custom">
-      <div style="color:var(--text-muted);font-weight:800;font-size:0.85rem;">Bingo</div>
+      <div style="color:var(--text-muted);font-weight:800;font-size:0.82rem;">Bingo</div>
       <div id="winner-top-name" class="winner-top-name">Winner</div>
-      <div id="winner-list-banner" style="color:var(--accent-gold);font-weight:900;font-size:1rem;margin-top:2px;">0 ETB</div>
+      <div id="winner-list-banner" style="color:var(--accent-gold);font-weight:900;font-size:0.96rem;margin-top:2px;">0 ETB</div>
 
       <div class="winning-board-card">
         <div class="top-stripe"></div>
@@ -964,8 +966,8 @@
       </div>
 
       <div class="lobby-actions-row">
-        <button type="button" class="btn-gold" style="padding:9px;font-size:0.88rem;" onclick="playAgainFromModal()">Play Again</button>
-        <button type="button" class="btn-secondary-dark" style="padding:9px;font-size:0.88rem;" onclick="leaveLobbyFromModal()">Leave Lobby</button>
+        <button type="button" class="btn-gold" style="padding:8px;font-size:0.84rem;" onclick="playAgainFromModal()">Play Again</button>
+        <button type="button" class="btn-secondary-dark" style="padding:8px;font-size:0.84rem;" onclick="leaveLobbyFromModal()">Leave Lobby</button>
       </div>
     </div>
   </div>
@@ -1238,7 +1240,6 @@
       pollSetupRoomStatus();
     }
 
-    // Resets selection and returns to table/cartela screen without pre-selecting or auto-starting
     function playAgainQuick() {
       leaveToSetup();
     }
@@ -1556,7 +1557,6 @@
       roomPollInterval = setInterval(tick, 1500);
     }
 
-    // Only updates setup screen prize/taken cartelas; never forces wait-active before selecting a cartela
     function pollSetupRoomStatus() {
       if (currentRoomId) return;
       const gameSec = document.getElementById('screen-game');
