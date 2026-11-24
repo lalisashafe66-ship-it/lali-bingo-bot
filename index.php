@@ -465,13 +465,23 @@
       line-height: 1.1;
     }
 
+    .play-cartelas-list {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin-bottom: 7px;
+    }
+
     .light-cartela-box {
       background: #f8fafc;
       color: #0f172a;
       border-radius: 13px;
       overflow: hidden;
-      margin-bottom: 7px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    .light-cartela-box.has-win {
+      border: 2px solid var(--accent-gold);
     }
 
     .light-cartela-hdr {
@@ -500,7 +510,7 @@
     }
 
     .bingo-cell {
-      height: 28px;
+      height: 27px;
       border-radius: 7px;
       background: #e2e8f0;
       color: #0f172a;
@@ -508,7 +518,7 @@
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       line-height: 1;
     }
 
@@ -872,21 +882,7 @@
       </div>
     </div>
 
-    <div class="light-cartela-box">
-      <div class="top-stripe"></div>
-      <div class="light-cartela-hdr">
-        <span>Smart Bingo</span>
-        <span id="active-cartela-badge">#1</span>
-      </div>
-      <div class="bingo-5col" style="padding-bottom:3px;gap:2px;">
-        <div class="bingo-head" style="background:#f59e0b;">B</div>
-        <div class="bingo-head" style="background:#ef4444;">I</div>
-        <div class="bingo-head" style="background:#06b6d4;">N</div>
-        <div class="bingo-head" style="background:#22c55e;">G</div>
-        <div class="bingo-head" style="background:#a855f7;">O</div>
-      </div>
-      <div id="board" class="bingo-5col"></div>
-    </div>
+    <div id="play-cartelas-container" class="play-cartelas-list"></div>
 
     <div id="play-master-grid" class="master-rows-wrap"></div>
 
@@ -1046,12 +1042,10 @@
     let selectedCartelaNumbers = [];
     let lastJoinedCartelas = [];
     let takenCartelas = [];
+    let activePlayCartelas = []; // [{ number, board, marked }]
     let currentRoomId = null;
     let currentGameCode = '--';
     let currentDerash = 0;
-    let activeCartelaNumber = 1;
-    let card = [];
-    let marked = Array(25).fill(false);
     let calledNumbers = [];
     let lastAnnouncedNumber = null;
     let autoMode = true;
@@ -1115,6 +1109,19 @@
         if (ok) return line;
       }
       return null;
+    }
+
+    function initActivePlayCartelas(numbers) {
+      const list = (Array.isArray(numbers) && numbers.length > 0) ? numbers : [1];
+      activePlayCartelas = list.map(num => {
+        const m = Array(25).fill(false);
+        m[12] = true;
+        return {
+          number: num,
+          board: generateDeterministicCard(num),
+          marked: m
+        };
+      });
     }
 
     function updateCountdownRing(ringId, secs, maxSecs = 15) {
@@ -1214,9 +1221,7 @@
       selectedCartelaNumbers = [];
       lastJoinedCartelas = [];
       takenCartelas = [];
-      card = [];
-      marked = Array(25).fill(false);
-      marked[12] = true;
+      activePlayCartelas = [];
       calledNumbers = [];
       lastAnnouncedNumber = null;
       updatePlayButtonLabel();
@@ -1262,7 +1267,7 @@
       }
       box.innerHTML = gameHistory.map(item => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-border);font-size:0.84rem;">
-          <div><strong>Game ${item.code}</strong> <span style="color:var(--text-muted);margin-left:6px;">Cartela #${item.board}</span></div>
+          <div><strong>Game ${item.code}</strong> <span style="color:var(--text-muted);margin-left:6px;">Cartela ${item.board}</span></div>
           <strong style="color:${item.won ? '#4ade80' : 'var(--accent-gold)'};">${item.status}</strong>
         </div>
       `).join('');
@@ -1362,20 +1367,41 @@
       }
     }
 
-    function renderPlayerCard(winLine = null) {
-      const boardEl = document.getElementById('board');
-      boardEl.innerHTML = '';
-      const winSet = new Set(Array.isArray(winLine) ? winLine : []);
-      card.forEach((num, idx) => {
-        const cell = document.createElement('div');
-        const isFree = idx === 12;
-        const isMarked = isFree || marked[idx];
-        const isWinCell = winSet.has(idx);
-        cell.className = 'bingo-cell' +
-          (isWinCell ? ' win-highlight' : (isFree ? ' free' : (isMarked ? ' marked' : '')));
-        cell.textContent = isFree ? '★' : num;
-        boardEl.appendChild(cell);
-      });
+    function renderAllPlayroomCartelas() {
+      const container = document.getElementById('play-cartelas-container');
+      if (!container) return;
+      const calledSet = new Set(calledNumbers);
+
+      container.innerHTML = activePlayCartelas.map(item => {
+        const winLine = hasWinningLineClient(item.board, calledSet);
+        const winSet = new Set(Array.isArray(winLine) ? winLine : []);
+        const cellsHtml = item.board.map((num, idx) => {
+          const isFree = idx === 12;
+          const isMarked = isFree || item.marked[idx];
+          const isWinCell = winSet.has(idx);
+          const cls = 'bingo-cell' +
+            (isWinCell ? ' win-highlight' : (isFree ? ' free' : (isMarked ? ' marked' : '')));
+          return `<div class="${cls}">${isFree ? '★' : num}</div>`;
+        }).join('');
+
+        return `
+          <div class="light-cartela-box${winLine ? ' has-win' : ''}">
+            <div class="top-stripe"></div>
+            <div class="light-cartela-hdr">
+              <span>Smart Bingo${winLine ? ' — LINE!' : ''}</span>
+              <span>#${item.number}</span>
+            </div>
+            <div class="bingo-5col" style="padding-bottom:3px;gap:2px;">
+              <div class="bingo-head" style="background:#f59e0b;">B</div>
+              <div class="bingo-head" style="background:#ef4444;">I</div>
+              <div class="bingo-head" style="background:#06b6d4;">N</div>
+              <div class="bingo-head" style="background:#22c55e;">G</div>
+              <div class="bingo-head" style="background:#a855f7;">O</div>
+            </div>
+            <div class="bingo-5col">${cellsHtml}</div>
+          </div>
+        `;
+      }).join('');
     }
 
     function toggleAutoMode() {
@@ -1397,6 +1423,7 @@
       sounds.winFanfare();
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
+      const fallbackCartelaNum = (activePlayCartelas[0] && activePlayCartelas[0].number) || 1;
       const topNameEl = document.getElementById('winner-top-name');
       const banner = document.getElementById('winner-list-banner');
       const didIWin = Array.isArray(winners) && winners.some(w => String(w.telegram_id) === String(telegramId));
@@ -1418,12 +1445,12 @@
       const firstWinner = (winners && winners.length > 0) ? winners[0] : null;
       const winBoard = (firstWinner && Array.isArray(firstWinner.board) && firstWinner.board.length === 25)
         ? firstWinner.board
-        : generateDeterministicCard(activeCartelaNumber);
+        : generateDeterministicCard(fallbackCartelaNum);
       const winLineSet = new Set((firstWinner && Array.isArray(firstWinner.winning_line)) ? firstWinner.winning_line : []);
       const calledSet = new Set((roomObj && Array.isArray(roomObj.called_numbers)) ? roomObj.called_numbers : calledNumbers);
 
       document.getElementById('winner-board-title').textContent =
-        firstWinner ? `#${firstWinner.cartela_number}` : `#${activeCartelaNumber}`;
+        firstWinner ? `#${firstWinner.cartela_number}` : `#${fallbackCartelaNum}`;
 
       const grid = document.getElementById('winner-board-grid');
       grid.innerHTML = '';
@@ -1438,9 +1465,10 @@
         grid.appendChild(cell);
       });
 
+      const playedLabel = activePlayCartelas.map(c => `#${c.number}`).join(', ') || `#${fallbackCartelaNum}`;
       gameHistory.unshift({
         code: currentGameCode,
-        board: firstWinner ? firstWinner.cartela_number : activeCartelaNumber,
+        board: firstWinner ? `#${firstWinner.cartela_number}` : playedLabel,
         won: didIWin,
         status: didIWin ? `Won +${Number((myEntry && myEntry.prize) || 0).toFixed(2)} ETB` : 'Finished'
       });
@@ -1483,8 +1511,7 @@
       document.getElementById('play-game-code').textContent = currentGameCode;
       document.getElementById('play-derash').textContent = currentDerash.toFixed(0);
       document.getElementById('play-calls').textContent = `${arr.length}/75`;
-      document.getElementById('play-cartelas-count').textContent = `${Math.max(1, selectedCartelaNumbers.length)}`;
-      document.getElementById('active-cartela-badge').textContent = `#${activeCartelaNumber}`;
+      document.getElementById('play-cartelas-count').textContent = `${Math.max(1, activePlayCartelas.length)}`;
       document.getElementById('play-featured-letter').textContent = latest !== null ? getBallLetter(latest) : '--';
       document.getElementById('play-featured-num').textContent = latest !== null ? latest : '--';
 
@@ -1499,18 +1526,18 @@
       renderHorizontalMasterBoard('play-master-grid', new Set(arr), latest);
 
       const calledSet = new Set(calledNumbers);
-      let changed = false;
-      card.forEach((num, idx) => {
-        if (idx !== 12 && calledSet.has(num) && !marked[idx]) {
-          marked[idx] = true;
-          changed = true;
-        }
+      let anyNewMatch = false;
+      activePlayCartelas.forEach(item => {
+        item.board.forEach((num, idx) => {
+          if (idx !== 12 && calledSet.has(num) && !item.marked[idx]) {
+            item.marked[idx] = true;
+            anyNewMatch = true;
+          }
+        });
       });
-      const winLine = hasWinningLineClient(card, calledSet);
-      if (changed || winLine) {
-        if (changed) sounds.daubMatch();
-        renderPlayerCard(winLine);
-      }
+
+      if (anyNewMatch) sounds.daubMatch();
+      renderAllPlayroomCartelas();
     }
 
     function startRoomPolling(roomId) {
@@ -1539,13 +1566,9 @@
               document.getElementById('lobby-player-count').textContent = `Players Joined: ${room.players_count || 1}`;
               renderMiniCartelaPreviews('lobby-cartelas-preview', selectedCartelaNumbers);
             } else if (room.status === 'active') {
-              if (card.length !== 25) {
-                activeCartelaNumber = selectedCartelaNumbers[0] || 1;
-                card = generateDeterministicCard(activeCartelaNumber);
-                marked = Array(25).fill(false);
-                marked[12] = true;
+              if (activePlayCartelas.length === 0) {
+                initActivePlayCartelas(selectedCartelaNumbers);
                 lastAnnouncedNumber = null;
-                renderPlayerCard();
               }
               renderPlayroomScreen(room);
             }
@@ -1641,9 +1664,7 @@
 
           lastJoinedCartelas = [...selectedCartelaNumbers];
           if (data.new_balance !== undefined) updateBalanceUI(data.new_balance);
-          card = [];
-          marked = Array(25).fill(false);
-          marked[12] = true;
+          initActivePlayCartelas(selectedCartelaNumbers);
           winnerModalShownForRoom = null;
           startRoomPolling(data.room_id);
         })
