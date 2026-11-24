@@ -350,7 +350,14 @@ function buildBonusAlertKeyboard(string $targetSpec = 'all'): array {
     ];
 }
 
-function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, float $amount, string $note = 'Admin Bonus Alert'): array {
+function notifyAndDepositBonus(
+    PDO $pdo,
+    string $token,
+    string $targetPlayerId,
+    float $amount,
+    string $note = 'Admin Bonus Alert',
+    string $customMessage = 'Hello dear today we have a bonus'
+): array {
     $targetPlayerId = trim($targetPlayerId);
     $amount = round($amount, 2);
 
@@ -391,14 +398,14 @@ function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, 
 
         $amtStr   = number_format($amount, 2);
         $afterStr = number_format($after, 2);
+        $headline = trim($customMessage) !== '' ? trim($customMessage) : 'Hello dear today we have a bonus';
 
         addLedger($pdo, $canonicalId, null, 'bonus_deposit', $amount, $before, $after, "{$note} (+{$amtStr} ETB bonus alert)");
 
-        $alertMsg = "SMART BINGO — Bonus Alert!\n\n"
+        $alertMsg = "{$headline}\n\n"
                   . "Player: {$playerName}\n"
-                  . "Bonus Alert Amount: +{$amtStr} ETB\n"
-                  . "Reason: {$note}\n\n"
-                  . "Your +{$amtStr} ETB bonus has been deposited into your balance (New Balance: {$afterStr} ETB).";
+                  . "Bonus Amount: +{$amtStr} ETB\n"
+                  . "New Balance: {$afterStr} ETB";
 
         $notified = sendPlayerNotification($pdo, $token, $canonicalId, $alertMsg);
 
@@ -415,7 +422,13 @@ function notifyAndDepositBonus(PDO $pdo, string $token, string $targetPlayerId, 
     }
 }
 
-function sendBonusAlertToTarget(PDO $pdo, string $token, string $targetSpec, float $amount, string $note = 'Admin Bonus Alert'): array {
+function sendBonusAlertToTarget(
+    PDO $pdo,
+    string $token,
+    string $targetSpec,
+    float $amount,
+    string $note = 'Hello dear today we have a bonus'
+): array {
     $allowedAmounts = [10.00, 20.00, 50.00];
     $amount = round($amount, 2);
     if (!in_array($amount, $allowedAmounts, true)) {
@@ -430,7 +443,7 @@ function sendBonusAlertToTarget(PDO $pdo, string $token, string $targetSpec, flo
     }
 
     if (count($playerIds) === 1 && !in_array($normalizedTarget, ['all', 'new', 'zero'], true)) {
-        $res = notifyAndDepositBonus($pdo, $token, (string)$playerIds[0], $amount, $note);
+        $res = notifyAndDepositBonus($pdo, $token, (string)$playerIds[0], $amount, 'Admin Bonus Alert', $note);
         $res['mode'] = 'single';
         return $res;
     }
@@ -439,7 +452,7 @@ function sendBonusAlertToTarget(PDO $pdo, string $token, string $targetSpec, flo
     $notifiedCount = 0;
     $lastError = '';
     foreach ($playerIds as $pid) {
-        $res = notifyAndDepositBonus($pdo, $token, (string)$pid, $amount, $note);
+        $res = notifyAndDepositBonus($pdo, $token, (string)$pid, $amount, 'Admin Bonus Alert', $note);
         if (!empty($res['ok'])) {
             $successCount++;
             if (!empty($res['notified'])) {
@@ -839,7 +852,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
         if ($parsed['kind'] === 'bonus_alert') {
             $bonusAmt = (float)$parsed['amount'];
             $target   = (string)$parsed['target'];
-            $res = sendBonusAlertToTarget($pdo, $token, $target, $bonusAmt, 'Admin Bonus Alert');
+            $res = sendBonusAlertToTarget($pdo, $token, $target, $bonusAmt, 'Hello dear today we have a bonus');
 
             if (empty($res['ok'])) {
                 throw new RuntimeException((string)($res['error'] ?? 'Bonus alert failed'));
@@ -1214,7 +1227,7 @@ try {
     } elseif ($isAdmin && preg_match('/^\/bonus(10|20|50)\s+([a-zA-Z0-9_-]+)(?:\s+(.+))?$/i', $text, $quickBonusMatch)) {
         $amt = (float)$quickBonusMatch[1];
         $targetSpec = (string)$quickBonusMatch[2];
-        $note = trim((string)($quickBonusMatch[3] ?? 'Admin Bonus Alert'));
+        $note = trim((string)($quickBonusMatch[3] ?? 'Hello dear today we have a bonus'));
 
         $res = sendBonusAlertToTarget($pdo, $token, $targetSpec, $amt, $note);
         if (!empty($res['ok'])) {
