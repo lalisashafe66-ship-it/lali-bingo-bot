@@ -26,7 +26,7 @@
 
     body {
       margin: 0;
-      padding: 0 0 92px 0;
+      padding: 0 0 82px 0;
       background: radial-gradient(circle at top, #17434b 0%, var(--bg-deep) 70%);
       color: var(--text-main);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -37,7 +37,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 16px;
+      padding: 9px 14px;
       background: rgba(11, 36, 41, 0.94);
       backdrop-filter: blur(10px);
       position: sticky;
@@ -46,7 +46,7 @@
     }
 
     .top-stripe {
-      height: 8px;
+      height: 6px;
       background: repeating-linear-gradient(
         135deg,
         var(--accent-gold) 0px,
@@ -61,12 +61,12 @@
       align-items: center;
       gap: 8px;
       font-weight: 900;
-      font-size: 1.08rem;
+      font-size: 1rem;
     }
 
     .brand-diamond {
-      width: 13px;
-      height: 13px;
+      width: 12px;
+      height: 12px;
       transform: rotate(45deg);
       background: var(--accent-gold);
       box-shadow: 0 0 10px rgba(245, 183, 0, 0.65);
@@ -79,7 +79,7 @@
 
     .balance-label {
       display: block;
-      font-size: 0.7rem;
+      font-size: 0.66rem;
       color: var(--text-muted);
       line-height: 1.1;
     }
@@ -89,22 +89,22 @@
       border: none;
       color: var(--accent-gold);
       font-weight: 900;
-      font-size: 1.02rem;
+      font-size: 0.96rem;
       padding: 0;
       cursor: pointer;
     }
 
     .section-title {
-      font-size: 1.55rem;
+      font-size: 1.5rem;
       font-weight: 900;
-      margin: 14px 0 6px;
+      margin: 12px 0 6px;
       line-height: 1.15;
     }
 
     .section-sub {
       color: var(--text-muted);
-      font-size: 0.92rem;
-      margin-bottom: 14px;
+      font-size: 0.9rem;
+      margin-bottom: 12px;
       line-height: 1.4;
     }
 
@@ -137,9 +137,9 @@
     .card-panel {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
-      border-radius: 18px;
-      padding: 14px;
-      margin-bottom: 14px;
+      border-radius: 16px;
+      padding: 12px;
+      margin-bottom: 12px;
     }
 
     .table-card {
@@ -150,8 +150,8 @@
       background: var(--bg-card);
       border: 2px solid var(--line-border);
       border-radius: 16px;
-      padding: 14px 16px;
-      margin-bottom: 12px;
+      padding: 13px 15px;
+      margin-bottom: 10px;
       cursor: pointer;
       transition: all 0.15s ease;
     }
@@ -164,28 +164,28 @@
     .table-card input[type="radio"] { display: none; }
 
     .table-big-amt {
-      font-size: 2.1rem;
+      font-size: 2rem;
       font-weight: 900;
       line-height: 1;
-      min-width: 52px;
+      min-width: 50px;
       text-align: center;
     }
 
     .table-meta-title {
       font-weight: 900;
-      font-size: 1rem;
+      font-size: 0.98rem;
       color: #fff;
     }
 
     .table-meta-sub {
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       color: var(--text-muted);
       margin-top: 2px;
     }
 
     .radio-ring {
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
       border-radius: 50%;
       border: 2px solid var(--text-muted);
       display: flex;
@@ -198,8 +198,8 @@
 
     .table-card.selected .radio-ring::after {
       content: "";
-      width: 12px;
-      height: 12px;
+      width: 11px;
+      height: 11px;
       border-radius: 50%;
       background: var(--accent-gold);
     }
@@ -208,14 +208,14 @@
       display: flex;
       align-items: center;
       gap: 18px;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 700;
-      margin: 4px 0 10px;
+      margin: 4px 0 8px;
     }
 
     .legend-dot {
-      width: 12px;
-      height: 12px;
+      width: 11px;
+      height: 11px;
       border-radius: 50%;
       display: inline-block;
       margin-right: 6px;
@@ -226,7 +226,7 @@
     .legend-dot.taken { background: var(--bg-card-soft); border: 1px solid var(--line-border); }
 
     .cartela-picker-scroll {
-      max-height: 250px;
+      max-height: 230px;
       overflow-y: auto;
       padding: 6px;
       border-radius: 14px;
@@ -245,7 +245,7 @@
       background: var(--bg-card-soft);
       border: 1px solid var(--line-border);
       color: var(--text-main);
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       font-weight: 800;
       display: flex;
       align-items: center;
@@ -270,17 +270,17 @@
 
     .mini-preview-strip {
       display: flex;
-      gap: 10px;
+      gap: 8px;
       overflow-x: auto;
       padding-bottom: 4px;
-      margin-top: 10px;
+      margin-top: 8px;
     }
 
     .mini-cartela-card {
-      min-width: 162px;
+      min-width: 148px;
       background: #f8fafc;
       color: #0f172a;
-      border-radius: 14px;
+      border-radius: 12px;
       overflow: hidden;
       border: 2px solid var(--accent-gold);
       flex-shrink: 0;
@@ -294,23 +294,23 @@
         #0f766e 8px,
         #0f766e 16px
       );
-      height: 7px;
+      height: 5px;
     }
 
     .mini-cartela-hdr {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 5px 9px 3px;
-      font-size: 0.74rem;
+      padding: 4px 8px 2px;
+      font-size: 0.7rem;
       font-weight: 900;
     }
 
     .mini-5x5 {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 3px;
-      padding: 4px 8px 8px;
+      gap: 2px;
+      padding: 3px 6px 6px;
     }
 
     .mini-cell {
@@ -318,7 +318,7 @@
       border-radius: 50%;
       background: #e2e8f0;
       color: #0f172a;
-      font-size: 0.6rem;
+      font-size: 0.56rem;
       font-weight: 800;
       display: flex;
       align-items: center;
@@ -336,10 +336,10 @@
       background: var(--accent-gold);
       color: #111827;
       font-weight: 900;
-      font-size: 1rem;
+      font-size: 0.98rem;
       border: none;
       border-radius: 14px;
-      padding: 13px 16px;
+      padding: 12px 16px;
       cursor: pointer;
     }
 
@@ -349,7 +349,7 @@
       background: var(--bg-card-soft);
       color: var(--text-main);
       border: 1px solid var(--line-border);
-      border-radius: 12px;
+      border-radius: 11px;
       font-weight: 700;
       cursor: pointer;
     }
@@ -357,25 +357,26 @@
     .lobby-actions-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
+      gap: 8px;
       margin-top: 8px;
     }
 
+    /* COMPACT CALLER & PLAYROOM STYLES */
     .caller-card {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
-      border-radius: 22px;
-      padding: 16px 14px;
-      margin-bottom: 12px;
+      border-radius: 16px;
+      padding: 10px 10px 8px;
+      margin-bottom: 8px;
       text-align: center;
     }
 
     .featured-ball-ring {
-      width: 144px;
-      height: 144px;
+      width: 84px;
+      height: 84px;
       border-radius: 50%;
-      margin: 0 auto 14px;
-      padding: 10px;
+      margin: 0 auto 8px;
+      padding: 6px;
       background: conic-gradient(
         #ef4444 0deg 60deg,
         #f59e0b 60deg 120deg,
@@ -402,107 +403,111 @@
     }
 
     .featured-ball-letter {
-      font-size: 1rem;
+      font-size: 0.72rem;
       font-weight: 900;
       color: #c084fc;
-      margin-bottom: 2px;
+      margin-bottom: 1px;
     }
 
     .featured-ball-num {
-      font-size: 2.8rem;
+      font-size: 1.65rem;
       font-weight: 900;
       color: #ffffff;
     }
 
     .recent-balls-row {
       display: flex;
-      gap: 8px;
+      gap: 5px;
       justify-content: center;
       align-items: center;
-      flex-wrap: wrap;
-      margin-bottom: 14px;
+      flex-wrap: nowrap;
+      margin-bottom: 8px;
     }
 
     .recent-ball {
-      width: 40px;
-      height: 40px;
+      width: 28px;
+      height: 28px;
       border-radius: 50%;
       background: #0d2b31;
-      border: 2px solid var(--accent-gold);
+      border: 1.5px solid var(--accent-gold);
       color: #ffffff;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      font-size: 0.86rem;
+      font-size: 0.72rem;
+      flex-shrink: 0;
     }
 
     .stats-strip-3 {
       display: grid;
       grid-template-columns: repeat(3, 1fr) auto;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
       border-top: 1px solid var(--line-border);
-      padding-top: 10px;
-      font-size: 0.84rem;
+      padding-top: 6px;
+      font-size: 0.76rem;
     }
 
     .stats-strip-3 strong {
       display: block;
-      font-size: 1.02rem;
+      font-size: 0.88rem;
       font-weight: 900;
       color: #fff;
+      line-height: 1.1;
     }
 
     .stats-strip-3 span.lbl {
-      font-size: 0.72rem;
+      font-size: 0.64rem;
       color: var(--text-muted);
+      line-height: 1.1;
     }
 
     .light-cartela-box {
       background: #f8fafc;
       color: #0f172a;
-      border-radius: 18px;
+      border-radius: 14px;
       overflow: hidden;
-      margin-bottom: 12px;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+      margin-bottom: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     }
 
     .light-cartela-hdr {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.86rem;
+      font-size: 0.76rem;
       font-weight: 900;
-      padding: 8px 12px;
+      padding: 4px 10px;
     }
 
     .bingo-5col {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 6px;
-      padding: 0 10px 10px;
+      gap: 3px;
+      padding: 0 8px 7px;
     }
 
     .bingo-head {
       text-align: center;
       font-weight: 900;
-      font-size: 0.82rem;
+      font-size: 0.72rem;
       color: #fff;
-      border-radius: 8px;
-      padding: 5px 0;
+      border-radius: 6px;
+      padding: 2px 0;
     }
 
     .bingo-cell {
-      aspect-ratio: 1 / 1;
-      border-radius: 50%;
+      height: 30px;
+      border-radius: 8px;
       background: #e2e8f0;
       color: #0f172a;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 0.9rem;
+      font-size: 0.8rem;
+      line-height: 1;
     }
 
     .bingo-cell.free,
@@ -522,25 +527,25 @@
     .master-rows-wrap {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
-      border-radius: 16px;
-      padding: 10px;
-      margin-bottom: 12px;
+      border-radius: 12px;
+      padding: 6px 7px;
+      margin-bottom: 8px;
     }
 
     .master-letter-row {
       display: grid;
-      grid-template-columns: 24px repeat(15, 1fr);
-      gap: 3px;
+      grid-template-columns: 18px repeat(15, 1fr);
+      gap: 2px;
       align-items: center;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .master-letter-row:last-child { margin-bottom: 0; }
 
     .master-row-tag {
-      height: 20px;
-      border-radius: 5px;
-      font-size: 0.72rem;
+      height: 15px;
+      border-radius: 4px;
+      font-size: 0.62rem;
       font-weight: 900;
       color: #fff;
       display: flex;
@@ -549,15 +554,16 @@
     }
 
     .master-num-pill {
-      height: 20px;
-      border-radius: 5px;
+      height: 15px;
+      border-radius: 4px;
       background: rgba(255, 255, 255, 0.08);
       color: var(--text-muted);
-      font-size: 0.64rem;
+      font-size: 0.56rem;
       font-weight: 700;
       display: flex;
       align-items: center;
       justify-content: center;
+      line-height: 1;
     }
 
     .master-num-pill.called {
@@ -566,27 +572,36 @@
       font-weight: 900;
     }
 
+    .playroom-footer-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+      padding: 0 2px;
+    }
+
     .lobby-hero-card {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
-      border-radius: 18px;
-      padding: 14px;
-      margin-bottom: 12px;
+      border-radius: 16px;
+      padding: 12px;
+      margin-bottom: 10px;
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
     }
 
     .countdown-ring {
-      width: 74px;
-      height: 74px;
+      width: 66px;
+      height: 66px;
       border-radius: 50%;
       background: conic-gradient(var(--accent-gold) 0deg, rgba(255, 255, 255, 0.14) 0deg);
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      padding: 6px;
+      padding: 5px;
     }
 
     .countdown-ring-inner {
@@ -598,7 +613,7 @@
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      font-size: 1.12rem;
+      font-size: 1rem;
       color: #fff;
     }
 
@@ -621,17 +636,17 @@
     .wallet-action-btn.withdraw { background: var(--bg-card-soft); color: #fff; border: 1px solid var(--line-border); }
 
     .profile-badge-circle {
-      width: 64px;
-      height: 64px;
+      width: 60px;
+      height: 60px;
       border-radius: 50%;
       background: var(--accent-gold);
       color: #111827;
       font-weight: 900;
-      font-size: 1.6rem;
+      font-size: 1.5rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 0 auto 10px;
+      margin: 0 auto 8px;
     }
 
     .modal-backdrop-custom {
@@ -641,22 +656,22 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 16px;
+      padding: 14px;
       z-index: 100;
     }
 
     .modal-box-custom {
       width: 100%;
-      max-width: 360px;
+      max-width: 350px;
       background: var(--bg-card);
       border: 1px solid rgba(245, 183, 0, 0.55);
-      border-radius: 20px;
-      padding: 18px;
+      border-radius: 18px;
+      padding: 14px;
       text-align: center;
     }
 
     .winner-top-name {
-      font-size: 1.6rem;
+      font-size: 1.35rem;
       font-weight: 900;
       color: #ffffff;
       margin-top: 2px;
@@ -665,27 +680,27 @@
     .winning-board-card {
       background: #f8fafc;
       color: #0f172a;
-      border-radius: 16px;
+      border-radius: 14px;
       overflow: hidden;
-      margin: 12px 0 14px;
+      margin: 8px 0 10px;
       border: 2px solid var(--accent-gold);
     }
 
     .bottom-nav {
       position: fixed;
-      bottom: 10px;
-      left: 12px;
-      right: 12px;
-      height: 64px;
+      bottom: 8px;
+      left: 10px;
+      right: 10px;
+      height: 56px;
       background: #143d45;
       border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 24px;
+      border-radius: 20px;
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      padding: 5px;
+      padding: 4px;
       gap: 4px;
       z-index: 50;
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.42);
     }
 
     .nav-tab {
@@ -694,17 +709,17 @@
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 0.84rem;
+      font-size: 0.78rem;
       color: var(--text-muted);
-      border-radius: 18px;
+      border-radius: 16px;
       cursor: pointer;
     }
 
-    .nav-tab .nav-gem { font-size: 0.55rem; opacity: 0; margin-top: 2px; }
+    .nav-tab .nav-gem { font-size: 0.5rem; opacity: 0; margin-top: 1px; }
     .nav-tab.active {
       background: var(--accent-gold);
       color: #111827;
-      transform: translateY(-3px);
+      transform: translateY(-2px);
     }
     .nav-tab.active .nav-gem { opacity: 1; }
   </style>
@@ -790,8 +805,8 @@
 
   <!-- SCREEN 2: LOBBY WAITING (ACTIVE GAME VISITOR) -->
   <section id="screen-wait-active" class="container d-none">
-    <h1 class="section-title">Next Round Queue</h1>
-    <p class="section-sub" id="wait-active-banner">Please wait until this game ends; you will start in the next round.</p>
+    <h1 class="section-title" style="font-size:1.25rem;margin-top:8px;">Next Round Queue</h1>
+    <p class="section-sub" id="wait-active-banner" style="font-size:0.82rem;margin-bottom:8px;">Please wait until this game ends; you will start in the next round.</p>
 
     <div class="caller-card">
       <div class="featured-ball-ring">
@@ -805,7 +820,7 @@
         <div><strong id="wait-derash">0.00</strong><span class="lbl">ETB prize</span></div>
         <div><strong id="wait-calls">0/75</strong><span class="lbl">called</span></div>
         <div><strong id="wait-game-code">--</strong><span class="lbl">game</span></div>
-        <button type="button" class="btn-secondary-dark" style="padding:6px 10px;font-size:0.75rem;" onclick="leaveToSetup()">Tables</button>
+        <button type="button" class="btn-secondary-dark" style="padding:5px 8px;font-size:0.72rem;" onclick="leaveToSetup()">Tables</button>
       </div>
     </div>
 
@@ -814,30 +829,30 @@
 
   <!-- SCREEN 3: LOBBY 15s COUNTDOWN -->
   <section id="screen-lobby" class="container d-none">
-    <h1 class="section-title">Starting Soon</h1>
-    <div class="lobby-hero-card" style="margin-top:10px;">
+    <h1 class="section-title" style="font-size:1.3rem;margin-top:8px;">Starting Soon</h1>
+    <div class="lobby-hero-card">
       <div class="countdown-ring" id="lobby-countdown-ring">
         <div class="countdown-ring-inner" id="lobby-timer">15s</div>
       </div>
       <div style="flex:1;">
-        <div style="font-size:0.76rem;color:var(--text-muted);font-weight:700;">Winner prize (80% pool)</div>
-        <div style="font-size:1.55rem;font-weight:900;color:var(--accent-gold);line-height:1.1;" id="lobby-prize-pool">0.00 ETB</div>
-        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;" id="lobby-player-count">Players Joined: 1</div>
+        <div style="font-size:0.74rem;color:var(--text-muted);font-weight:700;">Winner prize (80% pool)</div>
+        <div style="font-size:1.45rem;font-weight:900;color:var(--accent-gold);line-height:1.1;" id="lobby-prize-pool">0.00 ETB</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;" id="lobby-player-count">Players Joined: 1</div>
       </div>
     </div>
     <div class="card-panel">
-      <div style="font-weight:800;font-size:0.88rem;margin-bottom:6px;">Your Reserved Cartelas</div>
+      <div style="font-weight:800;font-size:0.84rem;margin-bottom:4px;">Your Reserved Cartelas</div>
       <div id="lobby-cartelas-preview" class="mini-preview-strip"></div>
     </div>
     <div class="lobby-actions-row">
-      <button type="button" class="btn-gold" style="padding:11px;" onclick="playAgainQuick()">Play Again</button>
-      <button type="button" class="btn-secondary-dark" style="padding:11px;" onclick="leaveToSetup()">Leave Lobby</button>
+      <button type="button" class="btn-gold" style="padding:10px;font-size:0.9rem;" onclick="playAgainQuick()">Play Again</button>
+      <button type="button" class="btn-secondary-dark" style="padding:10px;font-size:0.9rem;" onclick="leaveToSetup()">Leave Lobby</button>
     </div>
   </section>
 
   <!-- SCREEN 4: ACTIVE PLAYROOM -->
-  <section id="screen-playroom" class="container d-none">
-    <div class="caller-card" style="margin-top:12px;">
+  <section id="screen-playroom" class="container" style="padding-left:10px;padding-right:10px;">
+    <div class="caller-card" style="margin-top:6px;">
       <div class="featured-ball-ring">
         <div class="featured-ball-core">
           <span class="featured-ball-letter" id="play-featured-letter">--</span>
@@ -851,7 +866,7 @@
         <div><strong id="play-derash">0</strong><span class="lbl">ETB prize</span></div>
         <div><strong id="play-calls">0/75</strong><span class="lbl">called</span></div>
         <div><strong id="play-cartelas-count">1</strong><span class="lbl">cartelas</span></div>
-        <button id="sound-toggle" class="btn-secondary-dark" style="width:38px;height:38px;border-radius:50%;font-size:0.9rem;" onclick="toggleSound()">🔊</button>
+        <button id="sound-toggle" class="btn-secondary-dark" style="width:30px;height:30px;border-radius:50%;font-size:0.78rem;padding:0;" onclick="toggleSound()">🔊</button>
       </div>
     </div>
 
@@ -861,7 +876,7 @@
         <span>Smart Bingo</span>
         <span id="active-cartela-badge">#1</span>
       </div>
-      <div class="bingo-5col" style="padding-bottom:6px;">
+      <div class="bingo-5col" style="padding-bottom:3px;gap:2px;">
         <div class="bingo-head" style="background:#f59e0b;">B</div>
         <div class="bingo-head" style="background:#ef4444;">I</div>
         <div class="bingo-head" style="background:#06b6d4;">N</div>
@@ -873,13 +888,13 @@
 
     <div id="play-master-grid" class="master-rows-wrap"></div>
 
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
-      <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;">
+    <div class="playroom-footer-bar">
+      <label style="display:flex;align-items:center;gap:5px;font-size:0.76rem;cursor:pointer;margin:0;">
         <input type="checkbox" id="auto-checkbox" checked onchange="toggleAutoMode()">
         <span>Auto <strong id="auto-status-label" style="color:#4ade80;">ON</strong></span>
       </label>
-      <span style="font-size:0.78rem;color:var(--text-muted);">Game <strong id="play-game-code">--</strong></span>
-      <button class="btn-secondary-dark" style="padding:6px 12px;font-size:0.78rem;" onclick="leaveToSetup()">Exit</button>
+      <span style="font-size:0.72rem;color:var(--text-muted);">Game <strong id="play-game-code">--</strong></span>
+      <button class="btn-secondary-dark" style="padding:4px 10px;font-size:0.72rem;" onclick="leaveToSetup()">Exit</button>
     </div>
   </section>
 
@@ -928,9 +943,9 @@
   <!-- WINNER MODAL WITH PLAY AGAIN + LEAVE LOBBY -->
   <div id="winner-modal" class="modal-backdrop-custom d-none">
     <div class="modal-box-custom">
-      <div style="color:var(--text-muted);font-weight:800;font-size:0.95rem;">Bingo</div>
+      <div style="color:var(--text-muted);font-weight:800;font-size:0.85rem;">Bingo</div>
       <div id="winner-top-name" class="winner-top-name">Winner</div>
-      <div id="winner-list-banner" style="color:var(--accent-gold);font-weight:900;font-size:1.15rem;margin-top:2px;">0 ETB</div>
+      <div id="winner-list-banner" style="color:var(--accent-gold);font-weight:900;font-size:1rem;margin-top:2px;">0 ETB</div>
 
       <div class="winning-board-card">
         <div class="top-stripe"></div>
@@ -938,7 +953,7 @@
           <span>Winning cartela</span>
           <span id="winner-board-title">#--</span>
         </div>
-        <div class="bingo-5col" style="padding-bottom:6px;">
+        <div class="bingo-5col" style="padding-bottom:3px;gap:2px;">
           <div class="bingo-head" style="background:#f59e0b;">B</div>
           <div class="bingo-head" style="background:#ef4444;">I</div>
           <div class="bingo-head" style="background:#06b6d4;">N</div>
@@ -949,8 +964,8 @@
       </div>
 
       <div class="lobby-actions-row">
-        <button type="button" class="btn-gold" style="padding:11px;" onclick="playAgainFromModal()">Play Again</button>
-        <button type="button" class="btn-secondary-dark" style="padding:11px;" onclick="leaveLobbyFromModal()">Leave Lobby</button>
+        <button type="button" class="btn-gold" style="padding:9px;font-size:0.88rem;" onclick="playAgainFromModal()">Play Again</button>
+        <button type="button" class="btn-secondary-dark" style="padding:9px;font-size:0.88rem;" onclick="leaveLobbyFromModal()">Leave Lobby</button>
       </div>
     </div>
   </div>
