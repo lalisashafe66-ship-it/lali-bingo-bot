@@ -6,7 +6,7 @@ require_once __DIR__ . '/db.php';
 header('Content-Type: text/plain; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo "OK - SmartBingoHub_bot webhook endpoint";
+    echo "OK - Smart_Bingo_Bot webhook endpoint";
     exit;
 }
 
@@ -21,12 +21,11 @@ if (!is_array($update)) {
 
 $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: getenv('BOT_TOKEN') ?: ''));
 $adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: getenv('ADMIN_ID') ?: '730967613'));
-$botUsername = 'SmartBingoHub_bot';
 $webAppUrl = rtrim((string)(getenv('APP_URL') ?: 'https://lali-bingo-bot.onrender.com'), '/') . '/index.php';
 $referralBonusEtb = round((float)(getenv('REFERRAL_BONUS_ETB') ?: '5.00'), 2);
 
 if ($token === '') {
-    error_log("SmartBingoHub_bot: TELEGRAM_BOT_TOKEN is empty");
+    error_log("Smart_Bingo_Bot: TELEGRAM_BOT_TOKEN is empty");
     http_response_code(200);
     echo "MISSING_TOKEN";
     exit;
@@ -56,6 +55,30 @@ function tgPost(string $token, string $method, array $payload): array {
     $decoded = json_decode((string)$resp, true);
     return is_array($decoded) ? $decoded : ['ok' => false, 'raw' => $resp];
 }
+
+function resolveBotUsername(string $token, string $fallback = 'Smart_Bingo_Bot'): string {
+    static $resolved = null;
+    if ($resolved !== null) {
+        return $resolved;
+    }
+
+    $envUsername = trim((string)(getenv('TELEGRAM_BOT_USERNAME') ?: getenv('BOT_USERNAME') ?: ''));
+    if ($envUsername !== '') {
+        $resolved = ltrim($envUsername, '@');
+        return $resolved;
+    }
+
+    $me = tgPost($token, 'getMe', []);
+    if (!empty($me['ok']) && !empty($me['result']['username'])) {
+        $resolved = ltrim((string)$me['result']['username'], '@');
+        return $resolved;
+    }
+
+    $resolved = ltrim($fallback, '@');
+    return $resolved;
+}
+
+$botUsername = resolveBotUsername($token, 'Smart_Bingo_Bot');
 
 function isPostgresPdo(PDO $pdo): bool {
     return strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) === 'pgsql';
@@ -206,7 +229,7 @@ function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId,
         if (!empty($res['ok'])) {
             return true;
         }
-        error_log("SmartBingoHub_bot notify failed for chat {$chatTarget} (player {$targetPlayerId}): " . json_encode($res));
+        error_log("Smart_Bingo_Bot notify failed for chat {$chatTarget} (player {$targetPlayerId}): " . json_encode($res));
     }
 
     return false;
@@ -1296,7 +1319,7 @@ try {
                 $reply = "SMART BINGO — Game Rules\n\n"
                        . "• Pick 1 to 3 cartelas during the lobby countdown.\n"
                        . "• All waiting players start together when the countdown ends.\n"
-                       . "• Up to 2 players can win together and split the 80% Derash pool equally.\n"
+                       . "• Close any row, column, diagonal, or 4 corners to win; up to 2 players can share the 80% Derash pool equally.\n"
                        . "• Late joiners while a game is active wait for the next round.";
                 break;
 
@@ -1350,7 +1373,7 @@ try {
         } catch (Throwable $ignoreRb) {
         }
     }
-    error_log("SmartBingoHub_bot DB error: " . $e->getMessage());
+    error_log("Smart_Bingo_Bot DB error: " . $e->getMessage());
     $reply = "Temporary database error while saving your profile. Please try again.";
 }
 
