@@ -929,7 +929,10 @@
       <div style="font-size:1.15rem;font-weight:800;" id="profile-name">Player</div>
       <div style="color:var(--accent-green);font-size:0.82rem;margin-top:2px;">Verified player</div>
       <div style="color:var(--text-muted);font-size:0.76rem;margin-top:4px;">ID: <span id="profile-id">--</span></div>
-      <div style="margin-top:10px;">
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+        <button type="button" class="btn-secondary-dark" style="padding:8px 12px;font-size:0.82rem;" onclick="promptManualTelegramId()">
+          Set / Update Telegram ID
+        </button>
         <button type="button" class="btn-gold" style="padding:8px 12px;font-size:0.82rem;" onclick="shareInviteLink()">
           Copy Invite Link
         </button>
@@ -1076,11 +1079,8 @@
       }
     }
 
-    function ensureAuthenticatedPlayer() {
-      applyDetectedIdentity();
-      if (telegramId) return true;
-
-      const manualId = prompt('Telegram ID was not auto-detected. Tap "My ID" in the bot and enter your numeric Telegram ID:', '');
+    function promptManualTelegramId() {
+      const manualId = prompt('Tap "My ID" in the bot and enter your numeric Telegram ID:', telegramId || '');
       const cleanManual = String(manualId || '').replace(/\D+/g, '');
       if (cleanManual) {
         telegramId = cleanManual;
@@ -1089,7 +1089,13 @@
         syncBalance();
         return true;
       }
+      return false;
+    }
 
+    function ensureAuthenticatedPlayer() {
+      applyDetectedIdentity();
+      if (telegramId) return true;
+      if (promptManualTelegramId()) return true;
       alert('Please open Smart Bingo inside Telegram so your personal Telegram account is detected.');
       return false;
     }
