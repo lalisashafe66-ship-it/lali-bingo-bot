@@ -108,6 +108,30 @@
       line-height: 1.3;
     }
 
+    .id-assist-box {
+      background: rgba(245, 183, 0, 0.12);
+      border: 1px solid rgba(245, 183, 0, 0.45);
+      border-radius: 12px;
+      padding: 7px 9px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .id-assist-input {
+      flex: 1;
+      min-width: 120px;
+      background: #0b2429;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
     .onboarding-strip {
       background: var(--bg-card);
       border: 1px solid rgba(245, 183, 0, 0.35);
@@ -755,6 +779,12 @@
       Pick up to 3 cartelas. 15s countdown starts once held. 1 line wins 80% (20% fee); single winner per round.
     </p>
 
+    <div id="desktop-id-assist" class="id-assist-box d-none">
+      <span style="font-size:0.72rem;font-weight:800;color:var(--accent-gold);">Telegram ID:</span>
+      <input type="text" id="inline-tg-id-input" class="id-assist-input" placeholder="Enter ID from My ID (e.g. 730967613)" />
+      <button type="button" class="btn-gold" style="width:auto;padding:5px 10px;font-size:0.72rem;" onclick="saveInlineTelegramId()">Save ID</button>
+    </div>
+
     <div class="onboarding-strip">
       <div class="onboarding-step-text">1. Share invite &bull; 2. Deposit ETB &bull; 3. Pick cartela</div>
       <div class="onboarding-btns">
@@ -930,7 +960,7 @@
       <div style="color:var(--accent-green);font-size:0.82rem;margin-top:2px;">Verified player</div>
       <div style="color:var(--text-muted);font-size:0.76rem;margin-top:4px;">ID: <span id="profile-id">--</span></div>
       <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
-        <button type="button" class="btn-secondary-dark" style="padding:8px 12px;font-size:0.82rem;" onclick="promptManualTelegramId()">
+        <button type="button" class="btn-secondary-dark" style="padding:8px 12px;font-size:0.82rem;" onclick="focusInlineIdAssist()">
           Set / Update Telegram ID
         </button>
         <button type="button" class="btn-gold" style="padding:8px 12px;font-size:0.82rem;" onclick="shareInviteLink()">
@@ -1023,6 +1053,7 @@
         const id = String(u.id).replace(/\D+/g, '');
         if (id) {
           sessionStorage.setItem('Smart_bingo_tg_id', id);
+          localStorage.setItem('Smart_bingo_saved_tg_id', id);
           return id;
         }
       }
@@ -1031,11 +1062,13 @@
         const id = String(p.get('telegram_id') || '').replace(/\D+/g, '');
         if (id) {
           sessionStorage.setItem('Smart_bingo_tg_id', id);
+          localStorage.setItem('Smart_bingo_saved_tg_id', id);
           return id;
         }
       }
-      localStorage.removeItem('Smart_bingo_tg_id');
-      return sessionStorage.getItem('Smart_bingo_tg_id') || '';
+      return sessionStorage.getItem('Smart_bingo_tg_id')
+        || localStorage.getItem('Smart_bingo_saved_tg_id')
+        || '';
     }
 
     function getReferrerId() {
@@ -1064,6 +1097,18 @@
     let user = extractTelegramUserFromInitData();
     let playerName = resolveDisplayName();
 
+    function updateIdAssistVisibility() {
+      const box = document.getElementById('desktop-id-assist');
+      const inp = document.getElementById('inline-tg-id-input');
+      if (!box) return;
+      if (telegramId) {
+        box.classList.add('d-none');
+      } else {
+        box.classList.remove('d-none');
+        if (inp && !inp.value) inp.placeholder = 'Enter ID from My ID (e.g. 730967613)';
+      }
+    }
+
     function applyDetectedIdentity() {
       user = extractTelegramUserFromInitData();
       const detectedId = getUserId();
@@ -1074,29 +1119,46 @@
       document.getElementById('profile-name').textContent = playerName;
       document.getElementById('profile-avatar').textContent = (playerName.charAt(0) || 'P').toUpperCase();
       document.getElementById('profile-id').textContent = telegramId || 'Open in Telegram';
+      updateIdAssistVisibility();
       if (telegramId) {
         syncBalance();
       }
     }
 
-    function promptManualTelegramId() {
-      const manualId = prompt('Tap "My ID" in the bot and enter your numeric Telegram ID:', telegramId || '');
-      const cleanManual = String(manualId || '').replace(/\D+/g, '');
-      if (cleanManual) {
-        telegramId = cleanManual;
-        sessionStorage.setItem('Smart_bingo_tg_id', cleanManual);
-        document.getElementById('profile-id').textContent = telegramId;
-        syncBalance();
-        return true;
+    function saveInlineTelegramId() {
+      const inp = document.getElementById('inline-tg-id-input');
+      const cleanId = String((inp && inp.value) || '').replace(/\D+/g, '');
+      if (!cleanId) {
+        alert('Type your numeric Telegram ID from "My ID" first, then click Save ID.');
+        if (inp) inp.focus();
+        return false;
       }
-      return false;
+      telegramId = cleanId;
+      sessionStorage.setItem('Smart_bingo_tg_id', cleanId);
+      localStorage.setItem('Smart_bingo_saved_tg_id', cleanId);
+      document.getElementById('profile-id').textContent = telegramId;
+      updateIdAssistVisibility();
+      syncBalance();
+      return true;
+    }
+
+    function focusInlineIdAssist() {
+      switchTab('game');
+      updateIdAssistVisibility();
+      const box = document.getElementById('desktop-id-assist');
+      const inp = document.getElementById('inline-tg-id-input');
+      if (box) box.classList.remove('d-none');
+      if (inp) {
+        inp.value = telegramId || '';
+        inp.focus();
+      }
     }
 
     function ensureAuthenticatedPlayer() {
       applyDetectedIdentity();
       if (telegramId) return true;
-      if (promptManualTelegramId()) return true;
-      alert('Please open Smart Bingo inside Telegram so your personal Telegram account is detected.');
+      focusInlineIdAssist();
+      alert('Enter your numeric Telegram ID in the gold box at the top and tap "Save ID".');
       return false;
     }
 
@@ -1320,7 +1382,7 @@
       const tabEl = document.getElementById(`nav-${tab}`);
       if (tabEl) tabEl.classList.add('active');
       showOnlyScreen(tab);
-      if (tab === 'game') { buildCartelaPickerGrid(); pollSetupRoomStatus(); }
+      if (tab === 'game') { buildCartelaPickerGrid(); updateIdAssistVisibility(); pollSetupRoomStatus(); }
       else if (tab === 'history') { renderHistory(); }
       syncBalance();
     }
