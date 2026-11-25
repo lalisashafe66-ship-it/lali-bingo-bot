@@ -989,11 +989,35 @@
 
   <script>
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-    if (tg) { tg.ready(); tg.expand(); }
+    if (tg) {
+      try { tg.ready(); } catch (_) {}
+      try { tg.expand(); } catch (_) {}
+    }
+
+    function extractTelegramUserFromInitData() {
+      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
+        return tg.initDataUnsafe.user;
+      }
+      try {
+        const rawInit = (tg && typeof tg.initData === 'string' && tg.initData)
+          ? tg.initData
+          : (new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppData') || '');
+        if (rawInit) {
+          const params = new URLSearchParams(rawInit);
+          const userJson = params.get('user');
+          if (userJson) {
+            const parsed = JSON.parse(userJson);
+            if (parsed && parsed.id) return parsed;
+          }
+        }
+      } catch (_) {}
+      return null;
+    }
 
     function getUserId() {
-      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
-        const id = String(tg.initDataUnsafe.user.id).replace(/\D+/g, '');
+      const u = extractTelegramUserFromInitData();
+      if (u && u.id) {
+        const id = String(u.id).replace(/\D+/g, '');
         if (id) {
           sessionStorage.setItem('Smart_bingo_tg_id', id);
           return id;
@@ -1007,7 +1031,6 @@
           return id;
         }
       }
-      // Never fall back to a hardcoded or shared localStorage ID across browsers/tabs
       localStorage.removeItem('Smart_bingo_tg_id');
       return sessionStorage.getItem('Smart_bingo_tg_id') || '';
     }
@@ -1021,7 +1044,7 @@
     }
 
     function resolveDisplayName() {
-      const u = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
+      const u = extractTelegramUserFromInitData();
       if (u) {
         const full = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
         if (full) { sessionStorage.setItem('Smart_bingo_player_name', full); return full; }
@@ -1033,22 +1056,45 @@
       return sessionStorage.getItem('Smart_bingo_player_name') || 'Player';
     }
 
-    const telegramId = getUserId();
+    let telegramId = getUserId();
     const referrerId = getReferrerId();
-    const user = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
-    const playerName = resolveDisplayName();
+    let user = extractTelegramUserFromInitData();
+    let playerName = resolveDisplayName();
 
-    function ensureAuthenticatedPlayer() {
-      if (!telegramId) {
-        alert('Please open Smart Bingo inside Telegram so your personal Telegram account is detected.');
-        return false;
+    function applyDetectedIdentity() {
+      user = extractTelegramUserFromInitData();
+      const detectedId = getUserId();
+      if (detectedId && detectedId !== telegramId) {
+        telegramId = detectedId;
       }
-      return true;
+      playerName = resolveDisplayName();
+      document.getElementById('profile-name').textContent = playerName;
+      document.getElementById('profile-avatar').textContent = (playerName.charAt(0) || 'P').toUpperCase();
+      document.getElementById('profile-id').textContent = telegramId || 'Open in Telegram';
+      if (telegramId) {
+        syncBalance();
+      }
     }
 
-    document.getElementById('profile-name').textContent = playerName;
-    document.getElementById('profile-avatar').textContent = (playerName.charAt(0) || 'P').toUpperCase();
-    document.getElementById('profile-id').textContent = telegramId || 'Open in Telegram';
+    function ensureAuthenticatedPlayer() {
+      applyDetectedIdentity();
+      if (telegramId) return true;
+
+      const manualId = prompt('Telegram ID was not auto-detected. Tap "My ID" in the bot and enter your numeric Telegram ID:', '');
+      const cleanManual = String(manualId || '').replace(/\D+/g, '');
+      if (cleanManual) {
+        telegramId = cleanManual;
+        sessionStorage.setItem('Smart_bingo_tg_id', cleanManual);
+        document.getElementById('profile-id').textContent = telegramId;
+        syncBalance();
+        return true;
+      }
+
+      alert('Please open Smart Bingo inside Telegram so your personal Telegram account is detected.');
+      return false;
+    }
+
+    applyDetectedIdentity();
 
     let balance = 0.00;
     let selectedStake = 10;
@@ -1781,8 +1827,13 @@
       }
     }
 
+    setTimeout(applyDetectedIdentity, 350);
+    setTimeout(applyDetectedIdentity, 1000);
     setInterval(syncBalance, 5000);
-    window.addEventListener('focus', syncBalance);
+    window.addEventListener('focus', () => {
+      applyDetectedIdentity();
+      syncBalance();
+    });
 
     buildCartelaPickerGrid();
     syncBalance();
