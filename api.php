@@ -362,8 +362,8 @@ function pickClosestLineWinner(PDO $pdo, array $entries, array $calledSet): ?arr
 
     foreach ($entries as $entry) {
         $tid = (string)($entry['telegram_id'] ?? '');
-        $cn = (int)($entry['player_number'] ?? 0);
-        if ($tid === '' || $cn <= 0) continue;
+        $cn = max(1, (int)($entry['player_number'] ?? 1));
+        if ($tid === '') continue;
 
         $board = generateCartelaBoard($cn);
         foreach ($lines as $line) {
@@ -383,6 +383,21 @@ function pickClosestLineWinner(PDO $pdo, array $entries, array $calledSet): ?arr
                     'winning_line'   => $line,
                 ];
             }
+        }
+    }
+
+    if ($best === null && count($entries) > 0) {
+        $first = $entries[0];
+        $tid = (string)($first['telegram_id'] ?? '');
+        $cn = max(1, (int)($first['player_number'] ?? 1));
+        if ($tid !== '') {
+            $best = [
+                'telegram_id'    => $tid,
+                'name'           => resolvePlayerDisplayName($pdo, $tid, (string)($first['first_name'] ?? '')),
+                'cartela_number' => $cn,
+                'board'          => generateCartelaBoard($cn),
+                'winning_line'   => [0, 1, 2, 3, 4],
+            ];
         }
     }
 
@@ -481,10 +496,7 @@ function sendWinnerCongratulations(
     }
     $namesHeadline = implode(' &amp; ', $winnerNamesEscaped);
 
-    $isSplit = count($winners) > 1;
-    $summaryLine = $isSplit
-        ? "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line or 4 corners together in Game <b>#{$safeGame}</b> and share the <b>{$poolStr} ETB</b> (80% pool; 20% commission) equally: <b>{$shareStr} ETB each</b>!"
-        : "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line or 4 corners first in Game <b>#{$safeGame}</b> and won <b>{$shareStr} ETB</b> (80% pool; 20% commission)!";
+    $summaryLine = "🎉 <b>Congratulations {$namesHeadline}!</b> You closed a line or 4 corners in Game <b>#{$safeGame}</b> and won <b>{$shareStr} ETB</b> (80% pool of {$poolStr} ETB; 20% commission)!";
 
     foreach ($winners as $w) {
         $tid = trim((string)($w['telegram_id'] ?? ''));
@@ -519,6 +531,7 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
         }
     }
 
+    // Enforce a single mandatory winner per round
     $deduped = [];
     $seenIds = [];
     foreach ($winners as $w) {
@@ -529,9 +542,7 @@ function finalizeRoomWinners(PDO $pdo, array $room, array $winners): array {
         $seenIds[$tid] = true;
         $w['name'] = resolvePlayerDisplayName($pdo, $tid, (string)($w['name'] ?? ''));
         $deduped[] = $w;
-        if (count($deduped) >= 2) {
-            break;
-        }
+        break;
     }
 
     $stakesStmt = $pdo->prepare("SELECT COALESCE(SUM(stake_paid), 0) AS total_stakes, COUNT(*) AS entry_count FROM room_players WHERE room_id = ?");
@@ -599,6 +610,20 @@ function finishRoomWithNoWinner(PDO $pdo, array $room): array {
     $roomId = (int)$room['id'];
     $gameLabel = (string)($room['game_code'] ?: $roomId);
 
+    // Never finish a room with players without declaring a winner
+    $rpStmt = $pdo->prepare("SELECT telegram_id, first_name, player_number FROM room_players WHERE room_id = ? ORDER BY id ASC");
+    $rpStmt->execute([$roomId]);
+    $entries = $rpStmt->fetchAll(PDO::FETCH_ASSOC);
+    if (count($entries) > 0) {
+        $called = json_decode($room['called_numbers_json'] ?? '[]', true);
+        if (!is_array($called)) $called = [];
+        $calledSet = array_flip(array_map('intval', $called));
+        $winner = pickClosestLineWinner($pdo, $entries, $calledSet);
+        if ($winner !== null) {
+            return finalizeRoomWinners($pdo, $room, [$winner]);
+        }
+    }
+
     resetAbortedTransaction($pdo);
     try {
         $pdo->prepare("UPDATE rooms SET status = 'finished', winners_json = '[]' WHERE id = ?")->execute([$roomId]);
@@ -613,6 +638,21 @@ function finishRoomWithNoWinner(PDO $pdo, array $room): array {
 
 function syncRoomLifecycle(PDO $pdo, array $room): array {
     if (($room['status'] ?? '') === 'finished') {
+        $existingWinners = json_decode($room['winners_json'] ?? '[]', true);
+        if (!is_array($existingWinners) || count($existingWinners) === 0) {
+            $rpStmt = $pdo->prepare("SELECT telegram_id, first_name, player_number FROM room_players WHERE room_id = ? ORDER BY id ASC");
+            $rpStmt->execute([$room['id']]);
+            $entries = $rpStmt->fetchAll(PDO::FETCH_ASSOC);
+            if (count($entries) > 0) {
+                $called = json_decode($room['called_numbers_json'] ?? '[]', true);
+                if (!is_array($called)) $called = [];
+                $winner = pickClosestLineWinner($pdo, $entries, array_flip(array_map('intval', $called)));
+                if ($winner !== null) {
+                    $room['status'] = 'active';
+                    return finalizeRoomWinners($pdo, $room, [$winner]);
+                }
+            }
+        }
         return $room;
     }
 
@@ -669,32 +709,23 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             ->execute([json_encode($called), $room['id']]);
         $room['called_numbers_json'] = json_encode($called);
 
-        $autoWinners = [];
-        $seenWinnerIds = [];
         foreach ($entries as $entry) {
             $tid = (string)($entry['telegram_id'] ?? '');
-            if ($tid === '' || isset($seenWinnerIds[$tid])) {
-                continue;
-            }
-            $cn = (int)($entry['player_number'] ?? 0);
-            if ($cn <= 0) continue;
+            if ($tid === '') continue;
+            $cn = max(1, (int)($entry['player_number'] ?? 1));
             $board = generateCartelaBoard($cn);
             $winLine = hasWinningLine($board, $calledSet);
             if ($winLine !== null) {
-                $seenWinnerIds[$tid] = true;
                 $displayName = resolvePlayerDisplayName($pdo, $tid, (string)($entry['first_name'] ?? ''));
-                $autoWinners[] = [
+                $winner = [[
                     'telegram_id'    => $tid,
                     'name'           => $displayName,
                     'cartela_number' => $cn,
                     'board'          => $board,
                     'winning_line'   => $winLine,
-                ];
+                ]];
+                return finalizeRoomWinners($pdo, $room, $winner);
             }
-        }
-
-        if (count($autoWinners) > 0) {
-            return finalizeRoomWinners($pdo, $room, $autoWinners);
         }
 
         if (count($called) >= 75) {
@@ -702,7 +733,6 @@ function syncRoomLifecycle(PDO $pdo, array $room): array {
             if ($fallbackWinner !== null) {
                 return finalizeRoomWinners($pdo, $room, [$fallbackWinner]);
             }
-            return finishRoomWithNoWinner($pdo, $room);
         }
     }
 
@@ -1025,7 +1055,8 @@ elseif ($action === 'join_room') {
 elseif ($action === 'request_withdrawal') {
     $telegramId = trim((string)($_POST['telegram_id'] ?? ''));
     $amount     = round((float)($_POST['amount'] ?? 0), 2);
-    $method     = trim((string)($_POST['method'] ?? 'Telebirr'));
+    $rawMethod  = strtolower(trim((string)($_POST['method'] ?? 'telebirr')));
+    $method     = str_contains($rawMethod, 'cbe') ? 'CBE' : 'Telebirr';
     $account    = trim((string)($_POST['account'] ?? ''));
 
     if ($telegramId === '' || $telegramId === 'undefined' || $telegramId === 'null') {
