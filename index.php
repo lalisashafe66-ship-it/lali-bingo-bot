@@ -363,7 +363,6 @@
       margin-top: 8px;
     }
 
-    /* COMPACT CALLER & PLAYROOM STYLES */
     .caller-card {
       background: var(--bg-card);
       border: 1px solid var(--line-border);
@@ -753,7 +752,7 @@
   <section id="screen-game" class="container" style="padding-left:10px;padding-right:10px;">
     <h1 class="section-title">Choose a table</h1>
     <p class="section-sub">
-      Pick up to 3 cartelas. 15s countdown starts once held. 1 line wins 80% (20% fee); 2 winners split 80%.
+      Pick up to 3 cartelas. 15s countdown starts once held. 1 line wins 80% (20% fee); single winner per round.
     </p>
 
     <div class="onboarding-strip">
@@ -941,9 +940,9 @@
   <!-- WINNER MODAL WITH PLAY AGAIN + LEAVE LOBBY -->
   <div id="winner-modal" class="modal-backdrop-custom d-none">
     <div class="modal-box-custom">
-      <div style="color:var(--text-muted);font-weight:800;font-size:0.82rem;">Bingo</div>
+      <div style="color:var(--text-muted);font-weight:800;font-size:0.82rem;">Bingo Winner</div>
       <div id="winner-top-name" class="winner-top-name">Winner</div>
-      <div id="winner-list-banner" style="color:var(--accent-gold);font-weight:900;font-size:0.96rem;margin-top:2px;">0 ETB</div>
+      <div id="winner-list-banner" style="color:var(--accent-gold);font-weight:900;font-size:0.96rem;margin-top:2px;">0.00 ETB</div>
 
       <div class="winning-board-card">
         <div class="top-stripe"></div>
@@ -994,17 +993,23 @@
 
     function getUserId() {
       if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
-        const id = tg.initDataUnsafe.user.id.toString();
-        localStorage.setItem('Smart_bingo_tg_id', id);
-        return id;
+        const id = String(tg.initDataUnsafe.user.id).replace(/\D+/g, '');
+        if (id) {
+          sessionStorage.setItem('Smart_bingo_tg_id', id);
+          return id;
+        }
       }
       const p = new URLSearchParams(window.location.search);
       if (p.has('telegram_id')) {
-        const id = p.get('telegram_id');
-        localStorage.setItem('Smart_bingo_tg_id', id);
-        return id;
+        const id = String(p.get('telegram_id') || '').replace(/\D+/g, '');
+        if (id) {
+          sessionStorage.setItem('Smart_bingo_tg_id', id);
+          return id;
+        }
       }
-      return localStorage.getItem('Smart_bingo_tg_id') || '730967613';
+      // Never fall back to a hardcoded or shared localStorage ID across browsers/tabs
+      localStorage.removeItem('Smart_bingo_tg_id');
+      return sessionStorage.getItem('Smart_bingo_tg_id') || '';
     }
 
     function getReferrerId() {
@@ -1019,13 +1024,13 @@
       const u = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
       if (u) {
         const full = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
-        if (full) { localStorage.setItem('Smart_bingo_player_name', full); return full; }
-        if (u.username) { localStorage.setItem('Smart_bingo_player_name', u.username); return u.username; }
+        if (full) { sessionStorage.setItem('Smart_bingo_player_name', full); return full; }
+        if (u.username) { sessionStorage.setItem('Smart_bingo_player_name', u.username); return u.username; }
       }
       const p = new URLSearchParams(window.location.search);
       const qName = (p.get('first_name') || p.get('name') || '').trim();
-      if (qName) { localStorage.setItem('Smart_bingo_player_name', qName); return qName; }
-      return localStorage.getItem('Smart_bingo_player_name') || 'Player';
+      if (qName) { sessionStorage.setItem('Smart_bingo_player_name', qName); return qName; }
+      return sessionStorage.getItem('Smart_bingo_player_name') || 'Player';
     }
 
     const telegramId = getUserId();
@@ -1033,16 +1038,24 @@
     const user = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
     const playerName = resolveDisplayName();
 
+    function ensureAuthenticatedPlayer() {
+      if (!telegramId) {
+        alert('Please open Smart Bingo inside Telegram so your personal Telegram account is detected.');
+        return false;
+      }
+      return true;
+    }
+
     document.getElementById('profile-name').textContent = playerName;
     document.getElementById('profile-avatar').textContent = (playerName.charAt(0) || 'P').toUpperCase();
-    document.getElementById('profile-id').textContent = telegramId || 'Guest';
+    document.getElementById('profile-id').textContent = telegramId || 'Open in Telegram';
 
     let balance = 0.00;
     let selectedStake = 10;
     let selectedCartelaNumbers = [];
     let lastJoinedCartelas = [];
     let takenCartelas = [];
-    let activePlayCartelas = []; // [{ number, board, marked }]
+    let activePlayCartelas = [];
     let currentRoomId = null;
     let currentGameCode = '--';
     let currentDerash = 0;
@@ -1095,6 +1108,7 @@
         [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
         [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
         [0,6,12,18,24], [4,8,12,16,20],
+        [0,4,20,24],
       ];
       for (const line of lines) {
         let ok = true;
@@ -1426,26 +1440,26 @@
       const fallbackCartelaNum = (activePlayCartelas[0] && activePlayCartelas[0].number) || 1;
       const topNameEl = document.getElementById('winner-top-name');
       const banner = document.getElementById('winner-list-banner');
-      const didIWin = Array.isArray(winners) && winners.some(w => String(w.telegram_id) === String(telegramId));
-      const myEntry = Array.isArray(winners) ? winners.find(w => String(w.telegram_id) === String(telegramId)) : null;
+      const validWinners = Array.isArray(winners) ? winners.slice(0, 1) : [];
+      const firstWinner = validWinners.length > 0 ? validWinners[0] : null;
+      const didIWin = Boolean(firstWinner && String(firstWinner.telegram_id) === String(telegramId));
 
-      if (!winners || winners.length === 0) {
-        topNameEl.textContent = 'No Winner';
-        banner.textContent = 'Round Ended';
+      if (firstWinner) {
+        const winnerDisplay = (firstWinner.name && firstWinner.name !== 'Player')
+          ? firstWinner.name
+          : (didIWin ? playerName : 'Player');
+        const prizeAmt = Number(firstWinner.prize ?? (roomObj && roomObj.derash) ?? 0).toFixed(2);
+        topNameEl.textContent = winnerDisplay;
+        banner.textContent = `Won ${prizeAmt} ETB (80% pool)`;
       } else {
-        const capped = winners.slice(0, 2);
-        const names = capped.map(w => (w.name && w.name !== 'Player') ? w.name : playerName).join(' & ');
-        const prizeAmt = Number(capped[0].prize || 0).toFixed(2);
-        topNameEl.textContent = names;
-        banner.textContent = capped.length > 1
-          ? `${prizeAmt} ETB each (shared 80% pool)`
-          : `${prizeAmt} ETB (80% pool)`;
+        const fallbackPrize = Number((roomObj && roomObj.derash) || currentDerash || 0).toFixed(2);
+        topNameEl.textContent = playerName;
+        banner.textContent = `Round Winner (${fallbackPrize} ETB pool)`;
       }
 
-      const firstWinner = (winners && winners.length > 0) ? winners[0] : null;
       const winBoard = (firstWinner && Array.isArray(firstWinner.board) && firstWinner.board.length === 25)
         ? firstWinner.board
-        : generateDeterministicCard(fallbackCartelaNum);
+        : generateDeterministicCard((firstWinner && firstWinner.cartela_number) || fallbackCartelaNum);
       const winLineSet = new Set((firstWinner && Array.isArray(firstWinner.winning_line)) ? firstWinner.winning_line : []);
       const calledSet = new Set((roomObj && Array.isArray(roomObj.called_numbers)) ? roomObj.called_numbers : calledNumbers);
 
@@ -1470,7 +1484,7 @@
         code: currentGameCode,
         board: firstWinner ? `#${firstWinner.cartela_number}` : playedLabel,
         won: didIWin,
-        status: didIWin ? `Won +${Number((myEntry && myEntry.prize) || 0).toFixed(2)} ETB` : 'Finished'
+        status: didIWin ? `Won +${Number((firstWinner && firstWinner.prize) || 0).toFixed(2)} ETB` : 'Finished'
       });
 
       document.getElementById('winner-modal').classList.remove('d-none');
@@ -1631,6 +1645,7 @@
     }
 
     function joinSelectedTable() {
+      if (!ensureAuthenticatedPlayer()) return;
       if (selectedCartelaNumbers.length === 0) {
         alert('Please select at least 1 cartela before playing.');
         return;
@@ -1697,6 +1712,7 @@
     }
 
     function startInstantDeposit() {
+      if (!ensureAuthenticatedPlayer()) return;
       const fullMsg = prompt('Paste the FULL SMS or payment message from Telebirr or CBE:', '');
       if (!fullMsg || !fullMsg.trim()) { alert('Please paste your payment message.'); return; }
       const cleanMessage = fullMsg.trim();
@@ -1724,21 +1740,23 @@
     }
 
     function requestWithdrawal() {
+      if (!ensureAuthenticatedPlayer()) return;
       const amount = prompt(`Enter amount to withdraw (Available: ${balance.toFixed(2)} ETB):`, '50');
       if (!amount) return;
       const amtNum = parseFloat(amount);
       if (isNaN(amtNum) || amtNum <= 0 || amtNum > balance) { alert('Invalid amount or insufficient balance.'); return; }
-      const method = prompt('Choose payout method (Telebirr or CBE):', 'Telebirr');
-      if (!method) return;
+      const rawMethod = prompt('Choose payout method (Telebirr or CBE):', 'Telebirr');
+      if (!rawMethod) return;
+      const method = rawMethod.toLowerCase().includes('cbe') ? 'CBE' : 'Telebirr';
       const account = prompt(`Enter your ${method} Phone/Account number:`, '');
-      if (!account) return;
+      if (!account || !account.trim()) return;
 
       const formData = new FormData();
       formData.append('action', 'request_withdrawal');
       formData.append('telegram_id', telegramId);
       formData.append('amount', amtNum);
       formData.append('method', method);
-      formData.append('account', account);
+      formData.append('account', account.trim());
 
       fetch('api.php', { method: 'POST', body: formData })
         .then(r => r.json())
@@ -1754,6 +1772,7 @@
     }
 
     function shareInviteLink() {
+      if (!ensureAuthenticatedPlayer()) return;
       const link = `https://t.me/SmartBingoHub_bot?start=ref_${encodeURIComponent(telegramId)}`;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(link).then(() => alert(`Invite link copied!\n\n${link}`)).catch(() => prompt('Copy link:', link));
