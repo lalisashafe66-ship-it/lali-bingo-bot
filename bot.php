@@ -85,18 +85,18 @@ function isPostgresPdo(PDO $pdo): bool {
     return strtolower((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) === 'pgsql';
 }
 
-function resetPdoTransactionState(PDO $pdo): void {
+function clearAbortedPdo(PDO $pdo): void {
     while ($pdo->inTransaction()) {
         try {
             $pdo->rollBack();
-        } catch (Throwable $ignoreRb) {
+        } catch (Throwable $e) {
             break;
         }
     }
     if (isPostgresPdo($pdo)) {
         try {
             $pdo->exec("ROLLBACK");
-        } catch (Throwable $ignorePgRb) {
+        } catch (Throwable $e) {
         }
     }
 }
@@ -144,7 +144,7 @@ function ensureWithdrawalsSchema(PDO $pdo): void {
     $checked = true;
 
     try {
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
         if (!tableExists($pdo, 'withdrawals')) {
             if (isPostgresPdo($pdo)) {
                 $pdo->exec("
@@ -182,7 +182,7 @@ function ensureWithdrawalsSchema(PDO $pdo): void {
         }
     } catch (Throwable $e) {
         error_log("ensureWithdrawalsSchema warning: " . $e->getMessage());
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
     }
 }
 
@@ -263,7 +263,7 @@ function ensureDepositStateSchema(PDO $pdo): void {
     $checked = true;
 
     try {
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
         if (isPostgresPdo($pdo)) {
             $pdo->exec("
                 CREATE TABLE IF NOT EXISTS user_bot_states (
@@ -317,7 +317,7 @@ function ensureDepositStateSchema(PDO $pdo): void {
         }
     } catch (Throwable $e) {
         error_log("ensureDepositStateSchema warning: " . $e->getMessage());
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
     }
 }
 
@@ -391,7 +391,7 @@ function ensureReferralSchema(PDO $pdo): void {
     $checked = true;
 
     try {
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
         if (isPostgresPdo($pdo)) {
             $pdo->exec("ALTER TABLE players ADD COLUMN IF NOT EXISTS referred_by TEXT");
             $pdo->exec("ALTER TABLE players ADD COLUMN IF NOT EXISTS invites_count INTEGER NOT NULL DEFAULT 0");
@@ -426,7 +426,7 @@ function ensureReferralSchema(PDO $pdo): void {
         ");
     } catch (Throwable $schemaErr) {
         error_log("ensureReferralSchema warning: " . $schemaErr->getMessage());
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
     }
 }
 
@@ -481,7 +481,7 @@ function addLedger(PDO $pdo, string $telegramId, ?int $roomId, string $type, flo
         $stmt->execute([$telegramId, $roomId, $type, $amount, $before, $after, $note, nowTimestampText()]);
     } catch (Throwable $ledgerErr) {
         error_log("addLedger warning ({$telegramId}): " . $ledgerErr->getMessage());
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
     }
 }
 
@@ -647,7 +647,7 @@ function ensureDepositPromoSchema(PDO $pdo): void {
     $checked = true;
 
     try {
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
         if (isPostgresPdo($pdo)) {
             $pdo->exec("
                 CREATE TABLE IF NOT EXISTS deposit_promos (
@@ -692,7 +692,7 @@ function ensureDepositPromoSchema(PDO $pdo): void {
         ");
     } catch (Throwable $e) {
         error_log("ensureDepositPromoSchema warning: " . $e->getMessage());
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
     }
 }
 
@@ -959,7 +959,7 @@ function notifyAndDepositBonus(
         return ['ok' => false, 'error' => 'Invalid player ID or bonus amount'];
     }
 
-    resetPdoTransactionState($pdo);
+    clearAbortedPdo($pdo);
 
     try {
         $stmt = $pdo->prepare("SELECT telegram_id, balance, first_name FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
@@ -1006,7 +1006,7 @@ function notifyAndDepositBonus(
         ];
     } catch (Throwable $e) {
         error_log("notifyAndDepositBonus error ({$targetPlayerId}): " . $e->getMessage());
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
         return ['ok' => false, 'error' => $e->getMessage()];
     }
 }
@@ -1078,14 +1078,12 @@ function applyJoinReferralBonus(
     }
 
     ensureReferralSchema($pdo);
-    resetPdoTransactionState($pdo);
+    clearAbortedPdo($pdo);
 
-    $pdo->beginTransaction();
     try {
         $chk = $pdo->prepare("SELECT id FROM referrals WHERE CAST(referred_id AS TEXT) = ? LIMIT 1");
         $chk->execute([$newUserId]);
         if ($chk->fetchColumn()) {
-            $pdo->rollBack();
             return ['awarded' => false, 'reason' => 'already_referred'];
         }
 
@@ -1093,7 +1091,6 @@ function applyJoinReferralBonus(
         $pNewStmt->execute([$newUserId]);
         $existingRef = trim((string)($pNewStmt->fetchColumn() ?: ''));
         if ($existingRef !== '') {
-            $pdo->rollBack();
             return ['awarded' => false, 'reason' => 'existing_referrer'];
         }
 
@@ -1139,8 +1136,6 @@ function applyJoinReferralBonus(
             );
         }
 
-        $pdo->commit();
-
         if ($actualBonus > 0) {
             $msg = "SMART BINGO — Join Referral Bonus!\n\n"
                  . "New Friend Joined: {$newUserName} (ID: {$newUserId})\n"
@@ -1165,7 +1160,7 @@ function applyJoinReferralBonus(
 
         return ['awarded' => true, 'bonus' => $actualBonus, 'new_balance' => $refAfter];
     } catch (Throwable $e) {
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
         error_log("Referral bonus error ({$referrerId} -> {$newUserId}): " . $e->getMessage());
         return ['awarded' => false, 'reason' => 'db_error'];
     }
@@ -1350,7 +1345,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 
     if (preg_match('/^select_dep_method:(telebirr|bank)$/i', trim($data), $depPick)) {
         $pdo = getBingoPdo();
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
 
         $methodKey = strtolower((string)$depPick[1]);
         $isBank = ($methodKey === 'bank');
@@ -1393,7 +1388,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 
     if (preg_match('/^select_wd_method:(telebirr|bank)$/i', trim($data), $wdPick)) {
         $pdo = getBingoPdo();
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
 
         $methodKey = strtolower((string)$wdPick[1]);
         $isBank = ($methodKey === 'bank');
@@ -1444,7 +1439,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $pdo = getBingoPdo();
 
     try {
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
 
         if ($parsed === null) {
             throw new RuntimeException('Unrecognized callback action: ' . $data);
@@ -1851,7 +1846,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 throw new RuntimeException("Missing player_id ({$targetPlayerId}) or amount ({$amount}) in {$data}");
             }
 
-            resetPdoTransactionState($pdo);
+            clearAbortedPdo($pdo);
             $ts = nowTimestampText();
 
             if ($isApprove) {
@@ -1979,10 +1974,9 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 throw new RuntimeException("Missing withdrawal player_id ({$targetPlayerId}) or amount ({$amount}) in {$data}");
             }
 
-            resetPdoTransactionState($pdo);
+            clearAbortedPdo($pdo);
             $ts = nowTimestampText();
 
-            $pdo->beginTransaction();
             try {
                 if ($isApprove) {
                     if ($recId > 0 && $hasWithdrawals) {
@@ -1991,7 +1985,6 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                     $bStmt = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
                     $bStmt->execute([$targetPlayerId]);
                     $curBal = round((float)($bStmt->fetchColumn() ?: 0.0), 2);
-                    $pdo->commit();
 
                     $toastText    = "Approved withdrawal";
                     $statusLabel  = "\n\n✅ WITHDRAWAL APPROVED";
@@ -2011,7 +2004,6 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                         $pdo->prepare("UPDATE withdrawals SET status = 'rejected' WHERE id = ?")->execute([$recId]);
                     }
 
-                    $pdo->commit();
                     addLedger($pdo, $targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal rejected & refunded");
 
                     $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
@@ -2023,7 +2015,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                                   . "New Balance: " . number_format($after, 2) . " ETB";
                 }
             } catch (Throwable $txErr) {
-                resetPdoTransactionState($pdo);
+                clearAbortedPdo($pdo);
                 throw new RuntimeException("L" . $txErr->getLine() . ": " . $txErr->getMessage(), 0, $txErr);
             }
         }
@@ -2047,7 +2039,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
             ]);
         }
     } catch (Throwable $e) {
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
         $msg = "L" . $e->getLine() . " " . $e->getMessage();
         error_log("Callback error ({$data}): " . $msg);
         tgPost($token, 'answerCallbackQuery', [
@@ -2092,13 +2084,13 @@ $replyMarkup = buildMainMenuKeyboard($webAppUrl, $isAdmin);
 
 try {
     $pdo = getBingoPdo();
-    resetPdoTransactionState($pdo);
+    clearAbortedPdo($pdo);
     ensureReferralSchema($pdo);
     ensureDepositStateSchema($pdo);
     ensureDepositPromoSchema($pdo);
     ensureWithdrawalsSchema($pdo);
     $player = registerOrGetUser($userId, $chatId, $firstName, $username);
-    resetPdoTransactionState($pdo);
+    clearAbortedPdo($pdo);
     $balanceNum = (float)($player['balance'] ?? 0.0);
     $balanceFormatted = number_format($balanceNum, 2);
     $invitesCount = (int)($player['invites_count'] ?? 0);
@@ -2178,19 +2170,17 @@ try {
             $parseMode = 'Markdown';
         } else {
             ensureWithdrawalsSchema($pdo);
-            resetPdoTransactionState($pdo);
+            clearAbortedPdo($pdo);
             $ts = nowTimestampText();
             $wdId = 0;
-            $beforeBal = round($balanceNum, 2);
-            $afterBal = round($beforeBal - $wdAmount, 2);
 
             try {
                 $pLock = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
                 $pLock->execute([(string)$userId]);
                 $rawBal = $pLock->fetchColumn();
             } catch (Throwable $e) {
-                resetPdoTransactionState($pdo);
-                throw new RuntimeException("Withdraw TX error [lock_player]: " . $e->getMessage(), 0, $e);
+                clearAbortedPdo($pdo);
+                throw new RuntimeException("Withdraw [select_balance]: " . $e->getMessage(), 0, $e);
             }
 
             if ($rawBal === false) {
@@ -2204,45 +2194,61 @@ try {
                 } else {
                     $afterBal = round($beforeBal - $wdAmount, 2);
 
-                    $pdo->beginTransaction();
                     try {
-                        $updBal = $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?");
-                        $updBal->execute([$afterBal, $ts, (string)$userId]);
+                        $deduct = $pdo->prepare("
+                            UPDATE players
+                            SET balance = balance - ?, updated_at = ?
+                            WHERE CAST(telegram_id AS TEXT) = ? AND COALESCE(balance, 0) >= ?
+                        ");
+                        $deduct->execute([$wdAmount, $ts, (string)$userId, $wdAmount]);
+                        if ($deduct->rowCount() < 1) {
+                            $reply = "Insufficient balance for withdrawal.\n"
+                                   . "Requested: " . number_format($wdAmount, 2) . " ETB\n"
+                                   . "Available Balance: " . number_format($beforeBal, 2) . " ETB";
+                        } else {
+                            try {
+                                $wdId = insertWithdrawalRecord($pdo, (string)$userId, $methodLabel, $text, $wdAmount, $ts);
+                            } catch (Throwable $insErr) {
+                                clearAbortedPdo($pdo);
+                                try {
+                                    $pdo->prepare("UPDATE players SET balance = balance + ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                                        ->execute([$wdAmount, nowTimestampText(), (string)$userId]);
+                                } catch (Throwable $refundErr) {
+                                }
+                                throw new RuntimeException("Withdraw [insert_withdrawal]: " . $insErr->getMessage(), 0, $insErr);
+                            }
 
-                        $wdId = insertWithdrawalRecord($pdo, (string)$userId, $methodLabel, $text, $wdAmount, $ts);
+                            addLedger($pdo, (string)$userId, null, 'withdrawal_pending', -$wdAmount, $beforeBal, $afterBal, "Pending {$methodLabel} withdrawal: {$text}");
+                            setUserBotState($pdo, (string)$userId, '');
 
-                        $pdo->commit();
+                            if ($adminId !== '') {
+                                $adminMsg = "SMART BINGO — Withdrawal Request" . ($wdId > 0 ? " (#{$wdId})" : "") . "\n\n"
+                                          . "• Player: {$firstName} (ID: {$userId})\n"
+                                          . "• Method: {$methodLabel}\n"
+                                          . "• Amount: " . number_format($wdAmount, 2) . " ETB\n"
+                                          . "• Remaining Balance: " . number_format($afterBal, 2) . " ETB\n"
+                                          . "• Details:\n{$text}";
+
+                                sendPlayerNotification($pdo, $token, $adminId, $adminMsg);
+                                tgPost($token, 'sendMessage', [
+                                    'chat_id'      => $adminId,
+                                    'text'         => "Approve or reject Withdrawal" . ($wdId > 0 ? " #{$wdId}" : "") . " ({$methodLabel}, " . number_format($wdAmount, 2) . " ETB) for {$firstName} ({$userId}):",
+                                    'reply_markup' => [
+                                        'inline_keyboard' => [[
+                                            ['text' => '✅ Approve', 'callback_data' => "approve_wd:{$wdId}:{$userId}:{$wdAmount}"],
+                                            ['text' => '❌ Reject',  'callback_data' => "reject_wd:{$wdId}:{$userId}:{$wdAmount}"],
+                                        ]],
+                                    ],
+                                ]);
+                            }
+
+                            $reply = "Your {$methodLabel} withdrawal request of " . number_format($wdAmount, 2) . " ETB has been submitted for approval.\n"
+                                   . "Remaining Balance: " . number_format($afterBal, 2) . " ETB";
+                        }
                     } catch (Throwable $wdErr) {
-                        resetPdoTransactionState($pdo);
-                        throw new RuntimeException("Withdraw TX error [insert_withdrawal]: " . $wdErr->getMessage(), 0, $wdErr);
+                        clearAbortedPdo($pdo);
+                        throw new RuntimeException("Withdraw [deduct_balance]: " . $wdErr->getMessage(), 0, $wdErr);
                     }
-
-                    addLedger($pdo, (string)$userId, null, 'withdrawal_pending', -$wdAmount, $beforeBal, $afterBal, "Pending {$methodLabel} withdrawal: {$text}");
-                    setUserBotState($pdo, (string)$userId, '');
-
-                    if ($adminId !== '') {
-                        $adminMsg = "SMART BINGO — Withdrawal Request" . ($wdId > 0 ? " (#{$wdId})" : "") . "\n\n"
-                                  . "• Player: {$firstName} (ID: {$userId})\n"
-                                  . "• Method: {$methodLabel}\n"
-                                  . "• Amount: " . number_format($wdAmount, 2) . " ETB\n"
-                                  . "• Remaining Balance: " . number_format($afterBal, 2) . " ETB\n"
-                                  . "• Details:\n{$text}";
-
-                        sendPlayerNotification($pdo, $token, $adminId, $adminMsg);
-                        tgPost($token, 'sendMessage', [
-                            'chat_id'      => $adminId,
-                            'text'         => "Approve or reject Withdrawal" . ($wdId > 0 ? " #{$wdId}" : "") . " ({$methodLabel}, " . number_format($wdAmount, 2) . " ETB) for {$firstName} ({$userId}):",
-                            'reply_markup' => [
-                                'inline_keyboard' => [[
-                                    ['text' => '✅ Approve', 'callback_data' => "approve_wd:{$wdId}:{$userId}:{$wdAmount}"],
-                                    ['text' => '❌ Reject',  'callback_data' => "reject_wd:{$wdId}:{$userId}:{$wdAmount}"],
-                                ]],
-                            ],
-                        ]);
-                    }
-
-                    $reply = "Your {$methodLabel} withdrawal request of " . number_format($wdAmount, 2) . " ETB has been submitted for approval.\n"
-                           . "Remaining Balance: " . number_format($afterBal, 2) . " ETB";
                 }
             }
         }
@@ -2436,7 +2442,7 @@ try {
     }
 } catch (Throwable $e) {
     if (isset($pdo) && $pdo instanceof PDO) {
-        resetPdoTransactionState($pdo);
+        clearAbortedPdo($pdo);
     }
     $errDetail = "L" . $e->getLine() . ": " . $e->getMessage();
     error_log("Smart_Bingo_Bot DB error: " . $errDetail);
