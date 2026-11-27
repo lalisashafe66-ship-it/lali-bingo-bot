@@ -23,6 +23,7 @@ $token = trim((string)(getenv('TELEGRAM_BOT_TOKEN') ?: getenv('BOT_TOKEN') ?: ''
 $adminId = trim((string)(getenv('ADMIN_TELEGRAM_ID') ?: getenv('ADMIN_ID') ?: '730967613'));
 $webAppUrl = rtrim((string)(getenv('APP_URL') ?: 'https://lali-bingo-bot.onrender.com'), '/') . '/index.php';
 $referralBonusEtb = round((float)(getenv('REFERRAL_BONUS_ETB') ?: '5.00'), 2);
+const PROMO_POST_COOLDOWN_SECONDS = 7200; // 2 hours
 
 if ($token === '') {
     error_log("Smart_Bingo_Bot: TELEGRAM_BOT_TOKEN is empty");
@@ -465,12 +466,16 @@ function ensureDepositPromoSchema(PDO $pdo): void {
                     id INTEGER PRIMARY KEY,
                     target_group TEXT NOT NULL DEFAULT 'all',
                     active INTEGER NOT NULL DEFAULT 0,
+                    last_posted_at TEXT NOT NULL DEFAULT '',
+                    last_posted_group TEXT NOT NULL DEFAULT '',
                     updated_at TEXT NOT NULL
                 )
             ");
+            $pdo->exec("ALTER TABLE deposit_promos ADD COLUMN IF NOT EXISTS last_posted_at TEXT NOT NULL DEFAULT ''");
+            $pdo->exec("ALTER TABLE deposit_promos ADD COLUMN IF NOT EXISTS last_posted_group TEXT NOT NULL DEFAULT ''");
             $pdo->exec("
-                INSERT INTO deposit_promos (id, target_group, active, updated_at)
-                VALUES (1, 'all', 0, CURRENT_TIMESTAMP)
+                INSERT INTO deposit_promos (id, target_group, active, last_posted_at, last_posted_group, updated_at)
+                VALUES (1, 'all', 0, '', '', CURRENT_TIMESTAMP)
                 ON CONFLICT (id) DO NOTHING
             ");
             return;
@@ -481,12 +486,21 @@ function ensureDepositPromoSchema(PDO $pdo): void {
                 id INTEGER PRIMARY KEY,
                 target_group TEXT NOT NULL DEFAULT 'all',
                 active INTEGER NOT NULL DEFAULT 0,
+                last_posted_at TEXT NOT NULL DEFAULT '',
+                last_posted_group TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL
             )
         ");
+        $cols = $pdo->query("PRAGMA table_info(deposit_promos)")->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('last_posted_at', $cols, true)) {
+            $pdo->exec("ALTER TABLE deposit_promos ADD COLUMN last_posted_at TEXT NOT NULL DEFAULT ''");
+        }
+        if (!in_array('last_posted_group', $cols, true)) {
+            $pdo->exec("ALTER TABLE deposit_promos ADD COLUMN last_posted_group TEXT NOT NULL DEFAULT ''");
+        }
         $pdo->exec("
-            INSERT OR IGNORE INTO deposit_promos (id, target_group, active, updated_at)
-            VALUES (1, 'all', 0, CURRENT_TIMESTAMP)
+            INSERT OR IGNORE INTO deposit_promos (id, target_group, active, last_posted_at, last_posted_group, updated_at)
+            VALUES (1, 'all', 0, '', '', CURRENT_TIMESTAMP)
         ");
     } catch (Throwable $e) {
         error_log("ensureDepositPromoSchema warning: " . $e->getMessage());
@@ -495,39 +509,116 @@ function ensureDepositPromoSchema(PDO $pdo): void {
 
 function getActiveDepositPromo(PDO $pdo): array {
     ensureDepositPromoSchema($pdo);
-    $row = $pdo->query("SELECT target_group, active, updated_at FROM deposit_promos WHERE id = 1 LIMIT 1")
+    $row = $pdo->query("SELECT target_group, active, last_posted_at, last_posted_group, updated_at FROM deposit_promos WHERE id = 1 LIMIT 1")
                ->fetch(PDO::FETCH_ASSOC);
     if (!$row) {
-        return ['active' => false, 'target_group' => 'all', 'updated_at' => ''];
+        return [
+            'active'            => false,
+            'target_group'      => 'all',
+            'last_posted_at'    => '',
+            'last_posted_group' => '',
+            'updated_at'        => '',
+        ];
     }
     return [
-        'active'       => ((int)($row['active'] ?? 0)) === 1,
-        'target_group' => normalizeBonusTarget((string)($row['target_group'] ?? 'all')),
-        'updated_at'   => (string)($row['updated_at'] ?? ''),
+        'active'            => ((int)($row['active'] ?? 0)) === 1,
+        'target_group'      => normalizeBonusTarget((string)($row['target_group'] ?? 'all')),
+        'last_posted_at'    => trim((string)($row['last_posted_at'] ?? '')),
+        'last_posted_group' => trim((string)($row['last_posted_group'] ?? '')),
+        'updated_at'        => (string)($row['updated_at'] ?? ''),
     ];
 }
 
 function setDepositPromoConfig(PDO $pdo, bool $active, string $targetGroup): array {
     ensureDepositPromoSchema($pdo);
+    $cur = getActiveDepositPromo($pdo);
     $cleanTarget = normalizeBonusTarget($targetGroup);
     $actInt = $active ? 1 : 0;
     $ts = nowTimestampText();
+    $lastPostedAt = (string)$cur['last_posted_at'];
+    $lastPostedGroup = (string)$cur['last_posted_group'];
 
     if (isPostgresPdo($pdo)) {
         $pdo->prepare("
-            INSERT INTO deposit_promos (id, target_group, active, updated_at)
-            VALUES (1, ?, ?, ?)
+            INSERT INTO deposit_promos (id, target_group, active, last_posted_at, last_posted_group, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO UPDATE
-            SET target_group = EXCLUDED.target_group, active = EXCLUDED.active, updated_at = EXCLUDED.updated_at
-        ")->execute([$cleanTarget, $actInt, $ts]);
+            SET target_group = EXCLUDED.target_group,
+                active = EXCLUDED.active,
+                updated_at = EXCLUDED.updated_at
+        ")->execute([$cleanTarget, $actInt, $lastPostedAt, $lastPostedGroup, $ts]);
     } else {
         $pdo->prepare("
-            INSERT OR REPLACE INTO deposit_promos (id, target_group, active, updated_at)
-            VALUES (1, ?, ?, ?)
-        ")->execute([$cleanTarget, $actInt, $ts]);
+            INSERT OR REPLACE INTO deposit_promos (id, target_group, active, last_posted_at, last_posted_group, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?)
+        ")->execute([$cleanTarget, $actInt, $lastPostedAt, $lastPostedGroup, $ts]);
     }
 
     return getActiveDepositPromo($pdo);
+}
+
+function markDepositPromoPosted(PDO $pdo, string $targetGroup): void {
+    ensureDepositPromoSchema($pdo);
+    $cur = getActiveDepositPromo($pdo);
+    $ts = nowTimestampText();
+    $cleanGroup = normalizeBonusTarget($targetGroup);
+
+    if (isPostgresPdo($pdo)) {
+        $pdo->prepare("
+            UPDATE deposit_promos
+            SET last_posted_at = ?, last_posted_group = ?, updated_at = ?
+            WHERE id = 1
+        ")->execute([$ts, $cleanGroup, $ts]);
+    } else {
+        $pdo->prepare("
+            INSERT OR REPLACE INTO deposit_promos (id, target_group, active, last_posted_at, last_posted_group, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?)
+        ")->execute([
+            (string)$cur['target_group'],
+            !empty($cur['active']) ? 1 : 0,
+            $ts,
+            $cleanGroup,
+            $ts,
+        ]);
+    }
+}
+
+function getPromoPostCooldownRemaining(array $promoCfg, string $targetGroup): int {
+    $lastAtStr = trim((string)($promoCfg['last_posted_at'] ?? ''));
+    $lastGroup = normalizeBonusTarget((string)($promoCfg['last_posted_group'] ?? ''));
+    $cleanGroup = normalizeBonusTarget($targetGroup);
+
+    if ($lastAtStr === '' || $lastGroup !== $cleanGroup) {
+        return 0;
+    }
+
+    $lastTs = strtotime($lastAtStr . ' UTC');
+    if ($lastTs === false || $lastTs <= 0) {
+        return 0;
+    }
+
+    $elapsed = time() - $lastTs;
+    $remaining = PROMO_POST_COOLDOWN_SECONDS - $elapsed;
+    return $remaining > 0 ? $remaining : 0;
+}
+
+function formatCooldownDuration(int $seconds): string {
+    $seconds = max(1, $seconds);
+    $hours = intdiv($seconds, 3600);
+    $mins = intdiv($seconds % 3600, 60);
+    $secs = $seconds % 60;
+
+    $parts = [];
+    if ($hours > 0) {
+        $parts[] = "{$hours}h";
+    }
+    if ($mins > 0) {
+        $parts[] = "{$mins}m";
+    }
+    if ($hours === 0 && $mins === 0) {
+        $parts[] = "{$secs}s";
+    }
+    return implode(' ', $parts);
 }
 
 function buildDepositPromoTargetKeyboard(): array {
@@ -539,7 +630,7 @@ function buildDepositPromoTargetKeyboard(): array {
                 ['text' => '0️⃣ 0.00 Bal', 'callback_data' => 'dep_promo_target:zero'],
             ],
             [
-                ['text' => '📢 Post Promo Now', 'callback_data' => 'post_dep_promo_now'],
+                ['text' => '📢 Post Promo (2h)', 'callback_data' => 'post_dep_promo_now'],
                 ['text' => '⛔ Turn Off Promo', 'callback_data' => 'dep_promo_off'],
             ],
         ],
@@ -554,7 +645,7 @@ function buildDepositPromoConfirmKeyboard(string $targetSpec): array {
                 ['text' => '✅ Enable Promo (50→+20 / 100→+30)', 'callback_data' => "dep_promo_enable:{$cleanTarget}"],
             ],
             [
-                ['text' => '📢 Enable & Post to Players', 'callback_data' => "dep_promo_enable_post:{$cleanTarget}"],
+                ['text' => '📢 Enable & Post Once (2h)', 'callback_data' => "dep_promo_enable_post:{$cleanTarget}"],
             ],
             [
                 ['text' => '⬅️ Change Group', 'callback_data' => 'open_dep_promo_menu'],
@@ -625,6 +716,22 @@ function buildPromoAnnouncementText(string $targetGroup): string {
 
 function broadcastPromoToPlayers(PDO $pdo, string $token, string $targetGroup, string $webAppUrl): array {
     $cleanGroup = normalizeBonusTarget($targetGroup);
+    $curPromo = getActiveDepositPromo($pdo);
+    $remaining = getPromoPostCooldownRemaining($curPromo, $cleanGroup);
+
+    if ($remaining > 0) {
+        return [
+            'ok'            => false,
+            'throttled'     => true,
+            'remaining_sec' => $remaining,
+            'wait_text'     => formatCooldownDuration($remaining),
+            'group_label'   => formatBonusTargetLabel($cleanGroup),
+        ];
+    }
+
+    // Record timestamp immediately before sending so rapid retries cannot double-post
+    markDepositPromoPosted($pdo, $cleanGroup);
+
     $playerIds = resolveBonusTargetPlayerIds($pdo, $cleanGroup);
     $msg = buildPromoAnnouncementText($cleanGroup);
     $playKeyboard = [
@@ -641,6 +748,8 @@ function broadcastPromoToPlayers(PDO $pdo, string $token, string $targetGroup, s
     }
 
     return [
+        'ok'            => true,
+        'throttled'     => false,
         'total_matched' => count($playerIds),
         'sent_count'    => $sentCount,
         'group_label'   => formatBonusTargetLabel($cleanGroup),
@@ -1170,6 +1279,10 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
             $statusStr = $curPromo['active']
                 ? "ACTIVE (" . formatBonusTargetLabel($curPromo['target_group']) . ")"
                 : "OFF";
+            $remSec = getPromoPostCooldownRemaining($curPromo, (string)$curPromo['target_group']);
+            $cooldownLine = $remSec > 0
+                ? "\n• Next Post Available In: " . formatCooldownDuration($remSec)
+                : "\n• Post Cooldown: Ready (once every 2h)";
 
             tgPost($token, 'answerCallbackQuery', [
                 'callback_query_id' => $cbId,
@@ -1184,7 +1297,8 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                     'text'         => "SMART BINGO — Deposit Bonus Promo\n\n"
                                     . "• Deposit 50+ ETB → +20.00 ETB Bonus\n"
                                     . "• Deposit 100+ ETB → +30.00 ETB Bonus\n"
-                                    . "• Current Status: {$statusStr}\n\n"
+                                    . "• Current Status: {$statusStr}"
+                                    . $cooldownLine . "\n\n"
                                     . "Choose which group gets this deposit bonus:",
                     'reply_markup' => buildDepositPromoTargetKeyboard(),
                 ]);
@@ -1212,7 +1326,8 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                     'text'         => "SMART BINGO — Confirm Deposit Promo\n\n"
                                     . "• Target Group: " . formatBonusTargetLabel($target) . "\n"
                                     . "• Players in Group: {$countPreview}\n"
-                                    . "• Rule: 50+ ETB deposit = +20 ETB | 100+ ETB deposit = +30 ETB",
+                                    . "• Rule: 50+ ETB deposit = +20 ETB | 100+ ETB deposit = +30 ETB\n"
+                                    . "• Broadcast Limit: Once every 2 hours",
                     'reply_markup' => buildDepositPromoConfirmKeyboard($target),
                 ]);
             }
@@ -1243,7 +1358,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                                     . "• Deposit 100+ ETB → +30.00 ETB bonus",
                     'reply_markup' => [
                         'inline_keyboard' => [[
-                            ['text' => '📢 Post Promo to Players Now', 'callback_data' => 'post_dep_promo_now'],
+                            ['text' => '📢 Post Promo Once (2h)', 'callback_data' => 'post_dep_promo_now'],
                         ]],
                     ],
                 ]);
@@ -1259,23 +1374,44 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
             $saved = setDepositPromoConfig($pdo, true, $target);
             $postRes = broadcastPromoToPlayers($pdo, $token, (string)$saved['target_group'], $webAppUrl);
 
-            tgPost($token, 'answerCallbackQuery', [
-                'callback_query_id' => $cbId,
-                'text'              => "Enabled & sent to {$postRes['sent_count']} players",
-                'show_alert'        => false,
-            ]);
-
-            if ($adminMsgId > 0) {
-                tgPost($token, 'editMessageText', [
-                    'chat_id'      => $adminChat,
-                    'message_id'   => $adminMsgId,
-                    'text'         => "✅ DEPOSIT PROMO ENABLED & POSTED TO PLAYERS\n\n"
-                                    . "• Target Group: {$postRes['group_label']}\n"
-                                    . "• Deposit 50+ ETB → +20.00 ETB bonus\n"
-                                    . "• Deposit 100+ ETB → +30.00 ETB bonus\n"
-                                    . "• Delivered to: {$postRes['sent_count']} / {$postRes['total_matched']} players",
-                    'reply_markup' => ['inline_keyboard' => []],
+            if (!empty($postRes['throttled'])) {
+                $waitStr = (string)($postRes['wait_text'] ?? '2h');
+                tgPost($token, 'answerCallbackQuery', [
+                    'callback_query_id' => $cbId,
+                    'text'              => "Promo enabled. Next post in {$waitStr}.",
+                    'show_alert'        => true,
                 ]);
+                if ($adminMsgId > 0) {
+                    tgPost($token, 'editMessageText', [
+                        'chat_id'      => $adminChat,
+                        'message_id'   => $adminMsgId,
+                        'text'         => "✅ DEPOSIT PROMO ENABLED\n\n"
+                                        . "• Target Group: {$postRes['group_label']}\n"
+                                        . "• Deposit 50+ ETB → +20.00 ETB bonus\n"
+                                        . "• Deposit 100+ ETB → +30.00 ETB bonus\n"
+                                        . "• Post Cooldown: Already posted within 2 hours. Try again in {$waitStr}.",
+                        'reply_markup' => ['inline_keyboard' => []],
+                    ]);
+                }
+            } else {
+                tgPost($token, 'answerCallbackQuery', [
+                    'callback_query_id' => $cbId,
+                    'text'              => "Enabled & sent to {$postRes['sent_count']} players",
+                    'show_alert'        => false,
+                ]);
+                if ($adminMsgId > 0) {
+                    tgPost($token, 'editMessageText', [
+                        'chat_id'      => $adminChat,
+                        'message_id'   => $adminMsgId,
+                        'text'         => "✅ DEPOSIT PROMO ENABLED & POSTED ONCE (2h COOLDOWN)\n\n"
+                                        . "• Target Group: {$postRes['group_label']}\n"
+                                        . "• Deposit 50+ ETB → +20.00 ETB bonus\n"
+                                        . "• Deposit 100+ ETB → +30.00 ETB bonus\n"
+                                        . "• Delivered to: {$postRes['sent_count']} / {$postRes['total_matched']} players\n"
+                                        . "• Next post allowed in: 2 hours",
+                        'reply_markup' => ['inline_keyboard' => []],
+                    ]);
+                }
             }
 
             http_response_code(200);
@@ -1288,23 +1424,42 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
             $targetGroup = !empty($curPromo['active']) ? (string)$curPromo['target_group'] : 'all';
             $postRes = broadcastPromoToPlayers($pdo, $token, $targetGroup, $webAppUrl);
 
-            tgPost($token, 'answerCallbackQuery', [
-                'callback_query_id' => $cbId,
-                'text'              => "Posted to {$postRes['sent_count']} players",
-                'show_alert'        => false,
-            ]);
-
-            if ($adminMsgId > 0) {
-                tgPost($token, 'editMessageText', [
-                    'chat_id'      => $adminChat,
-                    'message_id'   => $adminMsgId,
-                    'text'         => "📢 DEPOSIT PROMO POSTED TO PLAYERS\n\n"
-                                    . "• Target Group: {$postRes['group_label']}\n"
-                                    . "• Deposit 50+ ETB → +20.00 ETB bonus\n"
-                                    . "• Deposit 100+ ETB → +30.00 ETB bonus\n"
-                                    . "• Delivered to: {$postRes['sent_count']} / {$postRes['total_matched']} players",
-                    'reply_markup' => ['inline_keyboard' => []],
+            if (!empty($postRes['throttled'])) {
+                $waitStr = (string)($postRes['wait_text'] ?? '2h');
+                tgPost($token, 'answerCallbackQuery', [
+                    'callback_query_id' => $cbId,
+                    'text'              => "Already posted! Wait {$waitStr} (2h limit).",
+                    'show_alert'        => true,
                 ]);
+                if ($adminMsgId > 0) {
+                    tgPost($token, 'editMessageText', [
+                        'chat_id'      => $adminChat,
+                        'message_id'   => $adminMsgId,
+                        'text'         => "⏳ PROMO POST COOLDOWN ACTIVE (1 POST PER 2 HOURS)\n\n"
+                                        . "• Target Group: {$postRes['group_label']}\n"
+                                        . "• Time Remaining: {$waitStr}",
+                        'reply_markup' => ['inline_keyboard' => []],
+                    ]);
+                }
+            } else {
+                tgPost($token, 'answerCallbackQuery', [
+                    'callback_query_id' => $cbId,
+                    'text'              => "Posted once to {$postRes['sent_count']} players",
+                    'show_alert'        => false,
+                ]);
+                if ($adminMsgId > 0) {
+                    tgPost($token, 'editMessageText', [
+                        'chat_id'      => $adminChat,
+                        'message_id'   => $adminMsgId,
+                        'text'         => "📢 DEPOSIT PROMO POSTED ONCE (2h COOLDOWN)\n\n"
+                                        . "• Target Group: {$postRes['group_label']}\n"
+                                        . "• Deposit 50+ ETB → +20.00 ETB bonus\n"
+                                        . "• Deposit 100+ ETB → +30.00 ETB bonus\n"
+                                        . "• Delivered to: {$postRes['sent_count']} / {$postRes['total_matched']} players\n"
+                                        . "• Next post allowed in: 2 hours",
+                        'reply_markup' => ['inline_keyboard' => []],
+                    ]);
+                }
             }
 
             http_response_code(200);
@@ -2013,7 +2168,7 @@ try {
                             ],
                             [
                                 ['text' => '💸 Deposit Promo (50/100)', 'callback_data' => 'open_dep_promo_menu'],
-                                ['text' => '📢 Post Promo', 'callback_data' => 'post_dep_promo_now'],
+                                ['text' => '📢 Post Promo (2h)', 'callback_data' => 'post_dep_promo_now'],
                             ],
                         ],
                     ];
