@@ -304,7 +304,7 @@ function getPlayerChatTarget(PDO $pdo, string $telegramId): string {
     return $chatId !== '' ? $chatId : $telegramId;
 }
 
-function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId, string $messageText): bool {
+function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId, string $messageText, ?array $replyMarkup = null): bool {
     if ($targetPlayerId === '' || $messageText === '') {
         return false;
     }
@@ -319,10 +319,14 @@ function sendPlayerNotification(PDO $pdo, string $token, string $targetPlayerId,
     }
 
     foreach ($candidates as $chatTarget) {
-        $res = tgPost($token, 'sendMessage', [
+        $payload = [
             'chat_id' => $chatTarget,
             'text'    => $messageText,
-        ]);
+        ];
+        if ($replyMarkup !== null) {
+            $payload['reply_markup'] = $replyMarkup;
+        }
+        $res = tgPost($token, 'sendMessage', $payload);
         if (!empty($res['ok'])) {
             return true;
         }
@@ -535,6 +539,7 @@ function buildDepositPromoTargetKeyboard(): array {
                 ['text' => '0️⃣ 0.00 Bal', 'callback_data' => 'dep_promo_target:zero'],
             ],
             [
+                ['text' => '📢 Post Promo Now', 'callback_data' => 'post_dep_promo_now'],
                 ['text' => '⛔ Turn Off Promo', 'callback_data' => 'dep_promo_off'],
             ],
         ],
@@ -547,6 +552,9 @@ function buildDepositPromoConfirmKeyboard(string $targetSpec): array {
         'inline_keyboard' => [
             [
                 ['text' => '✅ Enable Promo (50→+20 / 100→+30)', 'callback_data' => "dep_promo_enable:{$cleanTarget}"],
+            ],
+            [
+                ['text' => '📢 Enable & Post to Players', 'callback_data' => "dep_promo_enable_post:{$cleanTarget}"],
             ],
             [
                 ['text' => '⬅️ Change Group', 'callback_data' => 'open_dep_promo_menu'],
@@ -566,9 +574,77 @@ function calculateTieredDepositBonus(float $depositAmount): float {
     return 0.00;
 }
 
-function isPlayerEligibleForPromo(PDO $pdo, string $playerId, string $targetGroup): bool {
-    $matchedIds = array_map('strval', resolveBonusTargetPlayerIds($pdo, normalizeBonusTarget($targetGroup)));
-    return in_array((string)$playerId, $matchedIds, true);
+function isPlayerEligibleForPromo(PDO $pdo, string $playerId, string $targetGroup, ?float $preDepositBalance = null): bool {
+    $cleanGroup = normalizeBonusTarget($targetGroup);
+    if ($cleanGroup === 'all') {
+        return true;
+    }
+
+    $matchedIds = array_map('strval', resolveBonusTargetPlayerIds($pdo, $cleanGroup));
+    if (in_array((string)$playerId, $matchedIds, true)) {
+        return true;
+    }
+
+    if ($preDepositBalance !== null && round($preDepositBalance, 2) === 0.00) {
+        if ($cleanGroup === 'zero') {
+            return true;
+        }
+        if ($cleanGroup === 'new') {
+            $hasRoomPlayers = tableExists($pdo, 'room_players');
+            $hasLedger      = tableExists($pdo, 'balance_ledger');
+            if ($hasRoomPlayers) {
+                $rpStmt = $pdo->prepare("SELECT 1 FROM room_players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
+                $rpStmt->execute([(string)$playerId]);
+                if ($rpStmt->fetchColumn()) {
+                    return false;
+                }
+            }
+            if ($hasLedger) {
+                $blStmt = $pdo->prepare("SELECT 1 FROM balance_ledger WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
+                $blStmt->execute([(string)$playerId]);
+                if ($blStmt->fetchColumn()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function buildPromoAnnouncementText(string $targetGroup): string {
+    $groupLabel = formatBonusTargetLabel($targetGroup);
+    return "🎁 SMART BINGO — DEPOSIT & BONUS PROMO! 🎁\n\n"
+         . "Deposit now and get an extra bonus on your balance:\n"
+         . "• Deposit 50+ ETB → Get +20.00 ETB Bonus!\n"
+         . "• Deposit 100+ ETB → Get +30.00 ETB Bonus!\n"
+         . "• Eligible Group: {$groupLabel}\n\n"
+         . "Tap Deposit below to pick Telebirr or Bank Account, send your payment SMS, and start playing!";
+}
+
+function broadcastPromoToPlayers(PDO $pdo, string $token, string $targetGroup, string $webAppUrl): array {
+    $cleanGroup = normalizeBonusTarget($targetGroup);
+    $playerIds = resolveBonusTargetPlayerIds($pdo, $cleanGroup);
+    $msg = buildPromoAnnouncementText($cleanGroup);
+    $playKeyboard = [
+        'inline_keyboard' => [[
+            ['text' => '🎮 Play Bingo', 'web_app' => ['url' => $webAppUrl]],
+        ]],
+    ];
+
+    $sentCount = 0;
+    foreach ($playerIds as $pid) {
+        if (sendPlayerNotification($pdo, $token, (string)$pid, $msg, $playKeyboard)) {
+            $sentCount++;
+        }
+    }
+
+    return [
+        'total_matched' => count($playerIds),
+        'sent_count'    => $sentCount,
+        'group_label'   => formatBonusTargetLabel($cleanGroup),
+    ];
 }
 
 function notifyAndDepositBonus(
@@ -857,6 +933,10 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
         return ['kind' => 'dep_promo_off'];
     }
 
+    if ($trimmed === 'post_dep_promo_now') {
+        return ['kind' => 'post_dep_promo_now'];
+    }
+
     if (preg_match('/^dep_promo_target:(all|new|newcomers|zero|\d+)$/i', $trimmed, $dpTarget)) {
         return [
             'kind'   => 'dep_promo_target',
@@ -868,6 +948,13 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
         return [
             'kind'   => 'dep_promo_enable',
             'target' => normalizeBonusTarget((string)$dpEnable[1]),
+        ];
+    }
+
+    if (preg_match('/^dep_promo_enable_post:(all|new|newcomers|zero|\d+)$/i', $trimmed, $dpEnablePost)) {
+        return [
+            'kind'   => 'dep_promo_enable_post',
+            'target' => normalizeBonusTarget((string)$dpEnablePost[1]),
         ];
     }
 
@@ -1154,6 +1241,68 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                                     . "• Target Group: {$label}\n"
                                     . "• Deposit 50+ ETB → +20.00 ETB bonus\n"
                                     . "• Deposit 100+ ETB → +30.00 ETB bonus",
+                    'reply_markup' => [
+                        'inline_keyboard' => [[
+                            ['text' => '📢 Post Promo to Players Now', 'callback_data' => 'post_dep_promo_now'],
+                        ]],
+                    ],
+                ]);
+            }
+
+            http_response_code(200);
+            echo "OK";
+            exit;
+        }
+
+        if ($parsed['kind'] === 'dep_promo_enable_post') {
+            $target = (string)$parsed['target'];
+            $saved = setDepositPromoConfig($pdo, true, $target);
+            $postRes = broadcastPromoToPlayers($pdo, $token, (string)$saved['target_group'], $webAppUrl);
+
+            tgPost($token, 'answerCallbackQuery', [
+                'callback_query_id' => $cbId,
+                'text'              => "Enabled & sent to {$postRes['sent_count']} players",
+                'show_alert'        => false,
+            ]);
+
+            if ($adminMsgId > 0) {
+                tgPost($token, 'editMessageText', [
+                    'chat_id'      => $adminChat,
+                    'message_id'   => $adminMsgId,
+                    'text'         => "✅ DEPOSIT PROMO ENABLED & POSTED TO PLAYERS\n\n"
+                                    . "• Target Group: {$postRes['group_label']}\n"
+                                    . "• Deposit 50+ ETB → +20.00 ETB bonus\n"
+                                    . "• Deposit 100+ ETB → +30.00 ETB bonus\n"
+                                    . "• Delivered to: {$postRes['sent_count']} / {$postRes['total_matched']} players",
+                    'reply_markup' => ['inline_keyboard' => []],
+                ]);
+            }
+
+            http_response_code(200);
+            echo "OK";
+            exit;
+        }
+
+        if ($parsed['kind'] === 'post_dep_promo_now') {
+            $curPromo = getActiveDepositPromo($pdo);
+            $targetGroup = !empty($curPromo['active']) ? (string)$curPromo['target_group'] : 'all';
+            $postRes = broadcastPromoToPlayers($pdo, $token, $targetGroup, $webAppUrl);
+
+            tgPost($token, 'answerCallbackQuery', [
+                'callback_query_id' => $cbId,
+                'text'              => "Posted to {$postRes['sent_count']} players",
+                'show_alert'        => false,
+            ]);
+
+            if ($adminMsgId > 0) {
+                tgPost($token, 'editMessageText', [
+                    'chat_id'      => $adminChat,
+                    'message_id'   => $adminMsgId,
+                    'text'         => "📢 DEPOSIT PROMO POSTED TO PLAYERS\n\n"
+                                    . "• Target Group: {$postRes['group_label']}\n"
+                                    . "• Deposit 50+ ETB → +20.00 ETB bonus\n"
+                                    . "• Deposit 100+ ETB → +30.00 ETB bonus\n"
+                                    . "• Delivered to: {$postRes['sent_count']} / {$postRes['total_matched']} players",
                     'reply_markup' => ['inline_keyboard' => []],
                 ]);
             }
@@ -1386,7 +1535,7 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 
                 $promoCfg = getActiveDepositPromo($pdo);
                 $promoBonus = 0.00;
-                if (!empty($promoCfg['active']) && isPlayerEligibleForPromo($pdo, $canonicalPlayerId, (string)$promoCfg['target_group'])) {
+                if (!empty($promoCfg['active']) && isPlayerEligibleForPromo($pdo, $canonicalPlayerId, (string)$promoCfg['target_group'], $before)) {
                     $promoBonus = calculateTieredDepositBonus($amount);
                 }
 
@@ -1643,7 +1792,7 @@ try {
 
         $promoCfg = getActiveDepositPromo($pdo);
         $previewBonus = 0.00;
-        if (!empty($promoCfg['active']) && isPlayerEligibleForPromo($pdo, (string)$userId, (string)$promoCfg['target_group'])) {
+        if (!empty($promoCfg['active']) && isPlayerEligibleForPromo($pdo, (string)$userId, (string)$promoCfg['target_group'], $balanceNum)) {
             $previewBonus = calculateTieredDepositBonus($amount);
         }
 
@@ -1796,7 +1945,7 @@ try {
             case '/deposit':
                 $promoCfg = getActiveDepositPromo($pdo);
                 $promoNote = '';
-                if (!empty($promoCfg['active']) && isPlayerEligibleForPromo($pdo, (string)$userId, (string)$promoCfg['target_group'])) {
+                if (!empty($promoCfg['active']) && isPlayerEligibleForPromo($pdo, (string)$userId, (string)$promoCfg['target_group'], $balanceNum)) {
                     $promoNote = "\n🎁 Deposit Promo Active: Deposit 50+ ETB → +20 ETB bonus | 100+ ETB → +30 ETB bonus!\n";
                 }
                 $reply = "SMART BINGO — Deposit (Min: 10 ETB)\n"
@@ -1864,6 +2013,7 @@ try {
                             ],
                             [
                                 ['text' => '💸 Deposit Promo (50/100)', 'callback_data' => 'open_dep_promo_menu'],
+                                ['text' => '📢 Post Promo', 'callback_data' => 'post_dep_promo_now'],
                             ],
                         ],
                     ];
