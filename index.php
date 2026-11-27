@@ -108,30 +108,6 @@
       line-height: 1.3;
     }
 
-    .id-assist-box {
-      background: rgba(245, 183, 0, 0.12);
-      border: 1px solid rgba(245, 183, 0, 0.45);
-      border-radius: 12px;
-      padding: 7px 9px;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
-    .id-assist-input {
-      flex: 1;
-      min-width: 120px;
-      background: #0b2429;
-      color: #fff;
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      border-radius: 8px;
-      padding: 5px 8px;
-      font-size: 0.78rem;
-      font-weight: 700;
-    }
-
     .onboarding-strip {
       background: var(--bg-card);
       border: 1px solid rgba(245, 183, 0, 0.35);
@@ -697,12 +673,59 @@
 
     .modal-box-custom {
       width: 100%;
-      max-width: 340px;
+      max-width: 360px;
       background: var(--bg-card);
       border: 1px solid rgba(245, 183, 0, 0.55);
       border-radius: 18px;
-      padding: 13px;
+      padding: 14px;
       text-align: center;
+    }
+
+    .method-choice-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 8px 0;
+    }
+
+    .method-pill-btn {
+      padding: 9px 8px;
+      border-radius: 11px;
+      background: var(--bg-card-soft);
+      border: 1.5px solid var(--line-border);
+      color: var(--text-main);
+      font-weight: 800;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .method-pill-btn.active {
+      border-color: var(--accent-gold);
+      background: rgba(245, 183, 0, 0.16);
+      color: var(--accent-gold);
+    }
+
+    .deposit-account-box {
+      background: #0b2429;
+      border: 1px solid rgba(245, 183, 0, 0.35);
+      border-radius: 11px;
+      padding: 9px 10px;
+      text-align: left;
+      font-size: 0.76rem;
+      color: var(--text-main);
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+
+    .deposit-input {
+      width: 100%;
+      background: #0b2429;
+      color: #fff;
+      border: 1px solid var(--line-border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 0.82rem;
+      margin-bottom: 8px;
     }
 
     .winner-top-name {
@@ -779,17 +802,11 @@
       Pick up to 3 cartelas. 15s countdown starts once held. 1 line wins 80% (20% fee); single winner per round.
     </p>
 
-    <div id="desktop-id-assist" class="id-assist-box d-none">
-      <span style="font-size:0.72rem;font-weight:800;color:var(--accent-gold);">Telegram ID:</span>
-      <input type="text" id="inline-tg-id-input" class="id-assist-input" placeholder="Enter ID from My ID (e.g. 730967613)" />
-      <button type="button" class="btn-gold" style="width:auto;padding:5px 10px;font-size:0.72rem;" onclick="saveInlineTelegramId()">Save ID</button>
-    </div>
-
     <div class="onboarding-strip">
       <div class="onboarding-step-text">1. Share invite &bull; 2. Deposit ETB &bull; 3. Pick cartela</div>
       <div class="onboarding-btns">
         <button type="button" class="btn-secondary-dark" style="padding:5px 9px;font-size:0.72rem;" onclick="shareInviteLink()">Share</button>
-        <button type="button" class="btn-gold" style="width:auto;padding:5px 10px;font-size:0.72rem;" onclick="startInstantDeposit()">+ Deposit</button>
+        <button type="button" class="btn-gold" style="width:auto;padding:5px 10px;font-size:0.72rem;" onclick="openDepositModal()">+ Deposit</button>
       </div>
     </div>
 
@@ -841,7 +858,10 @@
       <div id="selected-cartelas-preview" class="mini-preview-strip"></div>
     </div>
 
-    <button type="button" id="play-btn" class="btn-gold" onclick="joinSelectedTable()">Select at least 1 Cartela</button>
+    <div class="lobby-actions-row" style="margin-top:0;">
+      <button type="button" id="play-btn" class="btn-gold" onclick="joinSelectedTable()">Play Bingo</button>
+      <button type="button" class="btn-secondary-dark" style="padding:10px 12px;font-size:0.86rem;" onclick="openDepositModal()">Deposit ETB</button>
+    </div>
   </section>
 
   <!-- SCREEN 2: LOBBY WAITING (ACTIVE GAME VISITOR) -->
@@ -946,7 +966,7 @@
     </div>
 
     <div class="wallet-grid-2">
-      <button class="wallet-action-btn deposit" onclick="startInstantDeposit()">Deposit ↓</button>
+      <button class="wallet-action-btn deposit" onclick="openDepositModal()">Deposit ↓</button>
       <button class="wallet-action-btn withdraw" onclick="requestWithdrawal()">Withdraw ↑</button>
     </div>
   </section>
@@ -959,16 +979,38 @@
       <div style="font-size:1.15rem;font-weight:800;" id="profile-name">Player</div>
       <div style="color:var(--accent-green);font-size:0.82rem;margin-top:2px;">Verified player</div>
       <div style="color:var(--text-muted);font-size:0.76rem;margin-top:4px;">ID: <span id="profile-id">--</span></div>
-      <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
-        <button type="button" class="btn-secondary-dark" style="padding:8px 12px;font-size:0.82rem;" onclick="focusInlineIdAssist()">
-          Set / Update Telegram ID
-        </button>
+      <div style="margin-top:10px;">
         <button type="button" class="btn-gold" style="padding:8px 12px;font-size:0.82rem;" onclick="shareInviteLink()">
           Copy Invite Link
         </button>
       </div>
     </div>
   </section>
+
+  <!-- DIRECT DEPOSIT MODAL (SELECT METHOD -> POST MESSAGE -> APPROVAL) -->
+  <div id="deposit-modal" class="modal-backdrop-custom d-none">
+    <div class="modal-box-custom">
+      <div style="font-weight:900;font-size:1.05rem;color:var(--accent-gold);">Deposit Funds</div>
+      <div class="section-sub" style="margin:3px 0 6px;">Select method, send payment, and post your confirmation message for approval.</div>
+
+      <div class="method-choice-grid">
+        <button type="button" id="btn-method-telebirr" class="method-pill-btn active" onclick="selectDepositMethod('Telebirr')">Telebirr</button>
+        <button type="button" id="btn-method-bank" class="method-pill-btn" onclick="selectDepositMethod('Bank Account')">Bank Account</button>
+      </div>
+
+      <div id="deposit-account-details" class="deposit-account-box">
+        <strong>Telebirr:</strong> Send to your Telebirr number, then paste the confirmation SMS below.
+      </div>
+
+      <input type="number" id="deposit-amount-input" class="deposit-input" placeholder="Amount in ETB (min 10)" min="10" step="0.01" />
+      <textarea id="deposit-message-input" class="deposit-input" rows="3" placeholder="Paste full Telebirr or Bank SMS / transaction message here..."></textarea>
+
+      <div class="lobby-actions-row" style="margin-top:4px;">
+        <button type="button" class="btn-gold" style="padding:8px;font-size:0.84rem;" onclick="submitDepositMessage()">Post for Approval</button>
+        <button type="button" class="btn-secondary-dark" style="padding:8px;font-size:0.84rem;" onclick="closeDepositModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <!-- WINNER MODAL WITH PLAY AGAIN + LEAVE LOBBY -->
   <div id="winner-modal" class="modal-backdrop-custom d-none">
@@ -1058,17 +1100,27 @@
         }
       }
       const p = new URLSearchParams(window.location.search);
-      if (p.has('telegram_id')) {
-        const id = String(p.get('telegram_id') || '').replace(/\D+/g, '');
-        if (id) {
-          sessionStorage.setItem('Smart_bingo_tg_id', id);
-          localStorage.setItem('Smart_bingo_saved_tg_id', id);
-          return id;
+      for (const key of ['telegram_id', 'tg_id', 'user_id', 'id']) {
+        if (p.has(key)) {
+          const id = String(p.get(key) || '').replace(/\D+/g, '');
+          if (id) {
+            sessionStorage.setItem('Smart_bingo_tg_id', id);
+            localStorage.setItem('Smart_bingo_saved_tg_id', id);
+            return id;
+          }
         }
       }
-      return sessionStorage.getItem('Smart_bingo_tg_id')
-        || localStorage.getItem('Smart_bingo_saved_tg_id')
-        || '';
+      const savedId = sessionStorage.getItem('Smart_bingo_tg_id')
+        || localStorage.getItem('Smart_bingo_saved_tg_id');
+      if (savedId) return savedId;
+
+      // Auto-assign a local guest session ID when opened outside Telegram so players never get stuck on an ID prompt
+      let guestId = sessionStorage.getItem('Smart_bingo_guest_id');
+      if (!guestId) {
+        guestId = String(Math.floor(100000000 + Math.random() * 899999999));
+        sessionStorage.setItem('Smart_bingo_guest_id', guestId);
+      }
+      return guestId;
     }
 
     function getReferrerId() {
@@ -1097,18 +1149,6 @@
     let user = extractTelegramUserFromInitData();
     let playerName = resolveDisplayName();
 
-    function updateIdAssistVisibility() {
-      const box = document.getElementById('desktop-id-assist');
-      const inp = document.getElementById('inline-tg-id-input');
-      if (!box) return;
-      if (telegramId) {
-        box.classList.add('d-none');
-      } else {
-        box.classList.remove('d-none');
-        if (inp && !inp.value) inp.placeholder = 'Enter ID from My ID (e.g. 730967613)';
-      }
-    }
-
     function applyDetectedIdentity() {
       user = extractTelegramUserFromInitData();
       const detectedId = getUserId();
@@ -1118,48 +1158,10 @@
       playerName = resolveDisplayName();
       document.getElementById('profile-name').textContent = playerName;
       document.getElementById('profile-avatar').textContent = (playerName.charAt(0) || 'P').toUpperCase();
-      document.getElementById('profile-id').textContent = telegramId || 'Open in Telegram';
-      updateIdAssistVisibility();
+      document.getElementById('profile-id').textContent = telegramId || '--';
       if (telegramId) {
         syncBalance();
       }
-    }
-
-    function saveInlineTelegramId() {
-      const inp = document.getElementById('inline-tg-id-input');
-      const cleanId = String((inp && inp.value) || '').replace(/\D+/g, '');
-      if (!cleanId) {
-        alert('Type your numeric Telegram ID from "My ID" first, then click Save ID.');
-        if (inp) inp.focus();
-        return false;
-      }
-      telegramId = cleanId;
-      sessionStorage.setItem('Smart_bingo_tg_id', cleanId);
-      localStorage.setItem('Smart_bingo_saved_tg_id', cleanId);
-      document.getElementById('profile-id').textContent = telegramId;
-      updateIdAssistVisibility();
-      syncBalance();
-      return true;
-    }
-
-    function focusInlineIdAssist() {
-      switchTab('game');
-      updateIdAssistVisibility();
-      const box = document.getElementById('desktop-id-assist');
-      const inp = document.getElementById('inline-tg-id-input');
-      if (box) box.classList.remove('d-none');
-      if (inp) {
-        inp.value = telegramId || '';
-        inp.focus();
-      }
-    }
-
-    function ensureAuthenticatedPlayer() {
-      applyDetectedIdentity();
-      if (telegramId) return true;
-      focusInlineIdAssist();
-      alert('Enter your numeric Telegram ID in the gold box at the top and tap "Save ID".');
-      return false;
     }
 
     applyDetectedIdentity();
@@ -1181,6 +1183,7 @@
     let gameHistory = [];
     let soundEnabled = true;
     let audioCtx = null;
+    let selectedDepositMethod = 'Telebirr';
 
     function getBallLetter(n) {
       if (n <= 15) return 'B';
@@ -1288,8 +1291,8 @@
     function updatePlayButtonLabel() {
       const btn = document.getElementById('play-btn');
       btn.textContent = selectedCartelaNumbers.length > 0
-        ? `Play for ${selectedStake * selectedCartelaNumbers.length} ETB`
-        : 'Select at least 1 Cartela';
+        ? `Play Bingo (${selectedStake * selectedCartelaNumbers.length} ETB)`
+        : 'Play Bingo';
       renderMiniCartelaPreviews('selected-cartelas-preview', selectedCartelaNumbers);
     }
 
@@ -1364,6 +1367,7 @@
       if (target) target.classList.remove('d-none');
     }
 
+    // Closes/exits ONLY this player's local view without affecting other players in the room
     function leaveToSetup() {
       stopRoomPolling();
       currentRoomId = null;
@@ -1382,7 +1386,7 @@
       const tabEl = document.getElementById(`nav-${tab}`);
       if (tabEl) tabEl.classList.add('active');
       showOnlyScreen(tab);
-      if (tab === 'game') { buildCartelaPickerGrid(); updateIdAssistVisibility(); pollSetupRoomStatus(); }
+      if (tab === 'game') { buildCartelaPickerGrid(); pollSetupRoomStatus(); }
       else if (tab === 'history') { renderHistory(); }
       syncBalance();
     }
@@ -1495,6 +1499,7 @@
       }
     }
 
+    // Yellow winning line highlights strictly on THIS player's own cartela when THIS player's cartela has a line
     function renderAllPlayroomCartelas() {
       const container = document.getElementById('play-cartelas-container');
       if (!container) return;
@@ -1505,7 +1510,7 @@
         const winSet = new Set(Array.isArray(winLine) ? winLine : []);
         const cellsHtml = item.board.map((num, idx) => {
           const isFree = idx === 12;
-          const isMarked = isFree || item.marked[idx];
+          const isMarked = isFree || Boolean(item.marked[idx]);
           const isWinCell = winSet.has(idx);
           const cls = 'bingo-cell' +
             (isWinCell ? ' win-highlight' : (isFree ? ' free' : (isMarked ? ' marked' : '')));
@@ -1759,7 +1764,7 @@
     }
 
     function joinSelectedTable() {
-      if (!ensureAuthenticatedPlayer()) return;
+      applyDetectedIdentity();
       if (selectedCartelaNumbers.length === 0) {
         alert('Please select at least 1 cartela before playing.');
         return;
@@ -1786,7 +1791,13 @@
           }
           if (!data.success) {
             sounds.errorBuzz();
-            alert(data.error || 'Could not join table.');
+            const errMsg = data.error || 'Could not join table.';
+            if (errMsg.toLowerCase().includes('balance') || errMsg.toLowerCase().includes('insufficient')) {
+              alert(errMsg);
+              openDepositModal();
+            } else {
+              alert(errMsg);
+            }
             pollSetupRoomStatus();
             return;
           }
@@ -1798,6 +1809,27 @@
           startRoomPolling(data.room_id);
         })
         .catch(() => alert('Network error while joining table.'));
+    }
+
+    function selectDepositMethod(method) {
+      selectedDepositMethod = method;
+      document.getElementById('btn-method-telebirr').classList.toggle('active', method === 'Telebirr');
+      document.getElementById('btn-method-bank').classList.toggle('active', method === 'Bank Account');
+      const details = document.getElementById('deposit-account-details');
+      if (method === 'Telebirr') {
+        details.innerHTML = '<strong>Telebirr:</strong> Pay via Telebirr, then paste your confirmation SMS or transaction reference below for approval.';
+      } else {
+        details.innerHTML = '<strong>Bank Account (CBE / Awash):</strong> Transfer to the bank account, then paste your transfer message or FT reference below for approval.';
+      }
+    }
+
+    function openDepositModal() {
+      applyDetectedIdentity();
+      document.getElementById('deposit-modal').classList.remove('d-none');
+    }
+
+    function closeDepositModal() {
+      document.getElementById('deposit-modal').classList.add('d-none');
     }
 
     function extractTxRefFromMessage(rawText) {
@@ -1825,21 +1857,33 @@
       return null;
     }
 
-    function startInstantDeposit() {
-      if (!ensureAuthenticatedPlayer()) return;
-      const fullMsg = prompt('Paste the FULL SMS or payment message from Telebirr or CBE:', '');
-      if (!fullMsg || !fullMsg.trim()) { alert('Please paste your payment message.'); return; }
-      const cleanMessage = fullMsg.trim();
+    function submitDepositMessage() {
+      applyDetectedIdentity();
+      const amtInput = document.getElementById('deposit-amount-input');
+      const msgInput = document.getElementById('deposit-message-input');
+      const cleanMessage = (msgInput.value || '').trim();
+      if (!cleanMessage) {
+        alert('Please paste your Telebirr or Bank confirmation message.');
+        msgInput.focus();
+        return;
+      }
+
       const detected = extractAmountFromMessage(cleanMessage);
-      const amountStr = prompt('Enter deposit amount in ETB (minimum 10):', detected !== null ? detected.toFixed(2) : '30');
-      if (!amountStr) return;
-      let amountNum = parseFloat(amountStr);
-      if (isNaN(amountNum) || amountNum < 10) { alert('Minimum deposit is 10 ETB.'); return; }
-      if (detected !== null && Math.abs(amountNum - detected) > 0.01) amountNum = detected;
+      let amountNum = parseFloat(amtInput.value);
+      if ((isNaN(amountNum) || amountNum < 10) && detected !== null) {
+        amountNum = detected;
+        amtInput.value = detected.toFixed(2);
+      }
+      if (isNaN(amountNum) || amountNum < 10) {
+        alert('Please enter a deposit amount of at least 10 ETB.');
+        amtInput.focus();
+        return;
+      }
 
       const formData = new FormData();
       formData.append('telegram_id', telegramId);
       formData.append('first_name', playerName);
+      formData.append('method', selectedDepositMethod);
       formData.append('amount', amountNum.toFixed(2));
       formData.append('tx_ref', extractTxRefFromMessage(cleanMessage));
       formData.append('full_message', cleanMessage);
@@ -1848,13 +1892,17 @@
         .then(r => r.json())
         .then(data => {
           if (data.new_balance !== undefined) updateBalanceUI(data.new_balance);
-          alert(data.message || data.error || 'Submitted.');
+          alert(data.message || data.error || 'Submitted for approval.');
+          if (data.success !== false) {
+            msgInput.value = '';
+            closeDepositModal();
+          }
         })
         .catch(err => alert('Network error: ' + err.message));
     }
 
     function requestWithdrawal() {
-      if (!ensureAuthenticatedPlayer()) return;
+      applyDetectedIdentity();
       const amount = prompt(`Enter amount to withdraw (Available: ${balance.toFixed(2)} ETB):`, '50');
       if (!amount) return;
       const amtNum = parseFloat(amount);
@@ -1886,7 +1934,7 @@
     }
 
     function shareInviteLink() {
-      if (!ensureAuthenticatedPlayer()) return;
+      applyDetectedIdentity();
       const link = `https://t.me/SmartBingoHub_bot?start=ref_${encodeURIComponent(telegramId)}`;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(link).then(() => alert(`Invite link copied!\n\n${link}`)).catch(() => prompt('Copy link:', link));
