@@ -101,6 +101,103 @@ function tableExists(PDO $pdo, string $table): bool {
     return (bool)$stmt->fetchColumn();
 }
 
+function ensureDepositStateSchema(PDO $pdo): void {
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+    $checked = true;
+
+    try {
+        if (isPostgresPdo($pdo)) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS user_bot_states (
+                    telegram_id TEXT PRIMARY KEY,
+                    state_key TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL
+                )
+            ");
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id SERIAL PRIMARY KEY,
+                    telegram_id TEXT,
+                    tx_reference TEXT UNIQUE,
+                    amount DOUBLE PRECISION,
+                    source TEXT DEFAULT 'tg_deposit',
+                    status TEXT DEFAULT 'pending',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    full_message TEXT
+                )
+            ");
+            $pdo->exec("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'tg_deposit'");
+            $pdo->exec("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS full_message TEXT");
+            return;
+        }
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS user_bot_states (
+                telegram_id TEXT PRIMARY KEY,
+                state_key TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
+            )
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id TEXT,
+                tx_reference TEXT UNIQUE,
+                amount REAL,
+                source TEXT DEFAULT 'tg_deposit',
+                status TEXT DEFAULT 'pending',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                full_message TEXT
+            )
+        ");
+        $txCols = $pdo->query("PRAGMA table_info(transactions)")->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('source', $txCols, true)) {
+            $pdo->exec("ALTER TABLE transactions ADD COLUMN source TEXT DEFAULT 'tg_deposit'");
+        }
+        if (!in_array('full_message', $txCols, true)) {
+            $pdo->exec("ALTER TABLE transactions ADD COLUMN full_message TEXT");
+        }
+    } catch (Throwable $e) {
+        error_log("ensureDepositStateSchema warning: " . $e->getMessage());
+    }
+}
+
+function setUserBotState(PDO $pdo, string $telegramId, string $stateKey): void {
+    ensureDepositStateSchema($pdo);
+    $ts = nowTimestampText();
+    if (isPostgresPdo($pdo)) {
+        $pdo->prepare("
+            INSERT INTO user_bot_states (telegram_id, state_key, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT (telegram_id) DO UPDATE SET state_key = EXCLUDED.state_key, updated_at = EXCLUDED.updated_at
+        ")->execute([$telegramId, $stateKey, $ts]);
+    } else {
+        $pdo->prepare("
+            INSERT OR REPLACE INTO user_bot_states (telegram_id, state_key, updated_at)
+            VALUES (?, ?, ?)
+        ")->execute([$telegramId, $stateKey, $ts]);
+    }
+}
+
+function getUserBotState(PDO $pdo, string $telegramId): string {
+    ensureDepositStateSchema($pdo);
+    $stmt = $pdo->prepare("SELECT state_key FROM user_bot_states WHERE telegram_id = ? LIMIT 1");
+    $stmt->execute([$telegramId]);
+    return (string)($stmt->fetchColumn() ?: '');
+}
+
+function buildDepositMethodKeyboard(): array {
+    return [
+        'inline_keyboard' => [[
+            ['text' => '📱 Telebirr', 'callback_data' => 'select_dep_method:telebirr'],
+            ['text' => '🏦 Bank Account', 'callback_data' => 'select_dep_method:bank'],
+        ]],
+    ];
+}
+
 function ensureReferralSchema(PDO $pdo): void {
     static $checked = false;
     if ($checked) {
@@ -720,7 +817,7 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
 }
 
 /* =========================================================================
-- 1. HANDLE INLINE BUTTON CLICKS (BONUS ALERTS, INVITES, DEPOSIT & WITHDRAWAL)
+- 1. HANDLE INLINE BUTTON CLICKS (DEPOSIT METHOD, BONUS, INVITES, APPROVALS)
 - ========================================================================= */
 if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $cb         = $update['callback_query'];
@@ -730,6 +827,49 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $adminChat  = (string)($cb['message']['chat']['id'] ?? $adminId);
     $adminMsgId = isset($cb['message']['message_id']) ? (int)$cb['message']['message_id'] : 0;
     $origText   = (string)($cb['message']['text'] ?? '');
+
+    // Player selects Telebirr or Bank Account for deposit
+    if (preg_match('/^select_dep_method:(telebirr|bank)$/i', trim($data), $depPick)) {
+        $pdo = getBingoPdo();
+        while ($pdo->inTransaction()) {
+            try {
+                $pdo->rollBack();
+            } catch (Throwable $ignoreRb) {
+                break;
+            }
+        }
+
+        $methodKey = strtolower((string)$depPick[1]);
+        $isBank = ($methodKey === 'bank');
+        $methodLabel = $isBank ? 'Bank Account (CBE)' : 'Telebirr';
+        $accountNum = $isBank ? '1000171689116' : '0917461538';
+
+        if ($fromId !== '') {
+            setUserBotState($pdo, $fromId, 'awaiting_deposit_msg:' . $methodKey);
+        }
+
+        tgPost($token, 'answerCallbackQuery', [
+            'callback_query_id' => $cbId,
+            'text'              => "{$methodLabel} selected",
+            'show_alert'        => false,
+        ]);
+
+        if ($adminMsgId > 0) {
+            tgPost($token, 'editMessageText', [
+                'chat_id'      => $adminChat,
+                'message_id'   => $adminMsgId,
+                'text'         => "💳 *{$methodLabel}* (Min: *10 ETB*)\n"
+                                . "Account: `{$accountNum}` (LALISA SHAFE)\n\n"
+                                . "Send your payment SMS / confirmation message next to submit for approval.",
+                'parse_mode'   => 'Markdown',
+                'reply_markup' => ['inline_keyboard' => []],
+            ]);
+        }
+
+        http_response_code(200);
+        echo "OK";
+        exit;
+    }
 
     if ($adminId !== '' && $fromId !== $adminId) {
         tgPost($token, 'answerCallbackQuery', [
@@ -1195,12 +1335,67 @@ try {
         }
     }
     ensureReferralSchema($pdo);
+    ensureDepositStateSchema($pdo);
     $player = registerOrGetUser($userId, $chatId, $firstName, $username);
     $balanceNum = (float)($player['balance'] ?? 0.0);
     $balanceFormatted = number_format($balanceNum, 2);
     $invitesCount = (int)($player['invites_count'] ?? 0);
 
-    if (preg_match('/^\/start(?:\s+(.+))?$/i', $text, $startMatch)) {
+    $currentState = getUserBotState($pdo, (string)$userId);
+    $isMenuCommand = in_array($text, [
+        'Deposit', '/deposit', 'Withdraw', '/withdraw', 'My Balance', '/balance',
+        'Share & Invite', '/invite', '/share', 'How to Play', '/help',
+        'My ID', '/myid', 'Admin Stats', '/stats', '/menu', '/bonus'
+    ], true) || preg_match('/^\/start\b/i', $text);
+
+    if (str_starts_with($currentState, 'awaiting_deposit_msg:') && $text !== '' && !$isMenuCommand) {
+        $methodKey = substr($currentState, strlen('awaiting_deposit_msg:'));
+        $methodLabel = ($methodKey === 'bank') ? 'Bank Account (CBE)' : 'Telebirr';
+
+        setUserBotState($pdo, (string)$userId, '');
+
+        $amount = 0.00;
+        if (preg_match('/(\d+(?:\.\d{1,2})?)\s*(?:ብር|ETB)\b/i', $text, $m)) {
+            $amount = round((float)$m[1], 2);
+        }
+
+        $txRef = 'TG-' . strtoupper(bin2hex(random_bytes(4)));
+        $ts = nowTimestampText();
+
+        $ins = $pdo->prepare("
+            INSERT INTO transactions (telegram_id, tx_reference, amount, source, status, created_at, full_message)
+            VALUES (?, ?, ?, ?, 'pending', ?, ?)
+        ");
+        $ins->execute([(string)$userId, $txRef, $amount, 'tg_deposit:' . $methodKey, $ts, $text]);
+        $txId = (int)$pdo->lastInsertId();
+
+        addLedger($pdo, (string)$userId, null, 'deposit_pending', $amount, $balanceNum, $balanceNum, "Pending {$methodLabel} deposit (#{$txId})");
+
+        if ($adminId !== '') {
+            $adminMsg = "SMART BINGO — Deposit for Approval (#{$txId})\n\n"
+                      . "• Player: {$firstName} (ID: {$userId})\n"
+                      . "• Method: {$methodLabel}\n"
+                      . "• Amount: " . number_format($amount, 2) . " ETB\n"
+                      . "• Ref: {$txRef}\n"
+                      . "• Message:\n{$text}";
+
+            sendPlayerNotification($pdo, $token, $adminId, $adminMsg);
+            tgPost($token, 'sendMessage', [
+                'chat_id'      => $adminId,
+                'text'         => "Approve or reject Deposit #{$txId} ({$methodLabel}, " . number_format($amount, 2) . " ETB) for {$firstName} ({$userId}):",
+                'reply_markup' => [
+                    'inline_keyboard' => [[
+                        ['text' => '✅ Approve', 'callback_data' => "approve_tx:{$txId}"],
+                        ['text' => '❌ Reject',  'callback_data' => "reject_tx:{$txId}"],
+                    ]],
+                ],
+            ]);
+        }
+
+        $reply = "Your {$methodLabel} deposit message has been submitted for approval.\n"
+               . "Reference: {$txRef}\n"
+               . "We will notify you once approved.";
+    } elseif (preg_match('/^\/start(?:\s+(.+))?$/i', $text, $startMatch)) {
         $startPayload = trim((string)($startMatch[1] ?? ''));
         $refBonusNote = '';
 
@@ -1307,17 +1502,9 @@ try {
 
             case 'Deposit':
             case '/deposit':
-                $parseMode = 'Markdown';
-                $reply = "*SMART BINGO — Deposit Accounts / Herrega Kaffaltii / የክፍያ ሂሳቦች*\n\n"
-                       . "*🏦 CBE Bank: 1000171689116 (LALISA SHAFE)*\n"
-                       . "*📱 Telebirr: 0917461538*\n"
-                       . "*💵 Minimum / Xiqqaa / ዝቅተኛ: 10 ETB*\n\n"
-                       . "*🇪🇹 [Afaan Oromoo]*\n"
-                       . "*Maallaqa (yoo xiqqaate 10 ETB/minumum) herrega armaan olii keessaa tokkotti ergaa. Erga ergitanii booda Play Bingo -> Wallet -> Deposit tuqaa, hamma birrii galchaa, akkasumas ergaa SMS/ragaa kaffaltii guutuu maxxansaa.*\n\n"
-                       . "*🇪🇹 [አማርኛ]*\n"
-                       . "*ቢያንስ 10 ብር ከላይ ባሉት ሂሳቦች በአንዱ ያስተላልፉ። ከላኩ በኋላ Play Bingo -> Wallet -> Deposit ይንኩ፣ የብር መጠን ያስገቡ እና ሙሉ የክፍያ SMS/ደረሰኝ መልዕክት ይለጥፉ。*\n\n"
-                       . "*🇬🇧 [English]*\n"
-                       . "*Transfer your deposit (minimum 10 ETB) to one of the above account (CBE ACCOUNT/TELEBIRR). Then tap Play Bingo -> Wallet -> Deposit, enter your ETB amount, and paste your full payment SMS or receipt message for admin approval.*";
+                $reply = "SMART BINGO — Deposit (Min: 10 ETB)\n\n"
+                       . "Select your payment method below:";
+                $inlineMarkup = buildDepositMethodKeyboard();
                 break;
 
             case 'Withdraw':
