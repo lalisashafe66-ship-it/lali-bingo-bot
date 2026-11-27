@@ -158,31 +158,9 @@ function ensureWithdrawalsSchema(PDO $pdo): void {
         }
 
         $cols = getTableColumns($pdo, 'withdrawals');
-        if (isPostgresPdo($pdo)) {
-            if (!in_array('method', $cols, true)) {
-                $pdo->exec("ALTER TABLE withdrawals ADD COLUMN method TEXT DEFAULT ''");
-            }
-            if (!in_array('details', $cols, true)) {
-                $pdo->exec("ALTER TABLE withdrawals ADD COLUMN details TEXT DEFAULT ''");
-            }
-            if (!in_array('status', $cols, true)) {
-                $pdo->exec("ALTER TABLE withdrawals ADD COLUMN status TEXT DEFAULT 'pending'");
-            }
-            if (!in_array('created_at', $cols, true)) {
-                $pdo->exec("ALTER TABLE withdrawals ADD COLUMN created_at TEXT DEFAULT ''");
-            }
-        } else {
-            if (!in_array('method', $cols, true)) {
-                $pdo->exec("ALTER TABLE withdrawals ADD COLUMN method TEXT DEFAULT ''");
-            }
-            if (!in_array('details', $cols, true)) {
-                $pdo->exec("ALTER TABLE withdrawals ADD COLUMN details TEXT DEFAULT ''");
-            }
-            if (!in_array('status', $cols, true)) {
-                $pdo->exec("ALTER TABLE withdrawals ADD COLUMN status TEXT DEFAULT 'pending'");
-            }
-            if (!in_array('created_at', $cols, true)) {
-                $pdo->exec("ALTER TABLE withdrawals ADD COLUMN created_at TEXT DEFAULT ''");
+        foreach (['method' => "''", 'details' => "''", 'status' => "'pending'", 'created_at' => "''"] as $colName => $defaultSql) {
+            if (!in_array($colName, $cols, true)) {
+                $pdo->exec("ALTER TABLE withdrawals ADD COLUMN {$colName} TEXT DEFAULT {$defaultSql}");
             }
         }
     } catch (Throwable $e) {
@@ -191,7 +169,6 @@ function ensureWithdrawalsSchema(PDO $pdo): void {
 }
 
 function insertWithdrawalRecord(PDO $pdo, string $telegramId, string $methodLabel, string $detailsText, float $amount, string $ts): int {
-    ensureWithdrawalsSchema($pdo);
     $cols = getTableColumns($pdo, 'withdrawals');
     if (!$cols) {
         return 0;
@@ -2008,7 +1985,6 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 throw new RuntimeException("Missing withdrawal player_id ({$targetPlayerId}) or amount ({$amount}) in {$data}");
             }
 
-            $hasLedger = tableExists($pdo, 'balance_ledger');
             $ts = nowTimestampText();
 
             $pdo->beginTransaction();
@@ -2040,14 +2016,8 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                         $pdo->prepare("UPDATE withdrawals SET status = 'rejected' WHERE id = ?")->execute([$recId]);
                     }
 
-                    if ($hasLedger) {
-                        $lStmt = $pdo->prepare("
-                            INSERT INTO balance_ledger (telegram_id, room_id, type, amount, balance_before, balance_after, note, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ");
-                        $lStmt->execute([$targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal rejected & refunded", $ts]);
-                    }
                     $pdo->commit();
+                    addLedger($pdo, $targetPlayerId, null, 'withdrawal_refund', $amount, $before, $after, "Withdrawal rejected & refunded");
 
                     $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
                     $toastText    = "Rejected & refunded {$amtFormatted} ETB";
@@ -2236,6 +2206,7 @@ try {
                    . "Example: `0917461538 50`";
             $parseMode = 'Markdown';
         } else {
+            ensureWithdrawalsSchema($pdo);
             $ts = nowTimestampText();
             $wdId = 0;
             $beforeBal = round($balanceNum, 2);
@@ -2266,14 +2237,14 @@ try {
                                . "Available Balance: " . number_format($beforeBal, 2) . " ETB";
                     } else {
                         $afterBal = round($beforeBal - $wdAmount, 2);
-                        $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
-                            ->execute([$afterBal, $ts, (string)$userId]);
+                        $updBal = $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?");
+                        $updBal->execute([$afterBal, $ts, (string)$userId]);
 
                         $wdId = insertWithdrawalRecord($pdo, (string)$userId, $methodLabel, $text, $wdAmount, $ts);
 
-                        addLedger($pdo, (string)$userId, null, 'withdrawal_pending', -$wdAmount, $beforeBal, $afterBal, "Pending {$methodLabel} withdrawal: {$text}");
                         $pdo->commit();
 
+                        addLedger($pdo, (string)$userId, null, 'withdrawal_pending', -$wdAmount, $beforeBal, $afterBal, "Pending {$methodLabel} withdrawal: {$text}");
                         setUserBotState($pdo, (string)$userId, '');
 
                         if ($adminId !== '') {
