@@ -447,6 +447,130 @@ function buildBonusAlertKeyboard(string $targetSpec = 'all'): array {
     ];
 }
 
+function ensureDepositPromoSchema(PDO $pdo): void {
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+    $checked = true;
+
+    try {
+        if (isPostgresPdo($pdo)) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS deposit_promos (
+                    id INTEGER PRIMARY KEY,
+                    target_group TEXT NOT NULL DEFAULT 'all',
+                    active INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                )
+            ");
+            $pdo->exec("
+                INSERT INTO deposit_promos (id, target_group, active, updated_at)
+                VALUES (1, 'all', 0, CURRENT_TIMESTAMP)
+                ON CONFLICT (id) DO NOTHING
+            ");
+            return;
+        }
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS deposit_promos (
+                id INTEGER PRIMARY KEY,
+                target_group TEXT NOT NULL DEFAULT 'all',
+                active INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            )
+        ");
+        $pdo->exec("
+            INSERT OR IGNORE INTO deposit_promos (id, target_group, active, updated_at)
+            VALUES (1, 'all', 0, CURRENT_TIMESTAMP)
+        ");
+    } catch (Throwable $e) {
+        error_log("ensureDepositPromoSchema warning: " . $e->getMessage());
+    }
+}
+
+function getActiveDepositPromo(PDO $pdo): array {
+    ensureDepositPromoSchema($pdo);
+    $row = $pdo->query("SELECT target_group, active, updated_at FROM deposit_promos WHERE id = 1 LIMIT 1")
+               ->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return ['active' => false, 'target_group' => 'all', 'updated_at' => ''];
+    }
+    return [
+        'active'       => ((int)($row['active'] ?? 0)) === 1,
+        'target_group' => normalizeBonusTarget((string)($row['target_group'] ?? 'all')),
+        'updated_at'   => (string)($row['updated_at'] ?? ''),
+    ];
+}
+
+function setDepositPromoConfig(PDO $pdo, bool $active, string $targetGroup): array {
+    ensureDepositPromoSchema($pdo);
+    $cleanTarget = normalizeBonusTarget($targetGroup);
+    $actInt = $active ? 1 : 0;
+    $ts = nowTimestampText();
+
+    if (isPostgresPdo($pdo)) {
+        $pdo->prepare("
+            INSERT INTO deposit_promos (id, target_group, active, updated_at)
+            VALUES (1, ?, ?, ?)
+            ON CONFLICT (id) DO UPDATE
+            SET target_group = EXCLUDED.target_group, active = EXCLUDED.active, updated_at = EXCLUDED.updated_at
+        ")->execute([$cleanTarget, $actInt, $ts]);
+    } else {
+        $pdo->prepare("
+            INSERT OR REPLACE INTO deposit_promos (id, target_group, active, updated_at)
+            VALUES (1, ?, ?, ?)
+        ")->execute([$cleanTarget, $actInt, $ts]);
+    }
+
+    return getActiveDepositPromo($pdo);
+}
+
+function buildDepositPromoTargetKeyboard(): array {
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => '👥 All Players', 'callback_data' => 'dep_promo_target:all'],
+                ['text' => '🆕 Newcomers', 'callback_data' => 'dep_promo_target:new'],
+                ['text' => '0️⃣ 0.00 Bal', 'callback_data' => 'dep_promo_target:zero'],
+            ],
+            [
+                ['text' => '⛔ Turn Off Promo', 'callback_data' => 'dep_promo_off'],
+            ],
+        ],
+    ];
+}
+
+function buildDepositPromoConfirmKeyboard(string $targetSpec): array {
+    $cleanTarget = normalizeBonusTarget($targetSpec);
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => '✅ Enable Promo (50→+20 / 100→+30)', 'callback_data' => "dep_promo_enable:{$cleanTarget}"],
+            ],
+            [
+                ['text' => '⬅️ Change Group', 'callback_data' => 'open_dep_promo_menu'],
+            ],
+        ],
+    ];
+}
+
+function calculateTieredDepositBonus(float $depositAmount): float {
+    $amt = round($depositAmount, 2);
+    if ($amt >= 100.00) {
+        return 30.00;
+    }
+    if ($amt >= 50.00) {
+        return 20.00;
+    }
+    return 0.00;
+}
+
+function isPlayerEligibleForPromo(PDO $pdo, string $playerId, string $targetGroup): bool {
+    $matchedIds = array_map('strval', resolveBonusTargetPlayerIds($pdo, normalizeBonusTarget($targetGroup)));
+    return in_array((string)$playerId, $matchedIds, true);
+}
+
 function notifyAndDepositBonus(
     PDO $pdo,
     string $token,
@@ -725,6 +849,28 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
         return ['kind' => 'recent_invites'];
     }
 
+    if ($trimmed === 'open_dep_promo_menu') {
+        return ['kind' => 'open_dep_promo_menu'];
+    }
+
+    if ($trimmed === 'dep_promo_off') {
+        return ['kind' => 'dep_promo_off'];
+    }
+
+    if (preg_match('/^dep_promo_target:(all|new|newcomers|zero|\d+)$/i', $trimmed, $dpTarget)) {
+        return [
+            'kind'   => 'dep_promo_target',
+            'target' => normalizeBonusTarget((string)$dpTarget[1]),
+        ];
+    }
+
+    if (preg_match('/^dep_promo_enable:(all|new|newcomers|zero|\d+)$/i', $trimmed, $dpEnable)) {
+        return [
+            'kind'   => 'dep_promo_enable',
+            'target' => normalizeBonusTarget((string)$dpEnable[1]),
+        ];
+    }
+
     if (preg_match('/^open_bonus_menu:([a-zA-Z0-9_-]+)$/i', $trimmed, $openMatch)) {
         return [
             'kind'   => 'open_bonus_menu',
@@ -817,7 +963,7 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
 }
 
 /* =========================================================================
-- 1. HANDLE INLINE BUTTON CLICKS (DEPOSIT METHOD, BONUS, INVITES, APPROVALS)
+- 1. HANDLE INLINE BUTTON CLICKS (DEPOSIT METHOD, PROMO, BONUS, APPROVALS)
 - ========================================================================= */
 if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $cb         = $update['callback_query'];
@@ -828,7 +974,6 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $adminMsgId = isset($cb['message']['message_id']) ? (int)$cb['message']['message_id'] : 0;
     $origText   = (string)($cb['message']['text'] ?? '');
 
-    // Player selects Telebirr or Bank Account for deposit
     if (preg_match('/^select_dep_method:(telebirr|bank)$/i', trim($data), $depPick)) {
         $pdo = getBingoPdo();
         while ($pdo->inTransaction()) {
@@ -848,6 +993,12 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
             setUserBotState($pdo, $fromId, 'awaiting_deposit_msg:' . $methodKey);
         }
 
+        $promoCfg = getActiveDepositPromo($pdo);
+        $promoLine = '';
+        if (!empty($promoCfg['active']) && $fromId !== '' && isPlayerEligibleForPromo($pdo, $fromId, (string)$promoCfg['target_group'])) {
+            $promoLine = "\n🎁 *Active Promo:* Deposit 50+ ETB → *+20 ETB* bonus | 100+ ETB → *+30 ETB* bonus!\n";
+        }
+
         tgPost($token, 'answerCallbackQuery', [
             'callback_query_id' => $cbId,
             'text'              => "{$methodLabel} selected",
@@ -859,7 +1010,8 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 'chat_id'      => $adminChat,
                 'message_id'   => $adminMsgId,
                 'text'         => "💳 *{$methodLabel}* (Min: *10 ETB*)\n"
-                                . "Account: `{$accountNum}` (LALISA SHAFE)\n\n"
+                                . "Account: `{$accountNum}` (LALISA SHAFE)\n"
+                                . $promoLine . "\n"
                                 . "Send your payment SMS / confirmation message next to submit for approval.",
                 'parse_mode'   => 'Markdown',
                 'reply_markup' => ['inline_keyboard' => []],
@@ -918,6 +1070,114 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                             ],
                         ],
                     ],
+                ]);
+            }
+
+            http_response_code(200);
+            echo "OK";
+            exit;
+        }
+
+        if ($parsed['kind'] === 'open_dep_promo_menu') {
+            $curPromo = getActiveDepositPromo($pdo);
+            $statusStr = $curPromo['active']
+                ? "ACTIVE (" . formatBonusTargetLabel($curPromo['target_group']) . ")"
+                : "OFF";
+
+            tgPost($token, 'answerCallbackQuery', [
+                'callback_query_id' => $cbId,
+                'text'              => 'Select target group for Deposit Promo',
+                'show_alert'        => false,
+            ]);
+
+            if ($adminMsgId > 0) {
+                tgPost($token, 'editMessageText', [
+                    'chat_id'      => $adminChat,
+                    'message_id'   => $adminMsgId,
+                    'text'         => "SMART BINGO — Deposit Bonus Promo\n\n"
+                                    . "• Deposit 50+ ETB → +20.00 ETB Bonus\n"
+                                    . "• Deposit 100+ ETB → +30.00 ETB Bonus\n"
+                                    . "• Current Status: {$statusStr}\n\n"
+                                    . "Choose which group gets this deposit bonus:",
+                    'reply_markup' => buildDepositPromoTargetKeyboard(),
+                ]);
+            }
+
+            http_response_code(200);
+            echo "OK";
+            exit;
+        }
+
+        if ($parsed['kind'] === 'dep_promo_target') {
+            $target = (string)$parsed['target'];
+            $countPreview = count(resolveBonusTargetPlayerIds($pdo, $target));
+
+            tgPost($token, 'answerCallbackQuery', [
+                'callback_query_id' => $cbId,
+                'text'              => "{$countPreview} player(s) in group",
+                'show_alert'        => false,
+            ]);
+
+            if ($adminMsgId > 0) {
+                tgPost($token, 'editMessageText', [
+                    'chat_id'      => $adminChat,
+                    'message_id'   => $adminMsgId,
+                    'text'         => "SMART BINGO — Confirm Deposit Promo\n\n"
+                                    . "• Target Group: " . formatBonusTargetLabel($target) . "\n"
+                                    . "• Players in Group: {$countPreview}\n"
+                                    . "• Rule: 50+ ETB deposit = +20 ETB | 100+ ETB deposit = +30 ETB",
+                    'reply_markup' => buildDepositPromoConfirmKeyboard($target),
+                ]);
+            }
+
+            http_response_code(200);
+            echo "OK";
+            exit;
+        }
+
+        if ($parsed['kind'] === 'dep_promo_enable') {
+            $target = (string)$parsed['target'];
+            $saved = setDepositPromoConfig($pdo, true, $target);
+            $label = formatBonusTargetLabel($saved['target_group']);
+
+            tgPost($token, 'answerCallbackQuery', [
+                'callback_query_id' => $cbId,
+                'text'              => "Deposit promo enabled for {$label}",
+                'show_alert'        => false,
+            ]);
+
+            if ($adminMsgId > 0) {
+                tgPost($token, 'editMessageText', [
+                    'chat_id'      => $adminChat,
+                    'message_id'   => $adminMsgId,
+                    'text'         => "✅ DEPOSIT PROMO ENABLED\n\n"
+                                    . "• Target Group: {$label}\n"
+                                    . "• Deposit 50+ ETB → +20.00 ETB bonus\n"
+                                    . "• Deposit 100+ ETB → +30.00 ETB bonus",
+                    'reply_markup' => ['inline_keyboard' => []],
+                ]);
+            }
+
+            http_response_code(200);
+            echo "OK";
+            exit;
+        }
+
+        if ($parsed['kind'] === 'dep_promo_off') {
+            setDepositPromoConfig($pdo, false, 'all');
+
+            tgPost($token, 'answerCallbackQuery', [
+                'callback_query_id' => $cbId,
+                'text'              => 'Deposit promo turned off',
+                'show_alert'        => false,
+            ]);
+
+            if ($adminMsgId > 0) {
+                tgPost($token, 'editMessageText', [
+                    'chat_id'      => $adminChat,
+                    'message_id'   => $adminMsgId,
+                    'text'         => "⛔ DEPOSIT PROMO TURNED OFF",
+                    'reply_markup' => ['inline_keyboard' => []],
                 ]);
             }
 
@@ -1124,11 +1384,18 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                     }
                 }
 
+                $promoCfg = getActiveDepositPromo($pdo);
+                $promoBonus = 0.00;
+                if (!empty($promoCfg['active']) && isPlayerEligibleForPromo($pdo, $canonicalPlayerId, (string)$promoCfg['target_group'])) {
+                    $promoBonus = calculateTieredDepositBonus($amount);
+                }
+
                 $after = round($before + $amount, 2);
+                $finalAfter = round($after + $promoBonus, 2);
 
                 try {
                     $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
-                        ->execute([$after, $ts, $canonicalPlayerId]);
+                        ->execute([$finalAfter, $ts, $canonicalPlayerId]);
                 } catch (Throwable $e) {
                     throw new RuntimeException("[update_balance] " . $e->getMessage(), 0, $e);
                 }
@@ -1142,14 +1409,28 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                 }
 
                 addLedger($pdo, $canonicalPlayerId, null, 'deposit', $amount, $before, $after, "Deposit approved by admin");
+                if ($promoBonus > 0) {
+                    addLedger(
+                        $pdo,
+                        $canonicalPlayerId,
+                        null,
+                        'deposit_promo_bonus',
+                        $promoBonus,
+                        $after,
+                        $finalAfter,
+                        "Deposit promo bonus (+" . number_format($promoBonus, 2) . " ETB on " . number_format($amount, 2) . " ETB deposit)"
+                    );
+                }
 
                 $amtFormatted = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
-                $toastText    = "Approved +{$amtFormatted} ETB (Total: " . number_format($after, 2) . " ETB)";
-                $statusLabel  = "\n\n✅ APPROVED (+{$amtFormatted} ETB) | New Balance: " . number_format($after, 2) . " ETB";
+                $promoSuffix  = $promoBonus > 0 ? " + Bonus +" . number_format($promoBonus, 2) . " ETB" : "";
+                $toastText    = "Approved +{$amtFormatted} ETB{$promoSuffix} (Total: " . number_format($finalAfter, 2) . " ETB)";
+                $statusLabel  = "\n\n✅ APPROVED (+{$amtFormatted} ETB{$promoSuffix}) | New Balance: " . number_format($finalAfter, 2) . " ETB";
                 $playerNotify = "SMART BINGO — Deposit Approved\n\n"
                               . "Previous Balance: " . number_format($before, 2) . " ETB\n"
                               . "Credited Amount: +" . number_format($amount, 2) . " ETB\n"
-                              . "New Balance: " . number_format($after, 2) . " ETB";
+                              . ($promoBonus > 0 ? "Deposit Promo Bonus: +" . number_format($promoBonus, 2) . " ETB\n" : "")
+                              . "New Balance: " . number_format($finalAfter, 2) . " ETB";
             } else {
                 if ($depTable !== null && $recId > 0) {
                     try {
@@ -1336,6 +1617,7 @@ try {
     }
     ensureReferralSchema($pdo);
     ensureDepositStateSchema($pdo);
+    ensureDepositPromoSchema($pdo);
     $player = registerOrGetUser($userId, $chatId, $firstName, $username);
     $balanceNum = (float)($player['balance'] ?? 0.0);
     $balanceFormatted = number_format($balanceNum, 2);
@@ -1359,6 +1641,12 @@ try {
             $amount = round((float)$m[1], 2);
         }
 
+        $promoCfg = getActiveDepositPromo($pdo);
+        $previewBonus = 0.00;
+        if (!empty($promoCfg['active']) && isPlayerEligibleForPromo($pdo, (string)$userId, (string)$promoCfg['target_group'])) {
+            $previewBonus = calculateTieredDepositBonus($amount);
+        }
+
         $txRef = 'TG-' . strtoupper(bin2hex(random_bytes(4)));
         $ts = nowTimestampText();
 
@@ -1372,10 +1660,14 @@ try {
         addLedger($pdo, (string)$userId, null, 'deposit_pending', $amount, $balanceNum, $balanceNum, "Pending {$methodLabel} deposit (#{$txId})");
 
         if ($adminId !== '') {
+            $promoPreviewLine = $previewBonus > 0
+                ? "• Eligible Promo Bonus: +" . number_format($previewBonus, 2) . " ETB\n"
+                : "";
             $adminMsg = "SMART BINGO — Deposit for Approval (#{$txId})\n\n"
                       . "• Player: {$firstName} (ID: {$userId})\n"
                       . "• Method: {$methodLabel}\n"
                       . "• Amount: " . number_format($amount, 2) . " ETB\n"
+                      . $promoPreviewLine
                       . "• Ref: {$txRef}\n"
                       . "• Message:\n{$text}";
 
@@ -1502,7 +1794,13 @@ try {
 
             case 'Deposit':
             case '/deposit':
-                $reply = "SMART BINGO — Deposit (Min: 10 ETB)\n\n"
+                $promoCfg = getActiveDepositPromo($pdo);
+                $promoNote = '';
+                if (!empty($promoCfg['active']) && isPlayerEligibleForPromo($pdo, (string)$userId, (string)$promoCfg['target_group'])) {
+                    $promoNote = "\n🎁 Deposit Promo Active: Deposit 50+ ETB → +20 ETB bonus | 100+ ETB → +30 ETB bonus!\n";
+                }
+                $reply = "SMART BINGO — Deposit (Min: 10 ETB)\n"
+                       . $promoNote . "\n"
                        . "Select your payment method below:";
                 $inlineMarkup = buildDepositMethodKeyboard();
                 break;
@@ -1543,12 +1841,18 @@ try {
                     $wPending = tableExists($pdo, 'withdrawals')
                         ? (int)$pdo->query("SELECT COUNT(*) FROM withdrawals WHERE status = 'pending'")->fetchColumn()
                         : 0;
+                    $curPromo = getActiveDepositPromo($pdo);
+                    $promoStatus = $curPromo['active']
+                        ? "ON (" . formatBonusTargetLabel($curPromo['target_group']) . ")"
+                        : "OFF";
+
                     $reply = "SMART BINGO — Admin Overview\n\n"
                            . "• Registered Players: {$pCount}\n"
                            . "• Total Rooms: {$rCount}\n"
                            . "• Join Referrals: {$refTotal}\n"
-                           . "• Pending Withdrawals: {$wPending}\n\n"
-                           . "Tap below to manage Bonus Alerts or view Recent Invites, or use:\n"
+                           . "• Pending Withdrawals: {$wPending}\n"
+                           . "• Deposit Promo (50/100): {$promoStatus}\n\n"
+                           . "Tap below to manage Bonus Alerts, Deposit Promo, or view Recent Invites, or use:\n"
                            . "• /invites [limit]\n"
                            . "• /bonusmenu [all|new|zero|<telegram_id>]\n"
                            . "• /bonus10 | /bonus20 | /bonus50 <all|new|zero|<telegram_id>> [note]";
@@ -1557,6 +1861,9 @@ try {
                             [
                                 ['text' => '🎁 Bonus Alert Menu', 'callback_data' => 'open_bonus_menu:picker'],
                                 ['text' => '📋 Recent Invites', 'callback_data' => 'admin_recent_invites'],
+                            ],
+                            [
+                                ['text' => '💸 Deposit Promo (50/100)', 'callback_data' => 'open_dep_promo_menu'],
                             ],
                         ],
                     ];
