@@ -199,6 +199,37 @@ function buildDepositMethodKeyboard(): array {
     ];
 }
 
+function buildWithdrawMethodKeyboard(): array {
+    return [
+        'inline_keyboard' => [[
+            ['text' => '📱 Telebirr', 'callback_data' => 'select_wd_method:telebirr'],
+            ['text' => '🏦 Bank Account', 'callback_data' => 'select_wd_method:bank'],
+        ]],
+    ];
+}
+
+function parseWithdrawAmountFromText(string $input): float {
+    // Match explicit ETB / Birr amount first
+    if (preg_match('/(\d+(?:\.\d{1,2})?)\s*(?:ብር|ETB)\b/i', $input, $m)) {
+        return round((float)$m[1], 2);
+    }
+
+    // Extract numbers that are not long phone/account IDs (9+ digits)
+    preg_match_all('/\b(\d+(?:\.\d{1,2})?)\b/', $input, $allNums);
+    $candidates = [];
+    foreach (($allNums[1] ?? []) as $numStr) {
+        $digitsOnly = preg_replace('/\D+/', '', (string)$numStr) ?? '';
+        if (strlen($digitsOnly) < 9) {
+            $val = round((float)$numStr, 2);
+            if ($val > 0) {
+                $candidates[] = $val;
+            }
+        }
+    }
+
+    return count($candidates) > 0 ? (float)end($candidates) : 0.00;
+}
+
 function ensureReferralSchema(PDO $pdo): void {
     static $checked = false;
     if ($checked) {
@@ -729,7 +760,6 @@ function broadcastPromoToPlayers(PDO $pdo, string $token, string $targetGroup, s
         ];
     }
 
-    // Record timestamp immediately before sending so rapid retries cannot double-post
     markDepositPromoPosted($pdo, $cleanGroup);
 
     $playerIds = resolveBonusTargetPlayerIds($pdo, $cleanGroup);
@@ -1159,7 +1189,7 @@ function parseAdminCallback(string $data, string $fallbackText = ''): ?array {
 }
 
 /* =========================================================================
-- 1. HANDLE INLINE BUTTON CLICKS (DEPOSIT METHOD, PROMO, BONUS, APPROVALS)
+- 1. HANDLE INLINE BUTTON CLICKS (DEPOSIT/WITHDRAW METHOD, PROMO, BONUS, APPROVALS)
 - ========================================================================= */
 if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $cb         = $update['callback_query'];
@@ -1209,6 +1239,50 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
                                 . "Account: `{$accountNum}` (LALISA SHAFE)\n"
                                 . $promoLine . "\n"
                                 . "Send your payment SMS / confirmation message next to submit for approval.",
+                'parse_mode'   => 'Markdown',
+                'reply_markup' => ['inline_keyboard' => []],
+            ]);
+        }
+
+        http_response_code(200);
+        echo "OK";
+        exit;
+    }
+
+    if (preg_match('/^select_wd_method:(telebirr|bank)$/i', trim($data), $wdPick)) {
+        $pdo = getBingoPdo();
+        while ($pdo->inTransaction()) {
+            try {
+                $pdo->rollBack();
+            } catch (Throwable $ignoreRb) {
+                break;
+            }
+        }
+
+        $methodKey = strtolower((string)$wdPick[1]);
+        $isBank = ($methodKey === 'bank');
+        $methodLabel = $isBank ? 'Bank Account (CBE)' : 'Telebirr';
+        $exampleText = $isBank
+            ? "Example: `1000123456789 50` or `1000123456789 - 50 ETB`"
+            : "Example: `0917461538 50` or `0917461538 - 50 ETB`";
+
+        if ($fromId !== '') {
+            setUserBotState($pdo, $fromId, 'awaiting_withdraw_msg:' . $methodKey);
+        }
+
+        tgPost($token, 'answerCallbackQuery', [
+            'callback_query_id' => $cbId,
+            'text'              => "{$methodLabel} selected",
+            'show_alert'        => false,
+        ]);
+
+        if ($adminMsgId > 0) {
+            tgPost($token, 'editMessageText', [
+                'chat_id'      => $adminChat,
+                'message_id'   => $adminMsgId,
+                'text'         => "💸 *Withdraw to {$methodLabel}* (Min: *10 ETB*)\n"
+                                . "Send your *{$methodLabel}* account/phone number and the *amount* next.\n"
+                                . "{$exampleText}",
                 'parse_mode'   => 'Markdown',
                 'reply_markup' => ['inline_keyboard' => []],
             ]);
@@ -1991,6 +2065,85 @@ try {
         $reply = "Your {$methodLabel} deposit message has been submitted for approval.\n"
                . "Reference: {$txRef}\n"
                . "We will notify you once approved.";
+    } elseif (str_starts_with($currentState, 'awaiting_withdraw_msg:') && $text !== '' && !$isMenuCommand) {
+        $methodKey = substr($currentState, strlen('awaiting_withdraw_msg:'));
+        $methodLabel = ($methodKey === 'bank') ? 'Bank Account (CBE)' : 'Telebirr';
+
+        $wdAmount = parseWithdrawAmountFromText($text);
+        if ($wdAmount < 10.00) {
+            $reply = "Please enter a valid withdrawal amount (Min: 10 ETB) along with your {$methodLabel} account/phone.\n"
+                   . "Example: `0917461538 50`";
+            $parseMode = 'Markdown';
+        } else {
+            setUserBotState($pdo, (string)$userId, '');
+
+            $ts = nowTimestampText();
+            $wdId = 0;
+            $beforeBal = round($balanceNum, 2);
+            $afterBal = round($beforeBal - $wdAmount, 2);
+
+            $pdo->beginTransaction();
+            try {
+                $pLock = $pdo->prepare("SELECT balance FROM players WHERE CAST(telegram_id AS TEXT) = ? LIMIT 1");
+                $pLock->execute([(string)$userId]);
+                $beforeBal = round((float)($pLock->fetchColumn() ?: 0.00), 2);
+
+                if ($beforeBal < $wdAmount) {
+                    $pdo->rollBack();
+                    $reply = "Insufficient balance for withdrawal.\n"
+                           . "Requested: " . number_format($wdAmount, 2) . " ETB\n"
+                           . "Available Balance: " . number_format($beforeBal, 2) . " ETB";
+                } else {
+                    $afterBal = round($beforeBal - $wdAmount, 2);
+                    $pdo->prepare("UPDATE players SET balance = ?, updated_at = ? WHERE CAST(telegram_id AS TEXT) = ?")
+                        ->execute([$afterBal, $ts, (string)$userId]);
+
+                    if (tableExists($pdo, 'withdrawals')) {
+                        $wIns = $pdo->prepare("
+                            INSERT INTO withdrawals (telegram_id, method, details, amount, status, created_at)
+                            VALUES (?, ?, ?, ?, 'pending', ?)
+                        ");
+                        $wIns->execute([(string)$userId, $methodLabel, $text, $wdAmount, $ts]);
+                        $wdId = (int)$pdo->lastInsertId();
+                    }
+
+                    addLedger($pdo, (string)$userId, null, 'withdrawal_pending', -$wdAmount, $beforeBal, $afterBal, "Pending {$methodLabel} withdrawal: {$text}");
+                    $pdo->commit();
+
+                    if ($adminId !== '') {
+                        $adminMsg = "SMART BINGO — Withdrawal Request" . ($wdId > 0 ? " (#{$wdId})" : "") . "\n\n"
+                                  . "• Player: {$firstName} (ID: {$userId})\n"
+                                  . "• Method: {$methodLabel}\n"
+                                  . "• Amount: " . number_format($wdAmount, 2) . " ETB\n"
+                                  . "• Remaining Balance: " . number_format($afterBal, 2) . " ETB\n"
+                                  . "• Details:\n{$text}";
+
+                        sendPlayerNotification($pdo, $token, $adminId, $adminMsg);
+                        tgPost($token, 'sendMessage', [
+                            'chat_id'      => $adminId,
+                            'text'         => "Approve or reject Withdrawal" . ($wdId > 0 ? " #{$wdId}" : "") . " ({$methodLabel}, " . number_format($wdAmount, 2) . " ETB) for {$firstName} ({$userId}):",
+                            'reply_markup' => [
+                                'inline_keyboard' => [[
+                                    ['text' => '✅ Approve', 'callback_data' => "approve_wd:{$wdId}:{$userId}:{$wdAmount}"],
+                                    ['text' => '❌ Reject',  'callback_data' => "reject_wd:{$wdId}:{$userId}:{$wdAmount}"],
+                                ]],
+                            ],
+                        ]);
+                    }
+
+                    $reply = "Your {$methodLabel} withdrawal request of " . number_format($wdAmount, 2) . " ETB has been submitted for approval.\n"
+                           . "Remaining Balance: " . number_format($afterBal, 2) . " ETB";
+                }
+            } catch (Throwable $wdErr) {
+                if ($pdo->inTransaction()) {
+                    try {
+                        $pdo->rollBack();
+                    } catch (Throwable $rbErr) {
+                    }
+                }
+                throw $wdErr;
+            }
+        }
     } elseif (preg_match('/^\/start(?:\s+(.+))?$/i', $text, $startMatch)) {
         $startPayload = trim((string)($startMatch[1] ?? ''));
         $refBonusNote = '';
@@ -2111,9 +2264,10 @@ try {
 
             case 'Withdraw':
             case '/withdraw':
-                $reply = "SMART BINGO — Withdraw\n\n"
+                $reply = "SMART BINGO — Withdraw (Min: 10 ETB)\n\n"
                        . "Available Balance: {$balanceFormatted} ETB\n"
-                       . "Open Play Bingo -> Wallet -> Withdraw to submit your Telebirr or CBE payout request.";
+                       . "Select where your payout should be sent:";
+                $inlineMarkup = buildWithdrawMethodKeyboard();
                 break;
 
             case 'How to Play':
