@@ -673,59 +673,12 @@
 
     .modal-box-custom {
       width: 100%;
-      max-width: 360px;
+      max-width: 340px;
       background: var(--bg-card);
       border: 1px solid rgba(245, 183, 0, 0.55);
       border-radius: 18px;
-      padding: 14px;
+      padding: 13px;
       text-align: center;
-    }
-
-    .method-choice-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin: 8px 0;
-    }
-
-    .method-pill-btn {
-      padding: 9px 8px;
-      border-radius: 11px;
-      background: var(--bg-card-soft);
-      border: 1.5px solid var(--line-border);
-      color: var(--text-main);
-      font-weight: 800;
-      font-size: 0.8rem;
-      cursor: pointer;
-    }
-
-    .method-pill-btn.active {
-      border-color: var(--accent-gold);
-      background: rgba(245, 183, 0, 0.16);
-      color: var(--accent-gold);
-    }
-
-    .deposit-account-box {
-      background: #0b2429;
-      border: 1px solid rgba(245, 183, 0, 0.35);
-      border-radius: 11px;
-      padding: 9px 10px;
-      text-align: left;
-      font-size: 0.76rem;
-      color: var(--text-main);
-      margin-bottom: 8px;
-      line-height: 1.35;
-    }
-
-    .deposit-input {
-      width: 100%;
-      background: #0b2429;
-      color: #fff;
-      border: 1px solid var(--line-border);
-      border-radius: 10px;
-      padding: 8px 10px;
-      font-size: 0.82rem;
-      margin-bottom: 8px;
     }
 
     .winner-top-name {
@@ -806,8 +759,52 @@
       <div class="onboarding-step-text">1. Share invite &bull; 2. Deposit ETB &bull; 3. Pick cartela</div>
       <div class="onboarding-btns">
         <button type="button" class="btn-secondary-dark" style="padding:5px 9px;font-size:0.72rem;" onclick="shareInviteLink()">Share</button>
-        <button type="button" class="btn-gold" style="width:auto;padding:5px 10px;font-size:0.72rem;" onclick="openDepositModal()">+ Deposit</button>
+        <button type="button" class="btn-gold" style="width:auto;padding:5px 10px;font-size:0.72rem;" onclick="toggleDepositBox(true)">+ Deposit</button>
       </div>
+    </div>
+
+    <!-- Direct Deposit Box (shown when clicking Deposit) -->
+    <div id="simple-deposit-box" class="card-panel d-none" style="border-color: var(--accent-gold);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <strong style="color:var(--accent-gold);font-size:0.9rem;">Deposit (Sent for Approval)</strong>
+        <button type="button" class="btn-secondary-dark" style="padding:2px 8px;font-size:0.72rem;" onclick="toggleDepositBox(false)">Close</button>
+      </div>
+
+      <!-- Step 1: Choose Telebirr or Bank Account -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <button type="button" id="pick-telebirr" class="btn-gold" style="padding:7px;font-size:0.8rem;" onclick="chooseDepositMethod('telebirr')">
+          Telebirr
+        </button>
+        <button type="button" id="pick-bank" class="btn-secondary-dark" style="padding:7px;font-size:0.8rem;" onclick="chooseDepositMethod('bank')">
+          Bank Account
+        </button>
+      </div>
+
+      <!-- Step 2: Shows ONLY the selected method's account number + Copy button -->
+      <div id="selected-method-card" style="background:#0b2429;border:1px solid var(--line-border);border-radius:10px;padding:8px 10px;margin-bottom:8px;">
+        <div style="font-size:0.72rem;color:var(--text-muted);" id="selected-method-hint">
+          Copy Telebirr number, pay (min 10 ETB), then paste SMS below for approval:
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:8px;">
+          <strong id="selected-account-number" style="color:var(--accent-gold);font-size:0.95rem;letter-spacing:0.5px;">0917461538</strong>
+          <button type="button" class="btn-secondary-dark" style="padding:4px 10px;font-size:0.74rem;" onclick="copySelectedAccount()">
+            Copy
+          </button>
+        </div>
+        <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;" id="selected-account-holder">LALISA SHAFE</div>
+      </div>
+
+      <!-- Step 3: Paste payment message & submit for approval -->
+      <input type="number" id="dep-amt" class="form-control form-control-sm mb-2"
+             style="background:#0b2429;color:#fff;border-color:var(--line-border);"
+             placeholder="Amount in ETB (min 10)" min="10" step="0.01" />
+      <textarea id="dep-msg" rows="2" class="form-control form-control-sm mb-2"
+                style="background:#0b2429;color:#fff;border-color:var(--line-border);"
+                placeholder="Paste your Telebirr or Bank SMS/message here..."></textarea>
+
+      <button type="button" class="btn-gold" style="padding:8px;font-size:0.84rem;" onclick="sendDepositForApproval()">
+        Submit for Approval
+      </button>
     </div>
 
     <label class="table-card selected" style="border-left:5px solid #22c55e;" onclick="selectTable(10, this)">
@@ -860,7 +857,7 @@
 
     <div class="lobby-actions-row" style="margin-top:0;">
       <button type="button" id="play-btn" class="btn-gold" onclick="joinSelectedTable()">Play Bingo</button>
-      <button type="button" class="btn-secondary-dark" style="padding:10px 12px;font-size:0.86rem;" onclick="openDepositModal()">Deposit ETB</button>
+      <button type="button" class="btn-secondary-dark" style="padding:10px 12px;font-size:0.86rem;" onclick="toggleDepositBox(true)">Deposit ETB</button>
     </div>
   </section>
 
@@ -966,7 +963,7 @@
     </div>
 
     <div class="wallet-grid-2">
-      <button class="wallet-action-btn deposit" onclick="openDepositModal()">Deposit ↓</button>
+      <button class="wallet-action-btn deposit" onclick="switchTab('game'); toggleDepositBox(true);">Deposit ↓</button>
       <button class="wallet-action-btn withdraw" onclick="requestWithdrawal()">Withdraw ↑</button>
     </div>
   </section>
@@ -986,31 +983,6 @@
       </div>
     </div>
   </section>
-
-  <!-- DIRECT DEPOSIT MODAL (SELECT METHOD -> POST MESSAGE -> APPROVAL) -->
-  <div id="deposit-modal" class="modal-backdrop-custom d-none">
-    <div class="modal-box-custom">
-      <div style="font-weight:900;font-size:1.05rem;color:var(--accent-gold);">Deposit Funds</div>
-      <div class="section-sub" style="margin:3px 0 6px;">Select method, send payment, and post your confirmation message for approval.</div>
-
-      <div class="method-choice-grid">
-        <button type="button" id="btn-method-telebirr" class="method-pill-btn active" onclick="selectDepositMethod('Telebirr')">Telebirr</button>
-        <button type="button" id="btn-method-bank" class="method-pill-btn" onclick="selectDepositMethod('Bank Account')">Bank Account</button>
-      </div>
-
-      <div id="deposit-account-details" class="deposit-account-box">
-        <strong>Telebirr:</strong> Send to your Telebirr number, then paste the confirmation SMS below.
-      </div>
-
-      <input type="number" id="deposit-amount-input" class="deposit-input" placeholder="Amount in ETB (min 10)" min="10" step="0.01" />
-      <textarea id="deposit-message-input" class="deposit-input" rows="3" placeholder="Paste full Telebirr or Bank SMS / transaction message here..."></textarea>
-
-      <div class="lobby-actions-row" style="margin-top:4px;">
-        <button type="button" class="btn-gold" style="padding:8px;font-size:0.84rem;" onclick="submitDepositMessage()">Post for Approval</button>
-        <button type="button" class="btn-secondary-dark" style="padding:8px;font-size:0.84rem;" onclick="closeDepositModal()">Cancel</button>
-      </div>
-    </div>
-  </div>
 
   <!-- WINNER MODAL WITH PLAY AGAIN + LEAVE LOBBY -->
   <div id="winner-modal" class="modal-backdrop-custom d-none">
@@ -1114,7 +1086,6 @@
         || localStorage.getItem('Smart_bingo_saved_tg_id');
       if (savedId) return savedId;
 
-      // Auto-assign a local guest session ID when opened outside Telegram so players never get stuck on an ID prompt
       let guestId = sessionStorage.getItem('Smart_bingo_guest_id');
       if (!guestId) {
         guestId = String(Math.floor(100000000 + Math.random() * 899999999));
@@ -1183,7 +1154,107 @@
     let gameHistory = [];
     let soundEnabled = true;
     let audioCtx = null;
-    let selectedDepositMethod = 'Telebirr';
+
+    const DEPOSIT_METHODS = {
+      telebirr: {
+        label: 'Telebirr',
+        number: '0917461538',
+        holder: 'LALISA SHAFE',
+        hint: 'Copy Telebirr number, pay (min 10 ETB), then paste SMS below for approval:'
+      },
+      bank: {
+        label: 'Bank Account (CBE)',
+        number: '1000171689116',
+        holder: 'LALISA SHAFE',
+        hint: 'Copy CBE account number, transfer (min 10 ETB), then paste message below for approval:'
+      }
+    };
+    let currentDepositMethod = 'telebirr';
+
+    function toggleDepositBox(show) {
+      applyDetectedIdentity();
+      const box = document.getElementById('simple-deposit-box');
+      if (!box) return;
+      box.classList.toggle('d-none', !show);
+      if (show) chooseDepositMethod(currentDepositMethod);
+    }
+
+    function chooseDepositMethod(methodKey) {
+      currentDepositMethod = methodKey === 'bank' ? 'bank' : 'telebirr';
+      const info = DEPOSIT_METHODS[currentDepositMethod];
+
+      document.getElementById('pick-telebirr').className =
+        currentDepositMethod === 'telebirr' ? 'btn-gold' : 'btn-secondary-dark';
+      document.getElementById('pick-bank').className =
+        currentDepositMethod === 'bank' ? 'btn-gold' : 'btn-secondary-dark';
+
+      document.getElementById('selected-method-hint').textContent = info.hint;
+      document.getElementById('selected-account-number').textContent = info.number;
+      document.getElementById('selected-account-holder').textContent = info.holder;
+    }
+
+    function copySelectedAccount() {
+      const num = document.getElementById('selected-account-number').textContent.trim();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(num).then(() => alert(`Copied: ${num}`));
+      } else {
+        prompt('Copy account number:', num);
+      }
+    }
+
+    function sendDepositForApproval() {
+      applyDetectedIdentity();
+      const msgEl = document.getElementById('dep-msg');
+      const amtEl = document.getElementById('dep-amt');
+      const fullMessage = (msgEl.value || '').trim();
+      if (!fullMessage) {
+        alert('Please paste your payment message first.');
+        msgEl.focus();
+        return;
+      }
+
+      let amount = parseFloat(amtEl.value);
+      if (isNaN(amount) || amount < 10) {
+        const match = fullMessage.match(/(\d+(?:\.\d{1,2})?)\s*(?:ብር|ETB)\b/i);
+        if (match) {
+          amount = parseFloat(match[1]);
+          amtEl.value = amount.toFixed(2);
+        }
+      }
+
+      if (isNaN(amount) || amount < 10) {
+        alert('Minimum deposit is 10 ETB.');
+        amtEl.focus();
+        return;
+      }
+
+      const payload = {
+        telegram_id: telegramId,
+        first_name: playerName,
+        method: currentDepositMethod,
+        amount: amount.toFixed(2),
+        full_message: fullMessage
+      };
+
+      fetch('deposit.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          alert(data.message || 'Sent for approval!');
+          msgEl.value = '';
+          amtEl.value = '';
+          toggleDepositBox(false);
+          syncBalance();
+        } else {
+          alert(data.error || 'Could not submit deposit.');
+        }
+      })
+      .catch(err => alert('Network error: ' + err.message));
+    }
 
     function getBallLetter(n) {
       if (n <= 15) return 'B';
@@ -1367,7 +1438,6 @@
       if (target) target.classList.remove('d-none');
     }
 
-    // Closes/exits ONLY this player's local view without affecting other players in the room
     function leaveToSetup() {
       stopRoomPolling();
       currentRoomId = null;
@@ -1499,7 +1569,6 @@
       }
     }
 
-    // Yellow winning line highlights strictly on THIS player's own cartela when THIS player's cartela has a line
     function renderAllPlayroomCartelas() {
       const container = document.getElementById('play-cartelas-container');
       if (!container) return;
@@ -1794,7 +1863,7 @@
             const errMsg = data.error || 'Could not join table.';
             if (errMsg.toLowerCase().includes('balance') || errMsg.toLowerCase().includes('insufficient')) {
               alert(errMsg);
-              openDepositModal();
+              toggleDepositBox(true);
             } else {
               alert(errMsg);
             }
@@ -1809,96 +1878,6 @@
           startRoomPolling(data.room_id);
         })
         .catch(() => alert('Network error while joining table.'));
-    }
-
-    function selectDepositMethod(method) {
-      selectedDepositMethod = method;
-      document.getElementById('btn-method-telebirr').classList.toggle('active', method === 'Telebirr');
-      document.getElementById('btn-method-bank').classList.toggle('active', method === 'Bank Account');
-      const details = document.getElementById('deposit-account-details');
-      if (method === 'Telebirr') {
-        details.innerHTML = '<strong>Telebirr:</strong> Pay via Telebirr, then paste your confirmation SMS or transaction reference below for approval.';
-      } else {
-        details.innerHTML = '<strong>Bank Account (CBE / Awash):</strong> Transfer to the bank account, then paste your transfer message or FT reference below for approval.';
-      }
-    }
-
-    function openDepositModal() {
-      applyDetectedIdentity();
-      document.getElementById('deposit-modal').classList.remove('d-none');
-    }
-
-    function closeDepositModal() {
-      document.getElementById('deposit-modal').classList.add('d-none');
-    }
-
-    function extractTxRefFromMessage(rawText) {
-      if (!rawText) return '';
-      const trimmed = rawText.trim();
-      const patterns = [
-        /\b(?:transaction\s*(?:id|no|number)|tx\s*ref|ref(?:erence)?\s*(?:id|no)?|receipt\s*(?:no)?|ft)\s*[:#-]?\s*([A-Z0-9]{6,25})\b/i,
-        /\b([A-Z]{2,6}[0-9]{4,}[A-Z0-9]{0,12})\b/,
-        /\b([A-Z0-9]{8,20})\b/
-      ];
-      for (const re of patterns) {
-        const m = trimmed.match(re);
-        if (m && m[1]) return m[1].toUpperCase();
-      }
-      return trimmed.slice(0, 32).toUpperCase();
-    }
-
-    function extractAmountFromMessage(rawText) {
-      if (!rawText) return null;
-      const m = rawText.match(/(\d+(?:\.\d{1,2})?)\s*(?:ብር|ETB)\b/i);
-      if (m && m[1]) {
-        const val = parseFloat(m[1]);
-        return (!isNaN(val) && val >= 10) ? val : null;
-      }
-      return null;
-    }
-
-    function submitDepositMessage() {
-      applyDetectedIdentity();
-      const amtInput = document.getElementById('deposit-amount-input');
-      const msgInput = document.getElementById('deposit-message-input');
-      const cleanMessage = (msgInput.value || '').trim();
-      if (!cleanMessage) {
-        alert('Please paste your Telebirr or Bank confirmation message.');
-        msgInput.focus();
-        return;
-      }
-
-      const detected = extractAmountFromMessage(cleanMessage);
-      let amountNum = parseFloat(amtInput.value);
-      if ((isNaN(amountNum) || amountNum < 10) && detected !== null) {
-        amountNum = detected;
-        amtInput.value = detected.toFixed(2);
-      }
-      if (isNaN(amountNum) || amountNum < 10) {
-        alert('Please enter a deposit amount of at least 10 ETB.');
-        amtInput.focus();
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append('telegram_id', telegramId);
-      formData.append('first_name', playerName);
-      formData.append('method', selectedDepositMethod);
-      formData.append('amount', amountNum.toFixed(2));
-      formData.append('tx_ref', extractTxRefFromMessage(cleanMessage));
-      formData.append('full_message', cleanMessage);
-
-      fetch('verify_payment.php', { method: 'POST', body: formData })
-        .then(r => r.json())
-        .then(data => {
-          if (data.new_balance !== undefined) updateBalanceUI(data.new_balance);
-          alert(data.message || data.error || 'Submitted for approval.');
-          if (data.success !== false) {
-            msgInput.value = '';
-            closeDepositModal();
-          }
-        })
-        .catch(err => alert('Network error: ' + err.message));
     }
 
     function requestWithdrawal() {
