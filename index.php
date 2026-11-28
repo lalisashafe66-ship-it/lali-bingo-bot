@@ -1151,7 +1151,6 @@
     let currentDerash = 0;
     let calledNumbers = [];
     let lastAnnouncedNumber = null;
-    let gameStartedAnnouncedKey = null;
     let autoMode = true;
     let winnerModalShownForRoom = null;
     let roomPollInterval = null;
@@ -1430,7 +1429,6 @@
       activePlayCartelas = [];
       calledNumbers = [];
       lastAnnouncedNumber = null;
-      gameStartedAnnouncedKey = null;
       updatePlayButtonLabel();
     }
 
@@ -1515,110 +1513,46 @@
       osc.stop(audioCtx.currentTime + delay + duration);
     }
 
-    const sounds = {
-      ballPop: () => { playTone(520, 'sine', 0.12, 0); playTone(780, 'sine', 0.15, 0.06); },
-      daubMatch: () => { playTone(659.25, 'triangle', 0.12, 0); playTone(880, 'triangle', 0.25, 0.08); },
-      winFanfare: () => { [523.25, 659.25, 783.99, 1046.50].forEach((n, i) => playTone(n, 'triangle', 0.35, i * 0.12)); },
-      errorBuzz: () => { playTone(180, 'sawtooth', 0.2, 0); playTone(140, 'sawtooth', 0.25, 0.15); }
-    };
-
-    function playGameStartChime() {
+    function playCalledNumberFallbackTone(letter, number) {
       if (!soundEnabled) return;
       initAudio();
-      [440, 554.37, 659.25, 880].forEach((freq, idx) => {
-        playTone(freq, 'triangle', 0.14, idx * 0.08);
-      });
+      const letterPitch = { B: 440, I: 493.88, N: 523.25, G: 587.33, O: 659.25 }[letter] || 523.25;
+      playTone(letterPitch, 'triangle', 0.14, 0);
+      playTone(letterPitch * 1.25, 'sine', 0.18, 0.12);
     }
 
-    function playCallCue(letter) {
+    function announceBall(letter, number) {
       if (!soundEnabled) return;
-      initAudio();
-      const letterFreqs = { B: 440, I: 493.88, N: 523.25, G: 587.33, O: 659.25 };
-      const base = letterFreqs[letter] || 523.25;
-      playTone(base, 'triangle', 0.1, 0);
-      playTone(base * 1.25, 'sine', 0.13, 0.06);
-    }
+      const phrase = `${letter} ${number}`;
 
-    function playFallbackCallTones(letter, number) {
-      if (!soundEnabled) return;
-      initAudio();
-      const letterIndex = { B: 1, I: 2, N: 3, G: 4, O: 5 }[letter] || 1;
-      for (let i = 0; i < letterIndex; i++) {
-        playTone(620 + i * 70, 'triangle', 0.08, i * 0.09);
+      if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+        playCalledNumberFallbackTone(letter, number);
+        return;
       }
-      const digits = String(number).split('').map(d => parseInt(d, 10) || 0);
-      const startOffset = letterIndex * 0.09 + 0.12;
-      digits.forEach((d, idx) => {
-        playTone(360 + d * 45, 'sine', 0.12, startOffset + idx * 0.13);
-      });
-    }
 
-    function speakPhrase(phrase, fallbackFn, delayMs = 0) {
-      if (!soundEnabled) return;
-      const run = () => {
-        if (!soundEnabled) return;
-        if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
-          if (typeof fallbackFn === 'function') fallbackFn();
-          return;
-        }
-        try {
-          window.speechSynthesis.cancel();
-          const ut = new SpeechSynthesisUtterance(phrase);
-          ut.rate = 0.96;
-          ut.pitch = 1.05;
-          ut.volume = 1.0;
+      try {
+        window.speechSynthesis.cancel();
+        const ut = new SpeechSynthesisUtterance(phrase);
+        ut.rate = 0.96;
+        ut.pitch = 1.05;
+        ut.volume = 1.0;
 
-          let spoke = false;
-          ut.onstart = () => { spoke = true; };
-          ut.onerror = () => {
-            if (!spoke && typeof fallbackFn === 'function') fallbackFn();
-          };
+        let spoke = false;
+        ut.onstart = () => { spoke = true; };
+        ut.onerror = () => {
+          if (!spoke) playCalledNumberFallbackTone(letter, number);
+        };
 
-          window.speechSynthesis.speak(ut);
+        window.speechSynthesis.speak(ut);
 
-          setTimeout(() => {
-            if (!soundEnabled) return;
-            if (!spoke && !window.speechSynthesis.speaking && typeof fallbackFn === 'function') {
-              fallbackFn();
-            }
-          }, 450);
-        } catch (_) {
-          if (typeof fallbackFn === 'function') fallbackFn();
-        }
-      };
-
-      if (delayMs > 0) {
-        setTimeout(run, delayMs);
-      } else {
-        run();
-      }
-    }
-
-    function announceGameStarted(roundKey) {
-      if (!soundEnabled) return;
-      if (roundKey && gameStartedAnnouncedKey === roundKey) return;
-      if (roundKey) gameStartedAnnouncedKey = roundKey;
-
-      initAudio();
-      playGameStartChime();
-      speakPhrase('Game started', () => {
-        playTone(523.25, 'triangle', 0.14, 0);
-        playTone(783.99, 'triangle', 0.22, 0.12);
-      }, 120);
-    }
-
-    function announceBall(letter, number, delayMs = 0) {
-      if (!soundEnabled) return;
-      initAudio();
-      const startBall = () => {
-        if (!soundEnabled) return;
-        playCallCue(letter);
-        speakPhrase(`${letter} ${number}`, () => playFallbackCallTones(letter, number), 110);
-      };
-      if (delayMs > 0) {
-        setTimeout(startBall, delayMs);
-      } else {
-        startBall();
+        setTimeout(() => {
+          if (!soundEnabled) return;
+          if (!spoke && !window.speechSynthesis.speaking) {
+            playCalledNumberFallbackTone(letter, number);
+          }
+        }, 450);
+      } catch (_) {
+        playCalledNumberFallbackTone(letter, number);
       }
     }
 
@@ -1729,7 +1663,6 @@
       if ('speechSynthesis' in window) {
         try { window.speechSynthesis.cancel(); } catch (_) {}
       }
-      sounds.winFanfare();
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
       const fallbackCartelaNum = (activePlayCartelas[0] && activePlayCartelas[0].number) || 1;
@@ -1810,7 +1743,7 @@
       renderHorizontalMasterBoard('wait-master-grid', new Set(arr), latest);
     }
 
-    function renderPlayroomScreen(room, justStartedGame = false) {
+    function renderPlayroomScreen(room) {
       showOnlyScreen('playroom');
       currentGameCode = room.game_code || '--';
       currentDerash = Number(room.derash || 0);
@@ -1824,13 +1757,9 @@
       document.getElementById('play-featured-letter').textContent = latest !== null ? getBallLetter(latest) : '--';
       document.getElementById('play-featured-num').textContent = latest !== null ? latest : '--';
 
-      if (justStartedGame) {
-        announceGameStarted(`${room.room_id || currentRoomId}:${currentGameCode}`);
-      }
-
       if (latest !== null && latest !== lastAnnouncedNumber) {
         lastAnnouncedNumber = latest;
-        announceBall(getBallLetter(latest), latest, justStartedGame ? 1150 : 0);
+        announceBall(getBallLetter(latest), latest);
       }
 
       calledNumbers = arr;
@@ -1838,17 +1767,14 @@
       renderHorizontalMasterBoard('play-master-grid', new Set(arr), latest);
 
       const calledSet = new Set(calledNumbers);
-      let anyNewMatch = false;
       activePlayCartelas.forEach(item => {
         item.board.forEach((num, idx) => {
           if (idx !== 12 && calledSet.has(num) && !item.marked[idx]) {
             item.marked[idx] = true;
-            anyNewMatch = true;
           }
         });
       });
 
-      if (anyNewMatch) sounds.daubMatch();
       renderAllPlayroomCartelas();
     }
 
@@ -1870,7 +1796,6 @@
               return;
             }
             if (room.status === 'waiting') {
-              gameStartedAnnouncedKey = null;
               showOnlyScreen('lobby');
               const secs = Math.max(0, Number(room.lobby_seconds_left || 0));
               document.getElementById('lobby-timer').textContent = `${secs}s`;
@@ -1879,13 +1804,11 @@
               document.getElementById('lobby-player-count').textContent = `Players Joined: ${room.players_count || 1}`;
               renderMiniCartelaPreviews('lobby-cartelas-preview', selectedCartelaNumbers);
             } else if (room.status === 'active') {
-              const roundKey = `${room.room_id || currentRoomId}:${room.game_code || '--'}`;
-              const justStarted = gameStartedAnnouncedKey !== roundKey;
               if (activePlayCartelas.length === 0) {
                 initActivePlayCartelas(selectedCartelaNumbers);
                 lastAnnouncedNumber = null;
               }
-              renderPlayroomScreen(room, justStarted);
+              renderPlayroomScreen(room);
             }
           })
           .catch(() => {});
@@ -1951,7 +1874,6 @@
         alert('Please select at least 1 cartela before playing.');
         return;
       }
-      initAudio();
 
       const tgUsername = (user && user.username) ? user.username : '';
       const formData = new FormData();
@@ -1967,12 +1889,10 @@
         .then(r => r.json())
         .then(data => {
           if (data.already_started && data.room) {
-            sounds.errorBuzz();
             startWaitForActiveGame(data.room, data.error || 'Please wait until this game ends; you will start in the next round.');
             return;
           }
           if (!data.success) {
-            sounds.errorBuzz();
             const errMsg = data.error || 'Could not join table.';
             if (errMsg.toLowerCase().includes('balance') || errMsg.toLowerCase().includes('insufficient')) {
               alert(errMsg);
@@ -1988,7 +1908,6 @@
           if (data.new_balance !== undefined) updateBalanceUI(data.new_balance);
           initActivePlayCartelas(selectedCartelaNumbers);
           lastAnnouncedNumber = null;
-          gameStartedAnnouncedKey = null;
           winnerModalShownForRoom = null;
           startRoomPolling(data.room_id);
         })
@@ -2036,10 +1955,6 @@
         prompt('Copy link:', link);
       }
     }
-
-    document.addEventListener('pointerdown', () => {
-      if (soundEnabled) initAudio();
-    }, { passive: true });
 
     setTimeout(applyDetectedIdentity, 350);
     setTimeout(applyDetectedIdentity, 1000);
