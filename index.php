@@ -1151,6 +1151,7 @@
     let currentDerash = 0;
     let calledNumbers = [];
     let lastAnnouncedNumber = null;
+    let gameStartedAnnouncedKey = null;
     let autoMode = true;
     let winnerModalShownForRoom = null;
     let roomPollInterval = null;
@@ -1429,6 +1430,7 @@
       activePlayCartelas = [];
       calledNumbers = [];
       lastAnnouncedNumber = null;
+      gameStartedAnnouncedKey = null;
       updatePlayButtonLabel();
     }
 
@@ -1445,7 +1447,9 @@
       stopRoomPolling();
       currentRoomId = null;
       clearRoundSelectionState();
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      if ('speechSynthesis' in window) {
+        try { window.speechSynthesis.cancel(); } catch (_) {}
+      }
       switchTab('game');
       pollSetupRoomStatus();
     }
@@ -1480,13 +1484,20 @@
 
     function initAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
     }
 
     function toggleSound() {
       soundEnabled = !soundEnabled;
       const btn = document.getElementById('sound-toggle');
       if (btn) btn.textContent = soundEnabled ? '🔊' : '🔇';
+      if (!soundEnabled && 'speechSynthesis' in window) {
+        try { window.speechSynthesis.cancel(); } catch (_) {}
+      } else if (soundEnabled) {
+        initAudio();
+      }
     }
 
     function playTone(freq, type, duration, delay = 0) {
@@ -1496,7 +1507,7 @@
       const gain = audioCtx.createGain();
       osc.type = type;
       osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
-      gain.gain.setValueAtTime(0.15, audioCtx.currentTime + delay);
+      gain.gain.setValueAtTime(0.16, audioCtx.currentTime + delay);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + duration);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
@@ -1511,13 +1522,104 @@
       errorBuzz: () => { playTone(180, 'sawtooth', 0.2, 0); playTone(140, 'sawtooth', 0.25, 0.15); }
     };
 
-    function announceBall(letter, number) {
-      if (!soundEnabled || !('speechSynthesis' in window)) return;
-      window.speechSynthesis.cancel();
-      const ut = new SpeechSynthesisUtterance(`${letter} ${number}`);
-      ut.rate = 0.95;
-      ut.pitch = 1.05;
-      window.speechSynthesis.speak(ut);
+    function playGameStartChime() {
+      if (!soundEnabled) return;
+      initAudio();
+      [440, 554.37, 659.25, 880].forEach((freq, idx) => {
+        playTone(freq, 'triangle', 0.14, idx * 0.08);
+      });
+    }
+
+    function playCallCue(letter) {
+      if (!soundEnabled) return;
+      initAudio();
+      const letterFreqs = { B: 440, I: 493.88, N: 523.25, G: 587.33, O: 659.25 };
+      const base = letterFreqs[letter] || 523.25;
+      playTone(base, 'triangle', 0.1, 0);
+      playTone(base * 1.25, 'sine', 0.13, 0.06);
+    }
+
+    function playFallbackCallTones(letter, number) {
+      if (!soundEnabled) return;
+      initAudio();
+      const letterIndex = { B: 1, I: 2, N: 3, G: 4, O: 5 }[letter] || 1;
+      for (let i = 0; i < letterIndex; i++) {
+        playTone(620 + i * 70, 'triangle', 0.08, i * 0.09);
+      }
+      const digits = String(number).split('').map(d => parseInt(d, 10) || 0);
+      const startOffset = letterIndex * 0.09 + 0.12;
+      digits.forEach((d, idx) => {
+        playTone(360 + d * 45, 'sine', 0.12, startOffset + idx * 0.13);
+      });
+    }
+
+    function speakPhrase(phrase, fallbackFn, delayMs = 0) {
+      if (!soundEnabled) return;
+      const run = () => {
+        if (!soundEnabled) return;
+        if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+          if (typeof fallbackFn === 'function') fallbackFn();
+          return;
+        }
+        try {
+          window.speechSynthesis.cancel();
+          const ut = new SpeechSynthesisUtterance(phrase);
+          ut.rate = 0.96;
+          ut.pitch = 1.05;
+          ut.volume = 1.0;
+
+          let spoke = false;
+          ut.onstart = () => { spoke = true; };
+          ut.onerror = () => {
+            if (!spoke && typeof fallbackFn === 'function') fallbackFn();
+          };
+
+          window.speechSynthesis.speak(ut);
+
+          setTimeout(() => {
+            if (!soundEnabled) return;
+            if (!spoke && !window.speechSynthesis.speaking && typeof fallbackFn === 'function') {
+              fallbackFn();
+            }
+          }, 450);
+        } catch (_) {
+          if (typeof fallbackFn === 'function') fallbackFn();
+        }
+      };
+
+      if (delayMs > 0) {
+        setTimeout(run, delayMs);
+      } else {
+        run();
+      }
+    }
+
+    function announceGameStarted(roundKey) {
+      if (!soundEnabled) return;
+      if (roundKey && gameStartedAnnouncedKey === roundKey) return;
+      if (roundKey) gameStartedAnnouncedKey = roundKey;
+
+      initAudio();
+      playGameStartChime();
+      speakPhrase('Game started', () => {
+        playTone(523.25, 'triangle', 0.14, 0);
+        playTone(783.99, 'triangle', 0.22, 0.12);
+      }, 120);
+    }
+
+    function announceBall(letter, number, delayMs = 0) {
+      if (!soundEnabled) return;
+      initAudio();
+      const startBall = () => {
+        if (!soundEnabled) return;
+        playCallCue(letter);
+        speakPhrase(`${letter} ${number}`, () => playFallbackCallTones(letter, number), 110);
+      };
+      if (delayMs > 0) {
+        setTimeout(startBall, delayMs);
+      } else {
+        startBall();
+      }
     }
 
     function updateBalanceUI(newBal) {
@@ -1624,7 +1726,9 @@
       stopRoomPolling();
       currentRoomId = null;
       syncBalance();
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      if ('speechSynthesis' in window) {
+        try { window.speechSynthesis.cancel(); } catch (_) {}
+      }
       sounds.winFanfare();
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
@@ -1706,7 +1810,7 @@
       renderHorizontalMasterBoard('wait-master-grid', new Set(arr), latest);
     }
 
-    function renderPlayroomScreen(room) {
+    function renderPlayroomScreen(room, justStartedGame = false) {
       showOnlyScreen('playroom');
       currentGameCode = room.game_code || '--';
       currentDerash = Number(room.derash || 0);
@@ -1720,10 +1824,13 @@
       document.getElementById('play-featured-letter').textContent = latest !== null ? getBallLetter(latest) : '--';
       document.getElementById('play-featured-num').textContent = latest !== null ? latest : '--';
 
+      if (justStartedGame) {
+        announceGameStarted(`${room.room_id || currentRoomId}:${currentGameCode}`);
+      }
+
       if (latest !== null && latest !== lastAnnouncedNumber) {
         lastAnnouncedNumber = latest;
-        sounds.ballPop();
-        announceBall(getBallLetter(latest), latest);
+        announceBall(getBallLetter(latest), latest, justStartedGame ? 1150 : 0);
       }
 
       calledNumbers = arr;
@@ -1763,6 +1870,7 @@
               return;
             }
             if (room.status === 'waiting') {
+              gameStartedAnnouncedKey = null;
               showOnlyScreen('lobby');
               const secs = Math.max(0, Number(room.lobby_seconds_left || 0));
               document.getElementById('lobby-timer').textContent = `${secs}s`;
@@ -1771,11 +1879,13 @@
               document.getElementById('lobby-player-count').textContent = `Players Joined: ${room.players_count || 1}`;
               renderMiniCartelaPreviews('lobby-cartelas-preview', selectedCartelaNumbers);
             } else if (room.status === 'active') {
+              const roundKey = `${room.room_id || currentRoomId}:${room.game_code || '--'}`;
+              const justStarted = gameStartedAnnouncedKey !== roundKey;
               if (activePlayCartelas.length === 0) {
                 initActivePlayCartelas(selectedCartelaNumbers);
                 lastAnnouncedNumber = null;
               }
-              renderPlayroomScreen(room);
+              renderPlayroomScreen(room, justStarted);
             }
           })
           .catch(() => {});
@@ -1877,6 +1987,8 @@
           lastJoinedCartelas = [...selectedCartelaNumbers];
           if (data.new_balance !== undefined) updateBalanceUI(data.new_balance);
           initActivePlayCartelas(selectedCartelaNumbers);
+          lastAnnouncedNumber = null;
+          gameStartedAnnouncedKey = null;
           winnerModalShownForRoom = null;
           startRoomPolling(data.room_id);
         })
@@ -1924,6 +2036,10 @@
         prompt('Copy link:', link);
       }
     }
+
+    document.addEventListener('pointerdown', () => {
+      if (soundEnabled) initAudio();
+    }, { passive: true });
 
     setTimeout(applyDetectedIdentity, 350);
     setTimeout(applyDetectedIdentity, 1000);
