@@ -630,7 +630,7 @@
 
     .wallet-grid-2 {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 10px;
       margin-bottom: 10px;
     }
@@ -643,8 +643,12 @@
       cursor: pointer;
     }
 
-    .wallet-action-btn.deposit { background: var(--accent-green); color: #062814; }
-    .wallet-action-btn.withdraw { background: var(--bg-card-soft); color: #fff; border: 1px solid var(--line-border); }
+    .wallet-action-btn.withdraw {
+      width: 100%;
+      background: var(--bg-card-soft);
+      color: #fff;
+      border: 1px solid var(--line-border);
+    }
 
     .profile-badge-circle {
       width: 56px;
@@ -963,7 +967,6 @@
     </div>
 
     <div class="wallet-grid-2">
-      <button class="wallet-action-btn deposit" onclick="switchTab('game'); toggleDepositBox(true);">Deposit ↓</button>
       <button class="wallet-action-btn withdraw" onclick="requestWithdrawal()">Withdraw ↑</button>
     </div>
   </section>
