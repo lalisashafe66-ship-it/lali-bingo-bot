@@ -1358,63 +1358,41 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $adminMsgId = isset($cb['message']['message_id']) ? (int)$cb['message']['message_id'] : 0;
     $origText   = (string)($cb['message']['text'] ?? '');
 
-    //if (preg_match('/^select_dep_method:(telebirr|bank)$/i', trim($data), $depPick)) {
-      //  $pdo = getBingoPdo();
-       // clearAbortedPdo($pdo);
+    if (preg_match('/^select_dep_method:(telebirr|bank)$/i', trim($data), $depPick)) {
+        $pdo = getBingoPdo();
+        clearAbortedPdo($pdo);
 
-//$methodKey = strtolower((string)$depPick[1]);
-      //  $isBank = ($methodKey === 'bank');
-      //  $methodLabel = $isBank ? 'Bank Account (CBE)' : 'Telebirr';
-      //  $accountNum = $isBank ? '1000171689116' : '0917461538';
+$methodKey = strtolower((string)$depPick[1]);
+        $isBank = ($methodKey === 'bank');
+        $methodLabel = $isBank ? 'Bank Account (CBE)' : 'Telebirr';
+        $accountNum = $isBank ? '1000171689116' : '0917461538';
 
-       // if ($fromId !== '') {
-       //     setUserBotState($pdo, $fromId, 'awaiting_deposit_msg:' . $methodKey);
-//}
+        if ($fromId !== '') {
+            setUserBotState($pdo, $fromId, 'awaiting_deposit_msg:' . $methodKey);
+}
 
-//$promoCfg = getActiveDepositPromo($pdo);
-     //   $promoLine = '';
-      //  if (!empty($promoCfg['active']) && $fromId !== '' && isPlayerEligibleForPromo($pdo, $fromId, (string)$promoCfg['target_group'])) {
-       //     $promoLine = "\n🎁 *Active Promo:* Deposit 50+ ETB → *+20 ETB* bonus | 100+ ETB → *+30 ETB* bonus!\n";
-//}
+$promoCfg = getActiveDepositPromo($pdo);
+        $promoLine = '';
+        if (!empty($promoCfg['active']) && $fromId !== '' && isPlayerEligibleForPromo($pdo, $fromId, (string)$promoCfg['target_group'])) {
+            $promoLine = "\n🎁 *Active Promo:* Deposit 50+ ETB → *+20 ETB* bonus | 100+ ETB → *+30 ETB* bonus!\n";
+}
 
-      //  tgPost($token, 'answerCallbackQuery', [
-      //      'callback_query_id' => $cbId,
-       //     'text'              => "{$methodLabel} selected",
-       //     'show_alert'        => false,
-      //  ]);
-
-      //  if ($adminMsgId > 0) {
-      //      tgPost($token, 'editMessageText', [
-//'chat_id'      => $adminChat,
-              //  'message_id'   => $adminMsgId,
-              //  'text'         => "💳 *{$methodLabel}* (Min: *10 ETB*)\n"
-                  //              . "Account: `{$accountNum}` (LALISA SHAFE)\n"
-                  //              . $promoLine . "\n"
-                   //             . "Send your payment SMS / confirmation message next to submit for approval.",
-             //   'parse_mode'   => 'Markdown',
-//'reply_markup' => ['inline_keyboard' => []],
-     //       ]);
-    //    }
-
-  //      http_response_code(200);
-  //      echo "OK";
-   //     exit;
-  //  }
-
-
-if (preg_match('/^select_dep_method:(telebirr|bank)$/i', trim($data), $depPick)) {
         tgPost($token, 'answerCallbackQuery', [
             'callback_query_id' => $cbId,
-            'text'              => 'Please use the main Deposit option.',
-            'show_alert'        => true,
+            'text'              => "{$methodLabel} selected",
+            'show_alert'        => false,
         ]);
 
         if ($adminMsgId > 0) {
             tgPost($token, 'editMessageText', [
-                'chat_id'      => $adminChat,
+'chat_id'      => $adminChat,
                 'message_id'   => $adminMsgId,
-                'text'         => 'This deposit option is disabled. Please use the main Deposit button.',
-                'reply_markup' => ['inline_keyboard' => []],
+                'text'         => "💳 *{$methodLabel}* (Min: *10 ETB*)\n"
+                                . "Account: `{$accountNum}` (LALISA SHAFE)\n"
+                                . $promoLine . "\n"
+                                . "Send your payment SMS / confirmation message next to submit for approval.",
+                'parse_mode'   => 'Markdown',
+'reply_markup' => ['inline_keyboard' => []],
             ]);
         }
 
@@ -1422,6 +1400,9 @@ if (preg_match('/^select_dep_method:(telebirr|bank)$/i', trim($data), $depPick))
         echo "OK";
         exit;
     }
+
+
+
 
 
     
