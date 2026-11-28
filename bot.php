@@ -338,6 +338,7 @@ function ensureDepositStateSchema(PDO $pdo): void {
 
 function setUserBotState(PDO $pdo, string $telegramId, string $stateKey): void {
     ensureDepositStateSchema($pdo);
+    clearAbortedPdo($pdo);
     $ts = nowTimestampText();
     if (isPostgresPdo($pdo)) {
         $pdo->prepare("
@@ -355,6 +356,7 @@ function setUserBotState(PDO $pdo, string $telegramId, string $stateKey): void {
 
 function getUserBotState(PDO $pdo, string $telegramId): string {
     ensureDepositStateSchema($pdo);
+    clearAbortedPdo($pdo);
     $stmt = $pdo->prepare("SELECT state_key FROM user_bot_states WHERE telegram_id = ? LIMIT 1");
     $stmt->execute([$telegramId]);
     return (string)($stmt->fetchColumn() ?: '');
@@ -1359,40 +1361,18 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
     $origText   = (string)($cb['message']['text'] ?? '');
 
     if (preg_match('/^select_dep_method:(telebirr|bank)$/i', trim($data), $depPick)) {
-        $pdo = getBingoPdo();
-        clearAbortedPdo($pdo);
-
-$methodKey = strtolower((string)$depPick[1]);
-        $isBank = ($methodKey === 'bank');
-        $methodLabel = $isBank ? 'Bank Account (CBE)' : 'Telebirr';
-        $accountNum = $isBank ? '1000171689116' : '0917461538';
-
-        if ($fromId !== '') {
-            setUserBotState($pdo, $fromId, 'awaiting_deposit_msg:' . $methodKey);
-}
-
-$promoCfg = getActiveDepositPromo($pdo);
-        $promoLine = '';
-        if (!empty($promoCfg['active']) && $fromId !== '' && isPlayerEligibleForPromo($pdo, $fromId, (string)$promoCfg['target_group'])) {
-            $promoLine = "\n🎁 *Active Promo:* Deposit 50+ ETB → *+20 ETB* bonus | 100+ ETB → *+30 ETB* bonus!\n";
-}
-
         tgPost($token, 'answerCallbackQuery', [
             'callback_query_id' => $cbId,
-            'text'              => "{$methodLabel} selected",
-            'show_alert'        => false,
+            'text'              => 'Please use the main Deposit option.',
+            'show_alert'        => true,
         ]);
 
         if ($adminMsgId > 0) {
             tgPost($token, 'editMessageText', [
-'chat_id'      => $adminChat,
+                'chat_id'      => $adminChat,
                 'message_id'   => $adminMsgId,
-                'text'         => "💳 *{$methodLabel}* (Min: *10 ETB*)\n"
-                                . "Account: `{$accountNum}` (LALISA SHAFE)\n"
-                                . $promoLine . "\n"
-                                . "Send your payment SMS / confirmation message next to submit for approval.",
-                'parse_mode'   => 'Markdown',
-'reply_markup' => ['inline_keyboard' => []],
+                'text'         => 'This deposit option is disabled. Please use the main Deposit button.',
+                'reply_markup' => ['inline_keyboard' => []],
             ]);
         }
 
@@ -1401,11 +1381,6 @@ $promoCfg = getActiveDepositPromo($pdo);
         exit;
     }
 
-
-
-
-
-    
     if (preg_match('/^select_wd_method:(telebirr|bank)$/i', trim($data), $wdPick)) {
         $pdo = getBingoPdo();
         clearAbortedPdo($pdo);
@@ -2097,6 +2072,7 @@ try {
         $methodKey = substr($currentState, strlen('awaiting_deposit_msg:'));
         $methodLabel = ($methodKey === 'bank') ? 'Bank Account (CBE)' : 'Telebirr';
 
+        clearAbortedPdo($pdo);
         setUserBotState($pdo, (string)$userId, '');
 
         $amount = 0.00;
@@ -2113,43 +2089,57 @@ try {
         $txRef = 'TG-' . strtoupper(bin2hex(random_bytes(4)));
         $ts = nowTimestampText();
 
-        $ins = $pdo->prepare("
-            INSERT INTO transactions (telegram_id, tx_reference, amount, source, status, created_at, full_message)
-            VALUES (?, ?, ?, ?, 'pending', ?, ?)
-        ");
-        $ins->execute([(string)$userId, $txRef, $amount, 'tg_deposit:' . $methodKey, $ts, $text]);
-        $txId = (int)$pdo->lastInsertId();
+        try {
+            clearAbortedPdo($pdo);
+            $sql = "
+                INSERT INTO transactions (telegram_id, tx_reference, amount, source, status, created_at, full_message)
+                VALUES (?, ?, ?, ?, 'pending', ?, ?)
+            ";
+            if (isPostgresPdo($pdo)) {
+                $ins = $pdo->prepare($sql . " RETURNING id");
+                $ins->execute([(string)$userId, $txRef, $amount, 'tg_deposit:' . $methodKey, $ts, $text]);
+                $txId = (int)($ins->fetchColumn() ?: 0);
+            } else {
+                $ins = $pdo->prepare($sql);
+                $ins->execute([(string)$userId, $txRef, $amount, 'tg_deposit:' . $methodKey, $ts, $text]);
+                $txId = (int)$pdo->lastInsertId();
+            }
 
-        addLedger($pdo, (string)$userId, null, 'deposit_pending', $amount, $balanceNum, $balanceNum, "Pending {$methodLabel} deposit (#{$txId})");
+            addLedger($pdo, (string)$userId, null, 'deposit_pending', $amount, $balanceNum, $balanceNum, "Pending {$methodLabel} deposit (#{$txId})");
 
-        if ($adminId !== '') {
-            $promoPreviewLine = $previewBonus > 0
-                ? "• Eligible Promo Bonus: +" . number_format($previewBonus, 2) . " ETB\n"
-                : "";
-            $adminMsg = "SMART BINGO — Deposit for Approval (#{$txId})\n\n"
-                      . "• Player: {$firstName} (ID: {$userId})\n"
-                      . "• Method: {$methodLabel}\n"
-                      . "• Amount: " . number_format($amount, 2) . " ETB\n"
-                      . $promoPreviewLine
-                      . "• Ref: {$txRef}\n"
-                      . "• Message:\n{$text}";
+            if ($adminId !== '') {
+                $promoPreviewLine = $previewBonus > 0
+                    ? "• Eligible Promo Bonus: +" . number_format($previewBonus, 2) . " ETB\n"
+                    : "";
+                $adminMsg = "SMART BINGO — Deposit for Approval (#{$txId})\n\n"
+                          . "• Player: {$firstName} (ID: {$userId})\n"
+                          . "• Method: {$methodLabel}\n"
+                          . "• Amount: " . number_format($amount, 2) . " ETB\n"
+                          . $promoPreviewLine
+                          . "• Ref: {$txRef}\n"
+                          . "• Message:\n{$text}";
 
-            sendPlayerNotification($pdo, $token, $adminId, $adminMsg);
-            tgPost($token, 'sendMessage', [
-                'chat_id'      => $adminId,
-                'text'         => "Approve or reject Deposit #{$txId} ({$methodLabel}, " . number_format($amount, 2) . " ETB) for {$firstName} ({$userId}):",
-                'reply_markup' => [
-                    'inline_keyboard' => [[
-                        ['text' => '✅ Approve', 'callback_data' => "approve_tx:{$txId}"],
-                        ['text' => '❌ Reject',  'callback_data' => "reject_tx:{$txId}"],
-                    ]],
-                ],
-            ]);
+                sendPlayerNotification($pdo, $token, $adminId, $adminMsg);
+                tgPost($token, 'sendMessage', [
+                    'chat_id'      => $adminId,
+                    'text'         => "Approve or reject Deposit #{$txId} ({$methodLabel}, " . number_format($amount, 2) . " ETB) for {$firstName} ({$userId}):",
+                    'reply_markup' => [
+                        'inline_keyboard' => [[
+                            ['text' => '✅ Approve', 'callback_data' => "approve_tx:{$txId}"],
+                            ['text' => '❌ Reject',  'callback_data' => "reject_tx:{$txId}"],
+                        ]],
+                    ],
+                ]);
+            }
+
+            $reply = "Your {$methodLabel} deposit message has been submitted for approval.\n"
+                   . "Reference: {$txRef}\n"
+                   . "We will notify you once approved.";
+        } catch (Throwable $depErr) {
+            clearAbortedPdo($pdo);
+            error_log("awaiting_deposit_msg error ({$userId}): " . $depErr->getMessage());
+            $reply = "Could not record your deposit right now. Please use the main Deposit option or try again.";
         }
-
-        $reply = "Your {$methodLabel} deposit message has been submitted for approval.\n"
-               . "Reference: {$txRef}\n"
-               . "We will notify you once approved.";
     } elseif (str_starts_with($currentState, 'awaiting_withdraw_msg:') && $text !== '' && !$isMenuCommand) {
         $methodKey = substr($currentState, strlen('awaiting_withdraw_msg:'));
         $methodLabel = ($methodKey === 'bank') ? 'Bank Account (CBE)' : 'Telebirr';
